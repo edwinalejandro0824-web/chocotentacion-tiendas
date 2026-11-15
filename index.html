@@ -1143,16 +1143,21 @@ function abrirCobro() {
   const cerrar = () => { raiz.innerHTML = ''; };
   $('c-cancelar').onclick = cerrar;
   // Enter en cualquier casilla del cobro: si ya está completo, confirma; si no, lleva a lo que falta
-  raiz.addEventListener('keydown', e => {
-    if (e.key !== 'Enter' || e.shiftKey || !raiz.contains(e.target) || e.target.tagName === 'BUTTON') return;
+  // (onkeydown y no addEventListener: así se reemplaza cada vez que se abre el cobro y nunca se acumula)
+  let enviando = false;
+  raiz.onkeydown = e => {
+    if (e.key !== 'Enter' || e.repeat || e.shiftKey || !raiz.contains(e.target) || e.target.tagName === 'BUTTON' || !$('c-ok')) return;
     e.preventDefault();
+    if (enviando) return;
     if (e.target.blur) e.target.blur(); pintarResumen();
     const ok = $('c-ok');
     if (ok && !ok.disabled) return ok.click();
     const falta = raiz.querySelector('input.falta, #c-pagos input:placeholder-shown, #c-vueltos input:placeholder-shown');
     if (falta) falta.focus();
-  });
+  };
   $('c-ok').onclick = async () => {
+    if (enviando) return;   // una sola venta por cobro, aunque toquen dos veces
+    enviando = true;
     const btn = $('c-ok'); btn.disabled = true; btn.textContent = 'Guardando…';
     $('c-error').classList.add('oculto');
     try {
@@ -1166,7 +1171,7 @@ function abrirCobro() {
     } catch (e) {
       $('c-error').textContent = 'No se guardó la venta: ' + e.message;
       $('c-error').classList.remove('oculto');
-      btn.textContent = 'Confirmar e imprimir'; pintarResumen();
+      btn.textContent = 'Confirmar e imprimir'; enviando = false; pintarResumen();
     }
   };
 }
