@@ -2589,7 +2589,7 @@ const INV = { sub: 'existencias' };
 function pintarAdmInventario() {
   const cont = $('adm-contenido'), t = S.tienda.id;
   const subs = [['existencias', 'Existencias'], ['recibir', 'Recibir mercancía'], ['merma', 'Mermas'], ['conteo', 'Conteo físico'], ['recetas', 'Recetas y costos'], ['movs', 'Movimientos']];
-  cont.innerHTML = `<div class="adm-barra"><p>Inventario de <b>${esc(S.tienda.nombre)}</b>. Cada venta descuenta lo que usa según su receta. Las cantidades y costos de ejemplo hay que cambiarlos por los reales.</p></div>
+  cont.innerHTML = `<div class="adm-barra"><p>Inventario de <b>${esc(S.tienda.nombre)}</b>. Cada venta descuenta lo que usa según su receta.${DEMO ? ' Las cantidades y costos de ejemplo hay que cambiarlos por los reales.' : (DX.insumos.length ? '' : ' Todavía no hay insumos: agrégalos con <b>+ Insumo</b> y luego arma las recetas.')}</p></div>
     <nav class="sub-tabs">${subs.map(([k, n]) => `<button class="sub-tab ${INV.sub === k ? 'activa' : ''}" data-s="${k}">${n}</button>`).join('')}</nav><div id="inv-cont"></div>`;
   cont.querySelectorAll('.sub-tab').forEach(b => b.onclick = () => { INV.sub = b.dataset.s; pintarAdmInventario(); });
   const ic = $('inv-cont'), activos = DX.insumos.filter(i => i.activo !== false);
