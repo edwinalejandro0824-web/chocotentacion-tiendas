@@ -901,7 +901,7 @@ function abrirOpciones(p, lineaExistente) {
     const cuerpo = $('m-cuerpo'); cuerpo.innerHTML = '';
     if (vars.length > 1) {
       const g = document.createElement('div'); g.className = 'grupo';
-      g.innerHTML = `<h4>${vars.some(v => /oz/i.test(v.nombre)) ? 'Tamaño' : 'Sabor'}</h4><div class="opciones"></div>`;
+      g.innerHTML = `<h4>${vars.some(v => /\d\s*(oz|ml|l|lt|g|kg)\b/i.test(v.nombre)) ? 'Tamaño' : 'Sabor'}</h4><div class="opciones"></div>`;
       for (const v of vars) {
         const b = document.createElement('button'); b.className = 'op' + (varSel === v.id ? ' sel' : '');
         b.innerHTML = `${esc(v.nombre)} <small class="num">${usd(S.d.precio.get(v.id))}</small>`;
@@ -945,7 +945,7 @@ function abrirOpciones(p, lineaExistente) {
       cuerpo.appendChild(g);
     }
     // precio en vivo y validación
-    let ok = varSel != null, falta = varSel == null ? (vars.some(v => /oz/i.test(v.nombre)) ? 'Elige el tamaño' : 'Elige el sabor') : '';
+    let ok = varSel != null, falta = varSel == null ? (vars.some(v => /\d\s*(oz|ml|l|lt|g|kg)\b/i.test(v.nombre)) ? 'Elige el tamaño' : 'Elige el sabor') : '';
     for (const gr of grupos) {
       if (gr.obligatorio && !(S.d.opsDe.get(gr.grupo_id) || []).some(o => sel.has(o.id))) {
         ok = false; falta = falta || 'Elige ' + S.d.grupo.get(gr.grupo_id).nombre.toLowerCase();
