@@ -1620,6 +1620,14 @@ const apiAdmin = {
     const { data, error } = await sb.rpc('pos_admin_cierres', { p_clave: A.clave, p_tienda: tiendaId, p_limite: 60 });
     if (error) throw new Error(error.message); return data;
   },
+  async quitarCategoria(id) {
+    if (DEMO) {
+      if (DEMO_DATA.productos.some(p => p.categoria_id === id)) throw new Error('La categoría tiene productos. Pásalos a otra categoría antes de quitarla.');
+      DEMO_DATA.categorias = DEMO_DATA.categorias.filter(c => c.id !== id); guardarDemo(); return;
+    }
+    const { error } = await sb.rpc('pos_admin_quitar_categoria', { p_clave: A.clave, p_categoria: id });
+    if (error) throw new Error(error.message);
+  },
   async crearCategoria(nombre, color) {
     if (DEMO) {
       if (DEMO_DATA.categorias.some(c => c.nombre.toLowerCase() === nombre.toLowerCase())) throw new Error('Ya existe una categoría con ese nombre');
@@ -1801,7 +1809,13 @@ function pintarAdmProductos() {
     const prods = D.productos.filter(p => p.categoria_id === c.id).sort((a, b) => (b.activo - a.activo) || a.orden - b.orden);
     const sec = document.createElement('section'); sec.className = 'adm-cat';
     sec.innerHTML = `<h3><i style="background:${esc(c.color || '#7A4A2A')}"></i>${esc(c.nombre)} <small>${prods.length} producto${prods.length === 1 ? '' : 's'}</small></h3>`;
-    if (!prods.length) sec.innerHTML += '<p class="adm-vacio">Sin productos todavía.</p>';
+    if (!prods.length) {
+      sec.innerHTML += '<p class="adm-vacio">Sin productos todavía. <button class="link rojo adm-quitar-cat">Quitar categoría</button></p>';
+      sec.querySelector('.adm-quitar-cat').onclick = async () => {
+        try { await apiAdmin.quitarCategoria(c.id); toast(`Categoría "${c.nombre}" quitada`); await recargarAdmin(); }
+        catch (err) { toast(err.message); }
+      };
+    }
     for (const p of prods) {
       const vars = D.variantes.filter(v => v.producto_id === p.id).sort((a, b) => a.orden - b.orden);
       const card = document.createElement('div'); card.className = 'adm-prod' + (p.activo ? '' : ' inactivo');
