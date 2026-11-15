@@ -97,7 +97,8 @@
   .cli-estado.conocido{background:#E6F3EB;color:var(--ok)}
   .cli-estado.nuevo{background:#EAF1FB;color:#2B5C9E}
   .cli-estado.buscando{color:var(--suave)}
-  .cli-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:8px}
+  .cli-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px}
+  .cli-grid .ancho-total{grid-column:1/-1}
   .cli-grid input{width:100%;min-width:0;padding:9px 11px;border:1.5px solid var(--linea);border-radius:9px;outline:none;font-size:14px}
   .cli-grid input:focus{border-color:var(--naranja)}
   .cli-grid input.falta{border-color:var(--error);background:#FFF7F6}
@@ -450,9 +451,10 @@
         <div class="cli-cab"><b>Datos del cliente</b><span id="cli-estado" class="cli-estado"></span></div>
         <div class="cli-grid">
           <input id="cli-cedula" placeholder="Cédula *" autocomplete="off" aria-label="Cédula del cliente">
-          <input id="cli-nombre" placeholder="Nombre y apellido *" autocomplete="off" aria-label="Nombre del cliente">
           <input id="cli-telefono" placeholder="Teléfono *" autocomplete="off" inputmode="tel" aria-label="Teléfono del cliente">
-          <input id="cli-zona" placeholder="Zona donde vive *" autocomplete="off" aria-label="Zona donde vive el cliente">
+          <input id="cli-nombre" placeholder="Nombre *" autocomplete="off" aria-label="Nombre del cliente">
+          <input id="cli-apellido" placeholder="Apellido *" autocomplete="off" aria-label="Apellido del cliente">
+          <input id="cli-zona" class="ancho-total" placeholder="Zona donde vive *" autocomplete="off" aria-label="Zona donde vive el cliente">
         </div>
       </div>
       <div class="totales">
@@ -822,12 +824,13 @@ function normalizarCedula(t) {
 const soloDigitos = t => String(t || '').replace(/\D/g, '');
 const limpiar = t => String(t || '').replace(/\s+/g, ' ').trim();
 function datosCliente() {
-  return { cedula: $('cli-cedula').value, nombre: $('cli-nombre').value, telefono: $('cli-telefono').value, zona: $('cli-zona').value };
+  return { cedula: $('cli-cedula').value, nombre: $('cli-nombre').value, apellido: $('cli-apellido').value, telefono: $('cli-telefono').value, zona: $('cli-zona').value };
 }
 function faltantesCliente() {
   const c = datosCliente(), f = [];
   if (!normalizarCedula(c.cedula)) f.push(['cli-cedula', 'cédula']);
-  if (limpiar(c.nombre).length < 3) f.push(['cli-nombre', 'nombre']);
+  if (limpiar(c.nombre).length < 2) f.push(['cli-nombre', 'nombre']);
+  if (limpiar(c.apellido).length < 2) f.push(['cli-apellido', 'apellido']);
   const tel = soloDigitos(c.telefono).length; if (tel < 10 || tel > 12) f.push(['cli-telefono', 'teléfono']);
   if (limpiar(c.zona).length < 2) f.push(['cli-zona', 'zona']);
   return f;
@@ -835,7 +838,7 @@ function faltantesCliente() {
 const tocados = new Set();
 function revisarCobrar() {
   const f = faltantesCliente();
-  for (const id of ['cli-cedula', 'cli-nombre', 'cli-telefono', 'cli-zona'])
+  for (const id of ['cli-cedula', 'cli-nombre', 'cli-apellido', 'cli-telefono', 'cli-zona'])
     $(id).classList.toggle('falta', tocados.has(id) && f.some(x => x[0] === id));
   $('btn-cobrar').disabled = !S.carrito.length || f.length > 0;
   $('aviso-cobrar').textContent = S.carrito.length && f.length ? 'Para cobrar falta: ' + f.map(x => x[1]).join(', ') : '';
@@ -862,17 +865,20 @@ async function buscarClientePorCedula() {
     const cli = await api.buscarCliente(ced);
     if (ultimaBuscada !== ced) return; // escribieron otra cédula mientras buscaba
     if (cli) {
-      $('cli-nombre').value = cli.nombre; $('cli-telefono').value = cli.telefono; $('cli-zona').value = cli.zona;
+      // nombre y apellido guardados por separado; si es un cliente viejo, se separa la primera palabra
+      let nom = cli.nombres, ape = cli.apellidos;
+      if (!nom) { const pal = limpiar(cli.nombre).split(' '); nom = pal.shift() || ''; ape = pal.join(' '); }
+      $('cli-nombre').value = nom; $('cli-apellido').value = ape || ''; $('cli-telefono').value = cli.telefono; $('cli-zona').value = cli.zona;
     }
     pintarEstadoCliente(cli);
     revisarCobrar();
   } catch (e) { pintarEstadoCliente(null, 'vacio'); }
 }
 function limpiarCliente() {
-  for (const id of ['cli-cedula', 'cli-nombre', 'cli-telefono', 'cli-zona']) $(id).value = '';
+  for (const id of ['cli-cedula', 'cli-nombre', 'cli-apellido', 'cli-telefono', 'cli-zona']) $(id).value = '';
   tocados.clear(); ultimaBuscada = null; pintarEstadoCliente(null, 'vacio'); revisarCobrar();
 }
-for (const id of ['cli-cedula', 'cli-nombre', 'cli-telefono', 'cli-zona']) {
+for (const id of ['cli-cedula', 'cli-nombre', 'cli-apellido', 'cli-telefono', 'cli-zona']) {
   $(id).addEventListener('input', () => { revisarCobrar(); });
   $(id).addEventListener('blur', () => { tocados.add(id); revisarCobrar(); });
 }
@@ -1078,6 +1084,16 @@ function abrirCobro() {
 
   const cerrar = () => { raiz.innerHTML = ''; };
   $('c-cancelar').onclick = cerrar;
+  // Enter en cualquier casilla del cobro: si ya está completo, confirma; si no, lleva a lo que falta
+  raiz.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.shiftKey || !raiz.contains(e.target) || e.target.tagName === 'BUTTON') return;
+    e.preventDefault();
+    if (e.target.blur) e.target.blur(); pintarResumen();
+    const ok = $('c-ok');
+    if (ok && !ok.disabled) return ok.click();
+    const falta = raiz.querySelector('input.falta, #c-pagos input:placeholder-shown, #c-vueltos input:placeholder-shown');
+    if (falta) falta.focus();
+  });
   $('c-ok').onclick = async () => {
     const btn = $('c-ok'); btn.disabled = true; btn.textContent = 'Guardando…';
     $('c-error').classList.add('oculto');
@@ -1085,8 +1101,9 @@ function abrirCobro() {
       const items = S.carrito.map(l => ({ variante_id: l.variante_id, cantidad: l.cantidad, opciones: l.opciones.map(id => ({ opcion_id: id })) }));
       const aJson = l => l.map(p => ({ forma_pago_id: p.forma.id, monto: r2(leerNum(p.monto)), referencia: p.referencia, banco: p.banco }));
       const c = datosCliente();
-      const cliente = { cedula: normalizarCedula(c.cedula), nombre: limpiar(c.nombre), telefono: soloDigitos(c.telefono), zona: limpiar(c.zona) };
+      const cliente = { cedula: normalizarCedula(c.cedula), nombre: limpiar(c.nombre + ' ' + c.apellido), telefono: soloDigitos(c.telefono), zona: limpiar(c.zona) };
       const venta = await api.registrar(items, aJson(pagos), cliente, vueltoADar() > 0.009 ? aJson(vueltos) : []);
+      if (!DEMO) sb.rpc('pos_cliente_nombres', { p_cedula: cliente.cedula, p_nombres: limpiar(c.nombre), p_apellidos: limpiar(c.apellido) }).then(() => {}, () => {});
       ventaLista(venta);
     } catch (e) {
       $('c-error').textContent = 'No se guardó la venta: ' + e.message;
@@ -3059,10 +3076,38 @@ $('btn-salida').onclick = abrirSalida;
 function pintarTasa() {
   if (!S.tasa) return;
   const f = String(S.tasa.fecha).slice(0, 10), hoy = new Date(Date.now() - 4 * 3600e3).toISOString().slice(0, 10);
-  const cuando = f === hoy ? 'de hoy' : 'vigente desde ' + f.slice(8, 10) + '/' + f.slice(5, 7);
-  $('chip-tasa').innerHTML = `Tasa BCV <b>${fmt.format(S.tasa.tasa)}</b> · ${esc(cuando)}`;
-  $('chip-tasa').title = 'Se actualiza sola con la tasa oficial del BCV';
+  const dia = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'][new Date(f + 'T12:00:00').getDay()];
+  const cuando = f === hoy ? 'de hoy' : f > hoy ? `del ${dia} ${f.slice(8, 10)}/${f.slice(5, 7)}` : 'vigente desde ' + f.slice(8, 10) + '/' + f.slice(5, 7);
+  $('chip-tasa').innerHTML = `Tasa BCV <b>${fmt.format(S.tasa.tasa)}</b> · ${esc(cuando)}${S.tasa.fuente === 'manual' ? ' ✎' : ''}`;
+  $('chip-tasa').title = S.perfil?.rol === 'dueno' && !DEMO ? 'Toca para cargar la tasa a mano' : 'Se actualiza sola con la tasa oficial del BCV. Viernes, sábado y domingo se usa la del lunes.';
+  $('chip-tasa').style.cursor = S.perfil?.rol === 'dueno' && !DEMO ? 'pointer' : '';
 }
+// El dueño puede cargar la tasa a mano (por si la fuente automática se atrasa)
+$('chip-tasa').addEventListener('click', () => {
+  if (DEMO || S.perfil?.rol !== 'dueno') return;
+  const hoyF = new Date(Date.now() - 4 * 3600e3), dow = hoyF.getUTCDay();
+  const sug = new Date(hoyF.getTime() + (dow === 5 ? 3 : dow === 6 ? 2 : dow === 0 ? 1 : 0) * 86400e3).toISOString().slice(0, 10);
+  const r = abrirModal(`<form id="f-tasa"><div class="modal-cab"><h3 class="titulo">Tasa BCV</h3>
+      <p>Se carga sola del BCV. Viernes, sábado y domingo se vende con la tasa del lunes. Si la automática se atrasa, cárgala aquí a mano.</p></div>
+    <div class="modal-cuerpo"><div id="tm-error" class="mensaje-error oculto"></div>
+      <p>Ahora se está usando: <b>${fmt.format(S.tasa.tasa)}</b> (fecha valor ${esc(String(S.tasa.fecha).slice(8, 10) + '/' + String(S.tasa.fecha).slice(5, 7))}, ${S.tasa.fuente === 'manual' ? 'cargada a mano' : 'automática'})</p>
+      <div class="dos-campos"><label class="campo"><span>Fecha valor *</span><input id="tm-fecha" type="date" class="txt" value="${sug}"></label>
+      <label class="campo"><span>Tasa (Bs. por dólar) *</span><input id="tm-tasa" class="txt num" inputmode="decimal" placeholder="Ej. 920,5000"></label></div>
+      <label class="campo"><span>Clave de administrador *</span><input id="tm-clave" type="password" class="txt" autocomplete="off"></label>
+      <p class="ayuda">Para quitar una tasa cargada a mano, deja la tasa vacía y guarda.</p></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="tm-cancelar">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 520);
+  r.querySelector('#tm-cancelar').onclick = cerrarModal;
+  r.querySelector('#f-tasa').onsubmit = async e => {
+    e.preventDefault();
+    const err = m => { r.querySelector('#tm-error').textContent = m; r.querySelector('#tm-error').classList.remove('oculto'); };
+    const v = r.querySelector('#tm-tasa').value.trim(), t = v ? leerNum(v) : null;
+    if (v && !(t > 0)) return err('Revisa la tasa');
+    const b = r.querySelector('.btn-primario'); b.disabled = true;
+    try { await rpc('pos_admin_guardar_tasa', { p_clave: r.querySelector('#tm-clave').value, p_fecha: r.querySelector('#tm-fecha').value, p_tasa: t }); }
+    catch (x) { b.disabled = false; return err(x.message); }
+    cerrarModal(); toast(t ? 'Tasa guardada' : 'Tasa a mano quitada'); actualizarTasa();
+  };
+});
 async function actualizarTasa() {
   if (!S.tienda || !S.tasa) return;
   try {
@@ -3169,7 +3214,7 @@ $('btn-salir').onclick = async () => {
 };
 $('btn-vaciar').onclick = () => { if ((S.carrito.length || $('cli-cedula').value) && confirm('¿Vaciar la venta y los datos del cliente?')) { S.carrito = []; limpiarCliente(); pintarTicket(); } };
 $('btn-cobrar').onclick = async () => {
-  if (faltantesCliente().length) { ['cli-cedula','cli-nombre','cli-telefono','cli-zona'].forEach(i => tocados.add(i)); return revisarCobrar(); }
+  if (faltantesCliente().length) { ['cli-cedula','cli-nombre','cli-apellido','cli-telefono','cli-zona'].forEach(i => tocados.add(i)); return revisarCobrar(); }
   const b = $('btn-cobrar'); b.disabled = true;
   await actualizarTasa();   // se cobra siempre con la tasa vigente
   b.disabled = false; abrirCobro();
