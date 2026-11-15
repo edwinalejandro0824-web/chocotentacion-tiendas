@@ -55,6 +55,8 @@
   .marca{font-family:Fraunces,Georgia,serif;font-size:21px;font-weight:700;letter-spacing:.2px}
   .marca small{font-family:Inter,sans-serif;font-weight:500;font-size:13px;opacity:.7;margin-left:8px}
   .chip-barra{background:var(--cacao-2);border-radius:999px;padding:7px 14px;font-size:13px;white-space:nowrap}
+  .chip-hc{border:0;color:#fff;cursor:pointer;font-weight:600}
+  .chip-hc.hc{background:#F2B705;color:#2B1A12}
   .chip-barra b{font-weight:700}
   .meta{display:flex;align-items:center;gap:10px;min-width:220px}
   .meta-barra{flex:1;height:8px;background:rgba(255,255,255,.15);border-radius:99px;overflow:hidden}
@@ -423,6 +425,7 @@
     <div class="marca">ChocoTentación<small id="nombre-tienda"></small></div>
     <span id="aviso-demo" class="demo-aviso oculto">MODO DEMO · no guarda ventas</span>
     <div class="chip-barra num" id="chip-tasa">Tasa BCV …</div>
+    <button class="chip-barra chip-hc oculto" id="chip-hc" title="Toca para cambiar entre helado de máquina y helado HC (plan B)"></button>
     <div class="chip-barra meta" id="chip-meta"><span id="texto-meta" class="num">Hoy $0,00</span><div class="meta-barra" id="meta-barra"><i id="meta-avance" style="width:0%"></i></div></div>
     <div class="chip-barra oculto" id="chip-caja"></div>
     <button class="chip-barra chip-stock oculto" id="chip-stock"></button>
@@ -599,7 +602,7 @@ const api = {
   },
   async tiendas() {
     if (DEMO) return tiendasDemo();
-    const { data, error } = await sb.from('pos_tiendas').select('id,nombre,ciudad,meta_diaria_usd,iva_porcentaje,precios_incluyen_iva,ancho_papel_mm').eq('activa', true).order('id');
+    const { data, error } = await sb.from('pos_tiendas').select('id,nombre,ciudad,meta_diaria_usd,iva_porcentaje,precios_incluyen_iva,ancho_papel_mm,usa_hc,modo_helado').eq('activa', true).order('id');
     if (error) throw error; return data;
   },
   async catalogo(tiendaId) {
@@ -613,7 +616,7 @@ const api = {
     const q = (t, cols) => sb.from(t).select(cols);
     const res = await Promise.all([
       q('pos_categorias', 'id,nombre,color,orden').order('orden'),
-      q('pos_productos', 'id,categoria_id,nombre,foto_url,orden,activo').eq('activo', true).order('orden'),
+      q('pos_productos', 'id,categoria_id,nombre,foto_url,orden,activo,no_en_hc').eq('activo', true).order('orden'),
       q('pos_variantes', 'id,producto_id,nombre,orden').order('orden'),
       q('pos_precios', 'variante_id,tienda_id,precio_usd').eq('tienda_id', tiendaId),
       q('pos_grupos_opciones', 'id,nombre'),
@@ -729,10 +732,58 @@ function calcularCarrito() {
 /* =====================================================================
    PANTALLA DE VENTA
    ===================================================================== */
+// Plan B (helado HC): sin promociones ni productos marcados "no_en_hc"
+const enHC = () => !!(S.tienda && S.tienda.usa_hc && S.tienda.modo_helado === 'hc');
+function seVendeAhora(p) {
+  if (!enHC()) return true;
+  const c = S.d.categorias.find(x => x.id === p.categoria_id);
+  return !p.no_en_hc && !(c && c.nombre === 'Promociones');
+}
+function pintarChipHC() {
+  const b = $('chip-hc'), t = S.tienda;
+  b.classList.toggle('oculto', !(t && t.usa_hc));
+  if (!t || !t.usa_hc) return;
+  b.classList.toggle('hc', enHC());
+  b.textContent = enHC() ? '🥄 Helado HC (plan B)' : '🍦 Helado de máquina';
+}
+function aplicarModoHelado() {
+  pintarChipHC();
+  if (!S.d) return;
+  if (!S.d.productos.some(p => p.categoria_id === S.cat && seVendeAhora(p)))
+    S.cat = S.d.categorias.find(c => S.d.productos.some(p => p.categoria_id === c.id && seVendeAhora(p)))?.id;
+  pintarCategorias(); pintarProductos();
+}
+$('chip-hc').addEventListener('click', () => {
+  const nuevo = enHC() ? 'maquina' : 'hc';
+  const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">${nuevo === 'hc' ? '¿Pasar a helado HC?' : '¿Volver al helado de máquina?'}</h3>
+      <p>${nuevo === 'hc' ? 'Úsalo cuando la máquina no esté funcionando. Con helado HC no se venden promociones ni el Maxi cono, y el inventario descuenta helado HC.' : 'Vuelven las promociones y todo el menú normal.'}</p></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="hc-no">Cancelar</button><span class="espacio"></span><button class="btn btn-primario" id="hc-si">${nuevo === 'hc' ? 'Sí, usar helado HC' : 'Sí, volver a máquina'}</button></div>`, 460);
+  r.querySelector('#hc-no').onclick = cerrarModal;
+  r.querySelector('#hc-si').onclick = async () => {
+    try {
+      if (!DEMO) { const { error } = await sb.rpc('pos_cambiar_modo_helado', { p_tienda: S.tienda.id, p_modo: nuevo }); if (error) throw error; }
+      S.tienda.modo_helado = nuevo;
+      const fuera = S.carrito.filter(l => { const v = S.d.variante.get(l.variante_id); return v && !seVendeAhora(S.d.productos.find(p => p.id === v.producto_id)); });
+      if (fuera.length) { S.carrito = S.carrito.filter(l => !fuera.includes(l)); pintarTicket(); }
+      cerrarModal(); aplicarModoHelado();
+      toast(nuevo === 'hc' ? 'Ahora se vende con helado HC' : 'De vuelta al helado de máquina');
+    } catch (e) { toast('No se pudo cambiar: ' + e.message, true); }
+  };
+});
+// si otra caja cambió el modo, se actualiza solo
+async function revisarModoHelado() {
+  if (DEMO || !S.tienda || !S.tienda.usa_hc) return;
+  try {
+    const { data } = await sb.from('pos_tiendas').select('modo_helado').eq('id', S.tienda.id).single();
+    if (data && data.modo_helado !== S.tienda.modo_helado) { S.tienda.modo_helado = data.modo_helado; aplicarModoHelado(); }
+  } catch (e) {}
+}
+setInterval(() => { if (!document.hidden) revisarModoHelado(); }, 60 * 1000);
+
 function pintarCategorias() {
   const cont = $('categorias'); cont.innerHTML = '';
   for (const c of S.d.categorias) {
-    if (!S.d.productos.some(p => p.categoria_id === c.id)) continue;
+    if (!S.d.productos.some(p => p.categoria_id === c.id && seVendeAhora(p))) continue;
     const b = document.createElement('button');
     b.className = 'cat' + (S.cat === c.id ? ' activa' : '');
     if (S.cat === c.id) b.style.background = c.color || 'var(--cacao)';
@@ -745,7 +796,7 @@ function pintarCategorias() {
 function pintarProductos() {
   const cont = $('productos'); cont.innerHTML = '';
   const cat = S.d.categorias.find(c => c.id === S.cat);
-  for (const p of S.d.productos.filter(p => p.categoria_id === S.cat)) {
+  for (const p of S.d.productos.filter(p => p.categoria_id === S.cat && seVendeAhora(p))) {
     const vars = S.d.varsDe.get(p.id) || [];
     const precios = vars.map(v => S.d.precio.get(v.id));
     const min = Math.min(...precios), max = Math.max(...precios);
@@ -3161,7 +3212,8 @@ async function entrarTienda(t) {
     if (!S.tasa) throw new Error('No hay tasa BCV cargada');
     S.tasa.tasa = Number(S.tasa.tasa);
     pintarTasa();
-    S.cat = S.d.categorias.find(c => S.d.productos.some(p => p.categoria_id === c.id))?.id;
+    pintarChipHC();
+    S.cat = S.d.categorias.find(c => S.d.productos.some(p => p.categoria_id === c.id && seVendeAhora(p)))?.id;
     if (DEMO) { sembrarHistoria(); S.ventasHoy = await api.ventasHoy(t.id); }
     pintarCategorias(); pintarProductos(); pintarTicket(); pintarMeta();
     await revisarCaja();
