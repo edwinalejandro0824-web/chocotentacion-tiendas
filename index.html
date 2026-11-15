@@ -2662,7 +2662,7 @@ function pintarAdmPanel() {
   cont.innerHTML = `
     <div class="adm-barra"><p>${DEMO ? 'Datos de ejemplo del demo: 3 semanas de ventas del Sambil, más lo que vendas tú.' : 'Resumen de ventas, costos y caja. Elige el período y la tienda.'}</p><span class="espacio"></span>
       <select id="pn-periodo" class="sel corto">${[['hoy', 'Hoy'], ['7', 'Últimos 7 días'], ['mes', 'Este mes'], ['30', 'Últimos 30 días']].map(([k, n]) => `<option value="${k}" ${PANEL.periodo === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
-      <select id="pn-tienda" class="sel corto"><option value="0">Todas las tiendas</option>${(DEMO ? DEMO_DATA.tiendas : S.tiendas).map(t => `<option value="${t.id}" ${PANEL.tienda === t.id ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></div>
+      <select id="pn-tienda" class="sel corto"><option value="0" ${PANEL.tienda ? '' : 'selected'}>Todas las tiendas (sumadas)</option>${(DEMO ? DEMO_DATA.tiendas : S.tiendas).map(t => `<option value="${t.id}" ${PANEL.tienda === t.id ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></div>
     <div class="kpis">
       <div class="kpi"><span>Ventas</span><b class="num">${usd(total)}</b><i>${vs.length} ventas · ${fechaCorta(desde)} al ${fechaCorta(hasta)}</i></div>
       <div class="kpi"><span>Ticket promedio</span><b class="num">${usd(ticket)}</b><i>por venta</i></div>
@@ -3206,6 +3206,7 @@ setInterval(() => { if (!document.hidden) { actualizarTasa(); revisarCambioDeDia
 document.addEventListener('visibilitychange', () => { if (!document.hidden) actualizarTasa(); });
 
 async function entrarTienda(t) {
+  PANEL.tienda = t.id;   // el panel arranca mostrando SOLO la tienda en la que se está
   $('impresion').className = Number(t.ancho_papel_mm) === 58 ? 'p58' : '';
   S.tienda = t; guardar('pos_tienda', String(t.id));
   mostrar('vista-app');
