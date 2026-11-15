@@ -366,14 +366,18 @@
   /* ---------- IMPRESIÓN 80 mm ---------- */
   #impresion{display:none}
   @media print{
-    @page{size:80mm auto;margin:0}
-    body{background:#fff}
+    /* Tiquera de 80 mm: la hoja la define la impresora; el texto usa todo el ancho
+       menos un margen. El margen izquierdo es menor porque la tiquera corre todo
+       unos 2,5 mm a la derecha (medido en el ticket de la RC-8002 del Sambil). */
+    @page{margin:0}
+    html,body{background:#fff;margin:0;padding:0}
     body > *:not(#impresion){display:none!important}
-    #impresion{display:block;width:72mm;margin:0 auto;padding:3mm 0;font-family:"Courier New",monospace;font-size:11px;color:#000;line-height:1.35}
+    #impresion{display:block;box-sizing:border-box;width:100%;margin:0;padding:0 7mm 3mm 2mm;font-family:Consolas,"Courier New",monospace;font-size:12px;font-weight:700;color:#000;line-height:1.35;-webkit-print-color-adjust:exact}
+    #impresion .r span:last-child{white-space:nowrap;text-align:right}
     #impresion .c{text-align:center}
     #impresion .r{display:flex;justify-content:space-between;gap:6px}
     #impresion .sep{border-top:1px dashed #000;margin:4px 0}
-    #impresion .g{font-size:14px;font-weight:700}
+    #impresion .g{font-size:15px;font-weight:700}
     #impresion .sub{padding-left:8px}
   }
 </style>
