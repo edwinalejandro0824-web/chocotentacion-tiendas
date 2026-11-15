@@ -143,6 +143,10 @@
   .op.sel{background:var(--cacao);color:#fff;border-color:var(--cacao)}
   .op.sel small{color:#F2B705}
   .op:disabled{opacity:.4;cursor:not-allowed}
+  .op .veces{font-weight:800;color:#F2B705}
+  .op .quitar{margin-left:2px;width:20px;height:20px;line-height:18px;text-align:center;border-radius:50%;
+    border:1.5px solid rgba(255,255,255,.6);font-weight:800;align-self:center;flex:none}
+  .op .quitar:hover{background:rgba(255,255,255,.25)}
   .precio-modal{font-size:22px;font-weight:700;margin-left:auto}
 
   /* cobro */
@@ -957,7 +961,9 @@ function abrirOpciones(p, lineaExistente) {
   const vars = S.d.varsDe.get(p.id) || [];
   const grupos = S.d.gruposDe.get(p.id) || [];
   let varSel = lineaExistente ? lineaExistente.variante_id : (vars.length === 1 ? vars[0].id : null);
-  const sel = new Set(lineaExistente ? lineaExistente.opciones : []);
+  // Lista (no conjunto): el mismo sabor o sirope puede ir dos veces, p. ej. la
+  // promo de 2 Frozzies los dos de brownie, o una barquilla con doble sirope.
+  let sel = [...(lineaExistente ? lineaExistente.opciones : [])];
   const cant = lineaExistente ? lineaExistente.cantidad : 1;
 
   const raiz = $('modal-raiz');
@@ -986,8 +992,10 @@ function abrirOpciones(p, lineaExistente) {
     for (const gr of grupos) {
       const nombreG = S.d.grupo.get(gr.grupo_id).nombre;
       const ops = S.d.opsDe.get(gr.grupo_id) || [];
-      const elegidas = ops.filter(o => sel.has(o.id)).length;
+      const veces = o => sel.filter(x => x === o.id).length;
+      const elegidas = ops.reduce((n, o) => n + veces(o), 0);
       const max = gr.permite_extras ? Infinity : gr.incluidas;
+      const repetible = max > 1;   // se puede elegir dos veces lo mismo
       let ayuda = '';
       if (gr.incluidas === 1 && !gr.permite_extras && gr.valor_incluido_usd === 0) {
         ayuda = 'elige uno';
@@ -997,20 +1005,26 @@ function abrirOpciones(p, lineaExistente) {
         if (gr.valor_incluido_usd > 0) ayuda += ` · los de más de ${usd(gr.valor_incluido_usd)} pagan la diferencia`;
         if (gr.permite_extras) ayuda += ' · los demás se cobran aparte';
       } else ayuda = 'opcional, se cobra aparte';
+      if (repetible) ayuda += ' · puedes repetir el mismo';
       const titulo = /^Sabor/.test(nombreG) ? 'Sabor' : (gr.incluidas > 0 || gr.obligatorio ? nombreG : `${nombreG}s extra`);
       const g = document.createElement('div'); g.className = 'grupo';
       g.innerHTML = `<h4>${esc(titulo)}<em>${esc(ayuda)}</em></h4><div class="opciones"></div>`;
       for (const o of ops) {
         const precio = S.d.precioOp.get(o.id) ?? 0;
-        const b = document.createElement('button'); b.className = 'op' + (sel.has(o.id) ? ' sel' : '');
-        b.innerHTML = `${esc(o.nombre)}${precio > 0 ? ` <small class="num">+${usd(precio)}</small>` : ''}`;
-        b.disabled = !sel.has(o.id) && elegidas >= max && max !== 1;
-        b.onclick = () => {
-          if (sel.has(o.id)) sel.delete(o.id);
-          else {
-            if (max === 1) ops.forEach(x => sel.delete(x.id)); // se comporta como "elige uno"
-            sel.add(o.id);
-          }
+        const n = veces(o);
+        const quitarUna = () => { const i = sel.lastIndexOf(o.id); if (i >= 0) sel.splice(i, 1); };
+        const b = document.createElement('button'); b.className = 'op' + (n ? ' sel' : '');
+        b.innerHTML = `${esc(o.nombre)}${n > 1 ? ` <span class="veces num">×${n}</span>` : ''}` +
+          `${precio > 0 ? ` <small class="num">+${usd(precio)}</small>` : ''}` +
+          `${n && max !== 1 ? '<span class="quitar" title="Quitar uno">−</span>' : ''}`;
+        b.disabled = !n && elegidas >= max && max !== 1;
+        b.onclick = e => {
+          if (e.target.classList.contains('quitar')) quitarUna();   // la bolita quita de a uno
+          else if (max === 1) {                                     // "elige uno": se reemplaza
+            if (n) sel = sel.filter(x => x !== o.id);
+            else { sel = sel.filter(x => !ops.some(y => y.id === x)); sel.push(o.id); }
+          } else if (elegidas < max) sel.push(o.id);                // suma otro (puede ser repetido)
+          else if (n) quitarUna();                                  // ya está completo: tocar quita
           pintar();
         };
         g.querySelector('.opciones').appendChild(b);
@@ -1020,7 +1034,7 @@ function abrirOpciones(p, lineaExistente) {
     // precio en vivo y validación
     let ok = varSel != null, falta = varSel == null ? (vars.some(v => /\d\s*(oz|ml|l|lt|g|kg)\b/i.test(v.nombre)) ? 'Elige el tamaño' : 'Elige el sabor') : '';
     for (const gr of grupos) {
-      if (gr.obligatorio && !(S.d.opsDe.get(gr.grupo_id) || []).some(o => sel.has(o.id))) {
+      if (gr.obligatorio && !(S.d.opsDe.get(gr.grupo_id) || []).some(o => sel.includes(o.id))) {
         ok = false; falta = falta || 'Elige ' + S.d.grupo.get(gr.grupo_id).nombre.toLowerCase();
       }
     }
