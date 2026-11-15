@@ -614,7 +614,7 @@ const api = {
       q('pos_precios', 'variante_id,tienda_id,precio_usd').eq('tienda_id', tiendaId),
       q('pos_grupos_opciones', 'id,nombre'),
       q('pos_opciones', 'id,grupo_id,nombre,orden,activa').eq('activa', true).order('orden'),
-      q('pos_precios_opciones', 'opcion_id,tienda_id,precio_usd').eq('tienda_id', tiendaId),
+      q('pos_precios_opciones', 'opcion_id,tienda_id,precio_usd,disponible').eq('tienda_id', tiendaId),
       q('pos_producto_grupos', 'producto_id,grupo_id,incluidas,obligatorio,permite_extras,valor_incluido_usd,orden'),
       q('pos_promociones', 'id,tienda_id,nombre,variante_id,cantidad,precio_usd,activa').eq('tienda_id', tiendaId).eq('activa', true),
       q('pos_formas_pago', 'id,nombre,moneda,pide_referencia,pide_banco,da_vuelto,es_efectivo,orden').eq('activa', true).order('orden'),
@@ -671,7 +671,8 @@ function prepararCatalogo(c) {
   for (const v of variantes) { if (!d.varsDe.has(v.producto_id)) d.varsDe.set(v.producto_id, []); d.varsDe.get(v.producto_id).push(v); }
   for (const pg of c.producto_grupos) { if (!d.gruposDe.has(pg.producto_id)) d.gruposDe.set(pg.producto_id, []); d.gruposDe.get(pg.producto_id).push({ ...pg, valor_incluido_usd: Number(pg.valor_incluido_usd) }); }
   for (const l of d.gruposDe.values()) l.sort((a, b) => a.orden - b.orden);
-  for (const o of c.opciones.filter(o => o.activa !== false)) { if (!d.opsDe.has(o.grupo_id)) d.opsDe.set(o.grupo_id, []); d.opsDe.get(o.grupo_id).push(o); }
+  const noDisp = new Set(c.precios_opciones.filter(p => p.disponible === false).map(p => p.opcion_id));
+  for (const o of c.opciones.filter(o => o.activa !== false && !noDisp.has(o.id))) { if (!d.opsDe.has(o.grupo_id)) d.opsDe.set(o.grupo_id, []); d.opsDe.get(o.grupo_id).push(o); }
   for (const l of d.opsDe.values()) l.sort((a, b) => a.orden - b.orden);
   return d;
 }
@@ -1596,7 +1597,7 @@ const apiAdmin = {
       q('pos_precios', 'variante_id,tienda_id,precio_usd').eq('tienda_id', tiendaId),
       q('pos_grupos_opciones', 'id,nombre').order('id'),
       q('pos_opciones', 'id,grupo_id,nombre,orden,activa').order('orden'),
-      q('pos_precios_opciones', 'opcion_id,tienda_id,precio_usd').eq('tienda_id', tiendaId),
+      q('pos_precios_opciones', 'opcion_id,tienda_id,precio_usd,disponible').eq('tienda_id', tiendaId),
       q('pos_producto_grupos', 'producto_id,grupo_id,incluidas,obligatorio,permite_extras,valor_incluido_usd,orden'),
     ]);
     const err = res.find(r => r.error); if (err) throw err.error;
@@ -1670,10 +1671,10 @@ function demoGuardarOpcion(o) {
   const D = DEMO_DATA, t = S.tienda.id;
   if (!(o.nombre || '').trim()) throw new Error('La opción necesita un nombre');
   let op = D.opciones.find(x => x.id === o.id);
-  if (!op) { op = { id: nuevoId(D.opciones), grupo_id: o.grupo_id, nombre: o.nombre.trim(), orden: 99, activa: o.activa !== false }; D.opciones.push(op); }
-  else Object.assign(op, { nombre: o.nombre.trim(), activa: o.activa ?? op.activa });
+  if (!op) { op = { id: nuevoId(D.opciones), grupo_id: o.grupo_id, nombre: o.nombre.trim(), orden: 99, activa: true }; D.opciones.push(op); }
+  else Object.assign(op, { nombre: o.nombre.trim(), activa: true });
   D.precios_opciones = D.precios_opciones.filter(x => !(x.opcion_id === op.id && x.tienda_id === t));
-  D.precios_opciones.push({ opcion_id: op.id, tienda_id: t, precio_usd: r2(o.precio || 0) });
+  D.precios_opciones.push({ opcion_id: op.id, tienda_id: t, precio_usd: r2(o.precio || 0), disponible: o.activa !== false });
   return op.id;
 }
 
@@ -1951,18 +1952,20 @@ function modalNuevaCategoria() {
 function pintarAdmOpciones() {
   const D = A.d, cont = $('adm-contenido');
   const precio = new Map(D.precios_opciones.map(p => [p.opcion_id, Number(p.precio_usd)]));
-  cont.innerHTML = `<div class="adm-barra"><p>Precios de <b>${esc(S.tienda.nombre)}</b> cuando se cobran como extra. Lo que va incluido en un helado no se cobra, o solo se cobra la diferencia. En los sabores de malteada, el precio es lo que se suma al tamaño (0 = sin recargo).</p></div>`;
+  const noDisp = new Set(D.precios_opciones.filter(p => p.disponible === false).map(p => p.opcion_id));
+  const disp = o => o.activa && !noDisp.has(o.id);
+  cont.innerHTML = `<div class="adm-barra"><p>Precios de <b>${esc(S.tienda.nombre)}</b> cuando se cobran como extra. "No disponible" la quita solo de esta tienda. Lo que va incluido en un helado no se cobra, o solo se cobra la diferencia. En los sabores de malteada, el precio es lo que se suma al tamaño (0 = sin recargo).</p></div>`;
   for (const g of D.grupos) {
-    const ops = D.opciones.filter(o => o.grupo_id === g.id).sort((a, b) => (b.activa - a.activa) || a.orden - b.orden);
+    const ops = D.opciones.filter(o => o.grupo_id === g.id).sort((a, b) => (disp(b) - disp(a)) || a.orden - b.orden);
     const sec = document.createElement('section'); sec.className = 'adm-cat';
     sec.innerHTML = `<h3>${esc(g.nombre === 'Topping' ? 'Toppings' : g.nombre === 'Sirope' ? 'Siropes' : g.nombre)}</h3><div class="adm-ops"></div>`;
     const lista = sec.querySelector('.adm-ops');
     const fila = (o) => {
-      const div = document.createElement('div'); div.className = 'adm-op' + (o && !o.activa ? ' inactivo' : '') + (o ? '' : ' nueva');
+      const div = document.createElement('div'); div.className = 'adm-op' + (o && !disp(o) ? ' inactivo' : '') + (o ? '' : ' nueva');
       div.innerHTML = `
         <input class="o-nombre" value="${esc(o ? o.nombre : '')}" placeholder="${o ? '' : 'Agregar nuevo…'}" aria-label="Nombre">
         <div class="con-signo"><span>$</span><input class="o-precio num" value="${o ? precioTxt(precio.get(o.id) ?? 0) : ''}" placeholder="0,00" inputmode="decimal"></div>
-        ${o ? `<label class="interruptor"><input type="checkbox" class="o-activa" ${o.activa ? 'checked' : ''}><span>${o.activa ? 'Disponible' : 'No disponible'}</span></label>` : '<span></span>'}
+        ${o ? `<label class="interruptor"><input type="checkbox" class="o-activa" ${disp(o) ? 'checked' : ''}><span>${disp(o) ? 'Disponible' : 'No disponible'}</span></label>` : '<span></span>'}
         <button class="btn btn-primario" disabled>${o ? 'Guardar' : 'Agregar'}</button>`;
       const btn = div.querySelector('button');
       div.querySelectorAll('input').forEach(el => el.addEventListener('input', () => { btn.disabled = false; div.classList.add('sucio'); }));
