@@ -18,7 +18,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
  "$url='https://edwinalejandro0824-web.github.io/chocotentacion-tiendas/';" ^
  "Write-Host ''; Write-Host ' Impresoras instaladas en esta computadora:' -ForegroundColor Cyan;" ^
  "$imps = @(Get-CimInstance Win32_Printer | Sort-Object Name);" ^
- "for ($i=0; $i -lt $imps.Count; $i++) { $m = if ($imps[$i].Name -match 'roccia|rc-?80|80mm|pos-?80|pos80|thermal|termica|ticket|receipt') {'   <-- parece la tiquera'} else {''}; Write-Host ('   ' + ($i+1) + '. ' + $imps[$i].Name + $m) };" ^
+ "for ($i=0; $i -lt $imps.Count; $i++) { $m = if ($imps[$i].Name -match 'roccia|rc-?80|rc-?58|80mm|58mm|pos-?80|pos80|pos-?58|pos58|thermal|termica|ticket|receipt') {'   <-- parece la tiquera'} else {''}; Write-Host ('   ' + ($i+1) + '. ' + $imps[$i].Name + $m) };" ^
  "Write-Host ''; $n = Read-Host ' Escribe el NUMERO de la tiquera y presiona Enter';" ^
  "$imp = $imps[[int]$n - 1]; if (-not $imp) { throw 'Numero no valido' };" ^
  "Set-ItemProperty 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Windows' -Name LegacyDefaultPrinterMode -Value 1 -Type DWord;" ^
