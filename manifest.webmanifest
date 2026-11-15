@@ -1,0 +1,16 @@
+{
+  "name": "ChocoTentación · Sistema de tiendas",
+  "short_name": "ChocoTentación",
+  "description": "Punto de venta, caja, inventario y administración de las tiendas ChocoTentación",
+  "lang": "es-VE",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#2B1610",
+  "theme_color": "#2B1610",
+  "icons": [
+    { "src": "icono-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icono-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icono-512-mascara.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
