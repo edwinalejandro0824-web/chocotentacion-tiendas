@@ -62,6 +62,7 @@
   .espacio{flex:1}
   .usuario{font-size:13px;opacity:.85}
   .btn-barra{color:#fff;opacity:.8;font-size:13px;padding:6px 10px;border-radius:8px}
+  a.btn-barra{text-decoration:none}
   .btn-barra:hover{opacity:1;background:var(--cacao-2)}
   select.selector-tienda{background:var(--cacao-2);color:#fff;border:0;border-radius:999px;padding:7px 12px;font:inherit;font-size:13px}
 
@@ -419,6 +420,7 @@
     <div class="espacio"></div>
     <select class="selector-tienda oculto" id="selector-tienda" aria-label="Cambiar tienda"></select>
     <button class="btn-barra oculto" id="btn-ventas-turno">Ventas del turno</button>
+    <a class="btn-barra" id="btn-preparar-caja" href="instalar.html" target="_blank" rel="noopener" title="Descargar el preparador para que la tiquera imprima directo">🖨 Preparar caja</a>
     <button class="btn-barra oculto" id="btn-salida">Salida de caja</button>
     <button class="btn-barra btn-cerrar-caja oculto" id="btn-cerrar-caja">Cerrar caja</button>
     <button class="btn-barra oculto boton-instalar">⬇ Instalar</button>
@@ -3184,6 +3186,7 @@ document.querySelectorAll('.boton-instalar').forEach(b => b.onclick = async () =
   if (!pedidoInstalar) return; pedidoInstalar.prompt(); await pedidoInstalar.userChoice; pedidoInstalar = null;
   document.querySelectorAll('.boton-instalar').forEach(x => x.classList.add('oculto'));
 });
+if (DEMO) document.getElementById('btn-preparar-caja')?.remove();
 if (!DEMO && 'serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   // si hay una versión nueva, se usa al volver a abrir
