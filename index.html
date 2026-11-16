@@ -1463,15 +1463,32 @@ async function revisarCaja() {
   pintarCaja();
 }
 
+/* Una caja abierta de un día anterior (después de las 6 a. m.) no deja vender: hay que cerrarla primero.
+   Así no se mezclan dos días en el mismo cierre (16/11/2026, Las Américas). */
+function cajaVieja(t = S.turno) {
+  if (!t) return false;
+  const diaAbierta = new Date(t.abierto_en).toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+  const hora = Number(new Date().toLocaleTimeString('en-GB', { timeZone: 'America/Caracas', hour: '2-digit', hour12: false }).slice(0, 2));
+  return diaAbierta < hoyVE() && hora >= 6;
+}
 function pintarCaja() {
-  const abierta = !!S.turno;
+  const abierta = !!S.turno, vieja = cajaVieja();
   $('chip-caja').classList.toggle('oculto', !abierta);
   $('btn-cerrar-caja').classList.toggle('oculto', !abierta);
-  $('capa-caja').classList.toggle('oculto', abierta);
+  $('capa-caja').classList.toggle('oculto', abierta && !vieja);
   pintarBotonesTurno();
   if (abierta) {
-    const h = new Date(S.turno.abierto_en).toLocaleTimeString('es-VE', { timeZone: 'America/Caracas', hour: '2-digit', minute: '2-digit' });
-    $('chip-caja').innerHTML = `Caja <b>#${esc(S.turno.numero)}</b> · ${esc(S.turno.cajero || '')} · desde ${esc(h)}`;
+    const d = new Date(S.turno.abierto_en);
+    const h = d.toLocaleTimeString('es-VE', { timeZone: 'America/Caracas', hour: '2-digit', minute: '2-digit' });
+    const f = d.toLocaleDateString('es-VE', { timeZone: 'America/Caracas', day: '2-digit', month: '2-digit' });
+    $('chip-caja').innerHTML = `Caja <b>#${esc(S.turno.numero)}</b> · ${esc(S.turno.cajero || '')} · desde ${vieja ? esc(f) + ' ' : ''}${esc(h)}`;
+    if (!vieja) return;
+    $('capa-caja').innerHTML = `<div class="tarjeta-caja">
+      <h1 class="titulo">Cierra la caja de ayer</h1>
+      <p>La caja <b>#${esc(S.turno.numero)}</b> de ${esc(S.turno.cajero || '')} está abierta desde el <b>${esc(f)} a las ${esc(h)}</b>. Antes de vender hoy hay que cerrarla, para que el cierre de ese día cuadre y no se mezcle con las ventas de hoy.</p>
+      <button class="btn btn-primario btn-ancho" id="btn-cerrar-vieja">Cerrar la caja de ayer</button>
+      <p class="ayuda" style="margin-top:10px">Después de cerrarla, abre la caja de hoy con su fondo.</p></div>`;
+    $('btn-cerrar-vieja').onclick = abrirCierre;
     return;
   }
   const previos = (leer('pos_cajeros2') || '').split('|').filter(Boolean).map(x => x.split('~'));
@@ -3346,6 +3363,7 @@ $('btn-salir').onclick = async () => {
 };
 $('btn-vaciar').onclick = () => { if ((S.carrito.length || $('cli-cedula').value) && confirm('¿Vaciar la venta y los datos del cliente?')) { S.carrito = []; limpiarCliente(); pintarTicket(); } };
 $('btn-cobrar').onclick = async () => {
+  if (cajaVieja()) { pintarCaja(); return toast('La caja abierta es de ayer: ciérrala antes de vender', true); }
   if (faltantesCliente().length) { ['cli-cedula','cli-nombre','cli-apellido','cli-telefono','cli-zona'].forEach(i => tocados.add(i)); return revisarCobrar(); }
   const b = $('btn-cobrar'); b.disabled = true;
   await actualizarTasa();   // se cobra siempre con la tasa vigente
