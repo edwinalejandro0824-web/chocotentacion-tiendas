@@ -956,6 +956,30 @@ for (const id of ['cli-cedula', 'cli-nombre', 'cli-apellido', 'cli-telefono', 'c
 $('cli-cedula').addEventListener('input', () => { clearTimeout(buscarTimer); buscarTimer = setTimeout(buscarClientePorCedula, 450); });
 $('cli-cedula').addEventListener('blur', buscarClientePorCedula);
 
+/* Con Enter se pasa a la casilla siguiente que falte, sin tocar el mouse (lo pidió
+   el dueño el 15/11/2026). Enter AQUÍ NUNCA COBRA: siempre se corta el evento y solo
+   se mueve el foco; si ya no falta nada, deja el foco en el botón Cobrar (que solo
+   abre la pantalla de pago). Se usa .onkeydown, que reemplaza, y no addEventListener,
+   que se acumula: así fue como el 15/11 se duplicaron ventas en el Sambil. */
+const ORDEN_CLIENTE = ['cli-nombre', 'cli-apellido', 'cli-cedula', 'cli-telefono', 'cli-zona'];
+function irASiguienteCampoCliente(desde) {
+  const faltan = new Set(faltantesCliente().map(f => f[0]));
+  const i = ORDEN_CLIENTE.indexOf(desde);
+  const vuelta = ORDEN_CLIENTE.slice(i + 1).concat(ORDEN_CLIENTE.slice(0, i));
+  const destino = vuelta.find(id => faltan.has(id));
+  if (destino) { const c = $(destino); c.focus(); c.select(); return; }
+  $(desde).blur();
+  if (!$('btn-cobrar').disabled) $('btn-cobrar').focus();
+}
+for (const id of ORDEN_CLIENTE) {
+  $(id).onkeydown = e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault(); e.stopPropagation();   // que no llegue a ningún otro lado
+    tocados.add(id); revisarCobrar();
+    irASiguienteCampoCliente(id);
+  };
+}
+
 /* ---------- Modal de opciones (tamaño, sirope, topping, sabor, extras) ---------- */
 function abrirOpciones(p, lineaExistente) {
   const vars = S.d.varsDe.get(p.id) || [];
