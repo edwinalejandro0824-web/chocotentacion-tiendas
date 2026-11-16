@@ -1463,13 +1463,12 @@ async function revisarCaja() {
   pintarCaja();
 }
 
-/* Una caja abierta de un día anterior (después de las 6 a. m.) no deja vender: hay que cerrarla primero.
+/* Una caja abierta de un día anterior (desde las 12 a. m. de Venezuela) no deja vender: hay que cerrarla primero.
    Así no se mezclan dos días en el mismo cierre (16/11/2026, Las Américas). */
 function cajaVieja(t = S.turno) {
   if (!t) return false;
   const diaAbierta = new Date(t.abierto_en).toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
-  const hora = Number(new Date().toLocaleTimeString('en-GB', { timeZone: 'America/Caracas', hour: '2-digit', hour12: false }).slice(0, 2));
-  return diaAbierta < hoyVE() && hora >= 6;
+  return diaAbierta < hoyVE();   // desde las 12:00 a. m. de Venezuela (decisión del dueño, 16/11/2026)
 }
 function pintarCaja() {
   const abierta = !!S.turno, vieja = cajaVieja();
