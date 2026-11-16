@@ -828,7 +828,8 @@ function pintarProductos() {
 function tocarProducto(p) {
   const vars = S.d.varsDe.get(p.id) || [];
   const grupos = S.d.gruposDe.get(p.id) || [];
-  const necesitaElegir = vars.length > 1 || grupos.some(g => g.incluidas > 0 || g.obligatorio);
+  // si el producto tiene toppings o siropes (aunque sean solo extras), se abre la ventana para poder agregarlos
+  const necesitaElegir = vars.length > 1 || grupos.length > 0;
   if (!necesitaElegir) return agregar({ variante_id: vars[0].id, opciones: [], cantidad: 1 });
   abrirOpciones(p, null);
 }
