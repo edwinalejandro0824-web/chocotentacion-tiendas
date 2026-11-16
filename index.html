@@ -2240,7 +2240,8 @@ const CARGA = {
     return cargarVentasReal(sumarDias(m, -1).slice(0, 8) + '01', fin < hoyVE() ? fin : hoyVE()); },
   proveedores: () => cargarProveedoresReal(),
   clientes: () => cargarClientesReal(),
-  reportes: async () => { REP.desde = REP.desde || hoyVE().slice(0, 8) + '01'; REP.hasta = REP.hasta || hoyVE();
+  reportes: async () => { if (REP.tipo === 'general' && REP.rango !== 'otro') [REP.desde, REP.hasta] = rangoReporte(REP.rango);
+    REP.desde = REP.desde || hoyVE().slice(0, 8) + '01'; REP.hasta = REP.hasta || hoyVE();
     await cargarVentasReal(REP.desde, REP.hasta); if (S.perfil.rol === 'dueno' || S.perfil.rol === 'encargada') await cargarInventarioReal(); },
   usuarios: () => cargarUsuariosReal(),
 };
@@ -3132,11 +3133,106 @@ function pintarAdmUsuarios() {
 }
 
 /* ---------- REPORTES ---------- */
-const REP = { tipo: 'libro', desde: null, hasta: null };
+const REP = { tipo: 'general', desde: null, hasta: null, rango: 'mes' };
+
+/* ---------- REPORTE GENERAL DE VENTAS (como el del sistema anterior; diario, semanal o mensual) ----------
+   16/11/2026: el dueño pidió el mismo reporte que sacaba del sistema viejo: cada venta con su cliente, total bruto,
+   descuento, IVA, total neto, costo y utilidad, el detalle de lo vendido, los totales y el resumen de monedas
+   (recibido − vuelto = neto en caja). Va en Administrar → Reportes, primera opción. */
+const NEGOCIO_NOMBRE = 'ChocoTentación';
+function rangoReporte(r) {
+  const hoy = hoyVE(), dow = (new Date(hoy + 'T12:00:00Z').getUTCDay() + 6) % 7;   // lunes = 0
+  const lunes = sumarDias(hoy, -dow), mes1 = hoy.slice(0, 8) + '01';
+  if (r === 'hoy') return [hoy, hoy];
+  if (r === 'ayer') { const a = sumarDias(hoy, -1); return [a, a]; }
+  if (r === 'semana') return [lunes, hoy];
+  if (r === 'semana_pasada') return [sumarDias(lunes, -7), sumarDias(lunes, -1)];
+  if (r === 'mes') return [mes1, hoy];
+  if (r === 'mes_pasado') { const fin = sumarDias(mes1, -1); return [fin.slice(0, 8) + '01', fin]; }
+  return [REP.desde, REP.hasta];
+}
+function datosReporteGeneral(tid) {
+  const vs = DEMO_VENTAS.filter(v => v.tienda_id === tid && v.estado !== 'anulada' && diaVE(v.fecha) >= REP.desde && diaVE(v.fecha) <= REP.hasta)
+    .sort((a, b) => a.fecha < b.fecha ? -1 : 1);
+  const anuladas = DEMO_VENTAS.filter(v => v.tienda_id === tid && v.estado === 'anulada' && diaVE(v.fecha) >= REP.desde && diaVE(v.fecha) <= REP.hasta).length;
+  const filas = vs.map(v => {
+    const neto = r2(v.total_usd), iva = r2(v.iva_usd), bruto = r2(v.base_usd + (v.descuento_usd || 0)), desc = r2(v.descuento_usd || 0);
+    const costo = r2(costoVenta(v)), base = r2(v.base_usd), util = r2(base - costo);
+    const items = (v.items || []).map(i => { const tot = r2(i.total / 1.16), c = r2(costoItem(i));
+      const ops = (i.opciones || []).map(o => o.nombre || o.opcion || '').filter(Boolean);
+      return { desc: i.producto + (i.variante && i.variante !== 'Único' ? ' ' + i.variante : ''), ops, cant: i.cantidad, total: tot, costo: c, util: r2(tot - c), pct: tot ? r2((tot - c) / tot * 100) : 0 }; });
+    return { v, fecha: diaVE(v.fecha), hora: fechaHora(v.fecha).split(' ').slice(1).join(' '), numero: v.numero, cliente: v.cliente_nombre || '', bruto, desc, iva, neto, costo, util, pct: base ? r2(util / base * 100) : 0, items };
+  });
+  const sum = k => r2(filas.reduce((a, f) => a + f[k], 0));
+  const tot = { n: filas.length, bruto: sum('bruto'), desc: sum('desc'), iva: sum('iva'), neto: sum('neto'), costo: sum('costo'), util: sum('util') };
+  tot.pct = (tot.bruto - tot.desc) ? r2(tot.util / (tot.bruto - tot.desc) * 100) : 0;
+  const mon = new Map();   // forma de pago → {moneda, recibido, vuelto}
+  vs.forEach(v => { (v.pagos || []).forEach(p => { const k = p.forma || p.forma_nombre; const x = mon.get(k) || { moneda: p.moneda, rec: 0, vue: 0 }; x.rec += p.monto; mon.set(k, x); });
+    (v.vueltos || []).forEach(p => { const k = p.forma || p.forma_nombre; const x = mon.get(k) || { moneda: p.moneda, rec: 0, vue: 0 }; x.vue += p.monto; mon.set(k, x); }); });
+  return { filas, tot, anuladas, monedas: [...mon.entries()].map(([forma, x]) => ({ forma, moneda: x.moneda, rec: r2(x.rec), vue: r2(x.vue), neto: r2(x.rec - x.vue) })) };
+}
+function htmlReporteGeneral(d, paraImprimir) {
+  const m = n => fmt.format(r2(n)), fd = x => x.split('-').reverse().join('/');
+  const ahora = new Date(), gen = ahora.toLocaleDateString('es-VE', { timeZone: 'America/Caracas' }) + ' ' + ahora.toLocaleTimeString('es-VE', { timeZone: 'America/Caracas', hour: '2-digit', minute: '2-digit' });
+  const mm = (mon, n) => (mon === 'USD' ? '$' : 'Bs. ') + m(n);
+  return `<div class="rg">
+    <div class="rg-cab"><div><b class="rg-neg">${esc(NEGOCIO_NOMBRE)} · ${esc(S.tienda.nombre)}</b><div class="rg-tit">REPORTE GENERAL DE VENTAS</div>
+      <div class="rg-sub">Expresado en dólares · Estatus: procesadas (sin anuladas) · Del ${fd(REP.desde)} al ${fd(REP.hasta)}</div></div>
+      <div class="rg-sub der">Generado: ${esc(gen)}</div></div>
+    <div class="rg-kpis">
+      <div><span>Ventas</span><b>${d.tot.n}</b></div><div><span>Total bruto</span><b>$${m(d.tot.bruto)}</b></div>
+      <div><span>Descuentos</span><b>$${m(d.tot.desc)}</b></div><div><span>IVA</span><b>$${m(d.tot.iva)}</b></div>
+      <div><span>Total neto</span><b>$${m(d.tot.neto)}</b></div><div><span>Costo</span><b>$${m(d.tot.costo)}</b></div>
+      <div><span>Utilidad</span><b>$${m(d.tot.util)}</b></div><div><span>% utilidad</span><b>${m(d.tot.pct)}%</b></div></div>
+    <table class="tabla-simple num rg-tabla"><thead><tr><th>Fecha</th><th>N°</th><th>Cliente</th><th class="der">Total bruto</th><th class="der">Descuento</th><th class="der">IVA</th><th class="der">Total neto</th><th class="der">Costo</th><th class="der">Utilidad</th><th class="der">%</th></tr></thead><tbody>
+    ${d.filas.map(f => `<tr class="rg-venta"><td>${fd(f.fecha)} <small>${esc(f.hora)}</small></td><td>${esc(f.numero)}</td><td>${esc(f.cliente)}</td><td class="der">${m(f.bruto)}</td><td class="der">${m(f.desc)}</td><td class="der">${m(f.iva)}</td><td class="der"><b>${m(f.neto)}</b></td><td class="der">${m(f.costo)}</td><td class="der">${m(f.util)}</td><td class="der">${m(f.pct)}</td></tr>
+      ${f.items.map(i => `<tr class="rg-item"><td></td><td class="der">${m(i.cant)}</td><td>${esc(i.desc)}${i.ops.length ? ` <small>+ ${esc(i.ops.join(', '))}</small>` : ''}</td><td class="der">${m(i.total)}</td><td></td><td></td><td></td><td class="der">${m(i.costo)}</td><td class="der">${m(i.util)}</td><td class="der">${m(i.pct)}</td></tr>`).join('')}`).join('')
+      || '<tr><td colspan="10" class="vacio">No hay ventas en este período.</td></tr>'}
+    ${d.filas.length ? `<tr class="total"><td colspan="3">Totales · ${d.tot.n} ventas</td><td class="der">${m(d.tot.bruto)}</td><td class="der">${m(d.tot.desc)}</td><td class="der">${m(d.tot.iva)}</td><td class="der">${m(d.tot.neto)}</td><td class="der">${m(d.tot.costo)}</td><td class="der">${m(d.tot.util)}</td><td class="der">${m(d.tot.pct)}</td></tr>` : ''}
+    </tbody></table>
+    <div class="rg-res">
+      <div><h4>Resumen por documento</h4><table class="tabla-simple"><tbody><tr><td>Ventas procesadas</td><td class="der">${d.tot.n}</td></tr><tr><td>Ventas anuladas (no suman)</td><td class="der">${d.anuladas}</td></tr></tbody></table></div>
+      <div><h4>Resumen de monedas</h4><table class="tabla-simple num"><thead><tr><th>Forma de pago</th><th class="der">Recibido</th><th class="der">− Vuelto</th><th class="der">= Neto en caja</th></tr></thead><tbody>
+      ${d.monedas.map(x => `<tr><td>${esc(x.forma)}</td><td class="der">${mm(x.moneda, x.rec)}</td><td class="der">${mm(x.moneda, x.vue)}</td><td class="der"><b>${mm(x.moneda, x.neto)}</b></td></tr>`).join('') || '<tr><td colspan="4" class="vacio">Sin pagos</td></tr>'}
+      </tbody></table></div></div></div>`;
+}
+const RG_CSS = `.rg-cab{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;margin:6px 0 10px}.rg-neg{font-size:15px}.rg-tit{font-size:20px;font-weight:800;letter-spacing:.04em;margin-top:2px}
+  .rg-sub{font-size:12.5px;color:#6B5548}.rg-sub.der{text-align:right}.rg-kpis{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;margin:8px 0 6px}
+  .rg-kpis div{background:#FFFCF8;border:1px solid #E6D9CC;border-radius:10px;padding:8px 10px}.rg-kpis span{display:block;font-size:11px;color:#6B5548}.rg-kpis b{font-size:16px}
+  .rg-tabla .rg-venta td{border-top:2px solid #E6D9CC;font-weight:600}.rg-tabla .rg-item td{color:#5E4A3E;font-size:12.5px;padding-top:3px;padding-bottom:3px;border-bottom:none}
+  .rg-tabla small{color:#8A7568;font-weight:400}.rg-res{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:16px;margin-top:14px}.rg-res h4{margin:0 0 4px}`;
+function pintarReporteGeneral(cont, tipos) {
+  if (REP.rango !== 'otro') [REP.desde, REP.hasta] = rangoReporte(REP.rango);
+  const d = datosReporteGeneral(S.tienda.id);
+  const rangos = [['hoy', 'Hoy'], ['ayer', 'Ayer'], ['semana', 'Esta semana'], ['semana_pasada', 'Semana pasada'], ['mes', 'Este mes'], ['mes_pasado', 'Mes pasado'], ['otro', 'Otras fechas']];
+  cont.innerHTML = `<style>${RG_CSS}</style><div class="adm-barra" style="flex-wrap:wrap"><select id="rp-tipo" class="sel">${tipos.map(([k, n]) => `<option value="${k}" ${REP.tipo === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <select id="rg-rango" class="sel corto" aria-label="Período">${rangos.map(([k, n]) => `<option value="${k}" ${REP.rango === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      ${REP.rango === 'otro' ? `<label class="rango">Desde <input type="date" id="rp-desde" class="txt corto" value="${REP.desde}"></label><label class="rango">Hasta <input type="date" id="rp-hasta" class="txt corto" value="${REP.hasta}"></label>` : ''}
+      <span class="espacio"></span><button class="btn btn-sec" id="rg-copiar">Copiar para Excel</button><button class="btn btn-primario" id="rg-imprimir">Imprimir o guardar PDF</button></div>
+    ${htmlReporteGeneral(d)}`;
+  $('rp-tipo').onchange = e => { REP.tipo = e.target.value; pintarAdmReportes(); };
+  $('rg-rango').onchange = e => { REP.rango = e.target.value; if (REP.rango !== 'otro') [REP.desde, REP.hasta] = rangoReporte(REP.rango); pintarAdmin(); };
+  if ($('rp-desde')) { $('rp-desde').onchange = e => { REP.desde = e.target.value || REP.desde; pintarAdmin(); }; $('rp-hasta').onchange = e => { REP.hasta = e.target.value || REP.hasta; pintarAdmin(); }; }
+  $('rg-copiar').onclick = () => copiarTexto(tsv(['Fecha', 'Hora', 'N°', 'Cliente', 'Producto', 'Cantidad', 'Total bruto', 'Descuento', 'IVA', 'Total neto', 'Costo', 'Utilidad', '% utilidad'],
+    d.filas.flatMap(f => [[f.fecha.split('-').reverse().join('/'), f.hora, f.numero, f.cliente, '', '', numXls(f.bruto), numXls(f.desc), numXls(f.iva), numXls(f.neto), numXls(f.costo), numXls(f.util), numXls(f.pct)],
+      ...f.items.map(i => ['', '', f.numero, '', i.desc + (i.ops.length ? ' + ' + i.ops.join(', ') : ''), numXls(i.cant), numXls(i.total), '', '', '', numXls(i.costo), numXls(i.util), numXls(i.pct)])])));
+  $('rg-imprimir').onclick = () => {
+    const w = window.open('', '_blank');
+    if (!w) return toast('El navegador bloqueó la ventana: permite ventanas emergentes para imprimir el reporte', true);
+    w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte general de ventas · ${esc(S.tienda.nombre)} · ${REP.desde} a ${REP.hasta}</title>
+      <style>@page{size:letter landscape;margin:10mm}body{font-family:Inter,Arial,sans-serif;font-size:11px;color:#1F140E;margin:0}
+      .tabla-simple{width:100%;border-collapse:collapse}.tabla-simple th{text-align:left;font-size:10px;color:#6B5548;border-bottom:1px solid #ccc;padding:4px 5px}
+      .tabla-simple td{padding:4px 5px;border-bottom:1px solid #eee;vertical-align:top}.der{text-align:right}.total td{font-weight:700;border-top:2px solid #1F140E}.vacio{color:#888}
+      ${RG_CSS} .rg-kpis b{font-size:13px}</style></head><body>${htmlReporteGeneral(d, true)}<script>window.onload=()=>{window.print();}<\/script></body></html>`);
+    w.document.close();
+  };
+}
+
 function pintarAdmReportes() {
   const cont = $('adm-contenido'), t = S.tienda.id;
   REP.desde = REP.desde || hoyVE().slice(0, 8) + '01'; REP.hasta = REP.hasta || hoyVE();
-  const tipos = [['libro', 'Libro de ventas (por día)'], ['productos', 'Ventas por producto'], ['cierres', 'Cierres de caja'], ['anulaciones', 'Anulaciones'], ['salidas', 'Salidas de caja'], ['mermas', 'Mermas y ajustes de inventario'], ['entradas', 'Entradas de mercancía']];
+  const tipos = [['general', 'Reporte general de ventas'], ['libro', 'Libro de ventas (por día)'], ['productos', 'Ventas por producto'], ['cierres', 'Cierres de caja'], ['anulaciones', 'Anulaciones'], ['salidas', 'Salidas de caja'], ['mermas', 'Mermas y ajustes de inventario'], ['entradas', 'Entradas de mercancía']];
+  if (REP.tipo === 'general') return pintarReporteGeneral(cont, tipos);
   let cab = [], filas = [], tot = null;
   const enRango = f => diaVE(f) >= REP.desde && diaVE(f) <= REP.hasta;
   if (REP.tipo === 'libro') {
