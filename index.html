@@ -493,15 +493,15 @@
       <div>
         <h2 class="titulo">Administrar menú · <span id="adm-tienda"></span></h2>
         <nav class="adm-tabs">
-          <button class="adm-tab" data-tab="panel" data-rol="dueno" data-mod="1">Panel</button>
+          <button class="adm-tab" data-tab="panel" data-rol="dueno encargada" data-mod="1">Panel</button>
           <button class="adm-tab activa" data-tab="productos">Productos</button>
           <button class="adm-tab" data-tab="opciones">Toppings y sabores</button>
           <button class="adm-tab" data-tab="inventario" data-rol="dueno encargada" data-mod="1">Inventario</button>
           <button class="adm-tab" data-tab="cierres" data-rol="dueno encargada">Cierres de caja</button>
-          <button class="adm-tab" data-tab="gastos" data-rol="dueno" data-mod="1">Gastos</button>
-          <button class="adm-tab" data-tab="proveedores" data-rol="dueno" data-mod="1">Proveedores</button>
-          <button class="adm-tab" data-tab="clientes" data-rol="dueno" data-mod="1">Clientes</button>
-          <button class="adm-tab" data-tab="reportes" data-rol="dueno" data-mod="1">Reportes</button>
+          <button class="adm-tab" data-tab="gastos" data-rol="dueno encargada" data-mod="1">Gastos</button>
+          <button class="adm-tab" data-tab="proveedores" data-rol="dueno encargada" data-mod="1">Proveedores</button>
+          <button class="adm-tab" data-tab="clientes" data-rol="dueno encargada" data-mod="1">Clientes</button>
+          <button class="adm-tab" data-tab="reportes" data-rol="dueno encargada" data-mod="1">Reportes</button>
           <button class="adm-tab" data-tab="usuarios" data-rol="dueno" data-mod="1">Usuarios</button>
           <button class="adm-tab" data-tab="clave" id="adm-tab-clave" data-rol="dueno">Clave</button>
         </nav>
@@ -1865,7 +1865,7 @@ async function entrarAdmin() {
   $('adm-tienda').textContent = S.tienda.nombre;
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('oculto',
     !!((b.dataset.mod && !MOD) || (b.dataset.rol && !b.dataset.rol.split(' ').includes(S.perfil.rol)))));
-  A.tab = MOD && S.perfil.rol === 'dueno' ? 'panel' : 'productos';
+  A.tab = MOD && (S.perfil.rol === 'dueno' || S.perfil.rol === 'encargada') ? 'panel' : 'productos';
   await recargarAdmin();
 }
 
