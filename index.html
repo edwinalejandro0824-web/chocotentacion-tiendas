@@ -594,9 +594,8 @@ const api = {
     if (error) throw new Error('Usuario o contraseña incorrectos');
   },
   async necesitaCodigo() {
-    if (DEMO) return false;
-    const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
-    return data && data.currentLevel === 'aal1' && data.nextLevel === 'aal2';
+    // 16/11/2026: el dueño pidió que nunca se pida el código de la app autenticadora
+    return false;
   },
   async verificarCodigo(codigo) {
     const { data: f } = await sb.auth.mfa.listFactors();
