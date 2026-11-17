@@ -352,7 +352,18 @@
   .con-quitar{display:flex;gap:4px;align-items:center;min-width:0}
   .con-quitar input{flex:1;width:auto;min-width:0}
   .rc-filas{max-width:760px}
-  .rec-cab,.fila-rec{display:grid;grid-template-columns:minmax(0,1.6fr) 150px 170px 170px 32px;gap:8px;align-items:center;max-width:900px}
+  .rec-cab,.fila-rec{display:grid;grid-template-columns:minmax(0,1.6fr) 130px 150px 150px 32px;gap:8px;align-items:center;max-width:900px}
+  .rec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;max-width:900px;margin-bottom:4px}
+  .rec-foto{display:flex;gap:10px;align-items:center;margin:4px 0 8px}
+  .aviso-pedido{background:#FFF4D6;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:14px}
+  .pedidos{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  .pedido{background:var(--papel);border:1.5px solid var(--linea);border-radius:14px;padding:12px 14px;display:grid;gap:4px;align-content:start}
+  .pedido.cerrado{opacity:.65}
+  .pedido header,.pedido footer{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .pedido ul{margin:4px 0;padding:0;list-style:none} .pedido li{display:flex;justify-content:space-between;border-bottom:1px dashed var(--linea);padding:3px 0;font-size:14px}
+  .pd-dias{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px}
+  td.acciones{white-space:nowrap}
+  @media (max-width:700px){.rec-cab{display:none}.fila-rec{grid-template-columns:1fr 1fr;border-bottom:1px solid var(--linea);padding-bottom:6px}.fila-rec .mv-ins{grid-column:1/-1}}
   .rec-cab{font-size:12px;color:var(--suave);font-weight:600;margin:6px 0 4px}
   .fila-rec{margin-bottom:6px}
   .fila-rec .mv-unit{font-size:13px;color:var(--suave)}
@@ -2237,7 +2248,7 @@ $('btn-salir-admin').onclick = salirAdmin;
    ===================================================================== */
 const MOD = true;
 const DEMO_KEY = 'pos_demo_v2';
-const DX = { sec: 1, salidas: [], anulaciones: [], insumos: [], recetas: {}, movs: [], gastos: [], proveedores: [], facturas: [],
+const DX = { sec: 1, salidas: [], anulaciones: [], insumos: [], recetas: {}, movs: [], gastos: [], proveedores: [], facturas: [], pedidos: [],
              usuarios: [], usuarioActual: null, base: false, historia: false };
 const nid = () => DX.sec++;
 
@@ -2278,7 +2289,7 @@ async function cargarVentasReal(desde, hasta, forzar = false) {
 async function cargarInventarioReal() {
   const d = await rpc('pos_inv_datos', { p_clave: A.clave, p_tienda: S.tienda.id, p_movs: 2000 });
   DX.insumos = d.insumos.map(i => ({ id: i.id, nombre: i.nombre, unidad: i.unidad, costo_usd: num(i.costo_usd), minimo: num(i.minimo),
-    activo: i.activo, stock: { [S.tienda.id]: num(i.cantidad) } }));
+    activo: i.activo, clase_costo: i.clase_costo, stock: { [S.tienda.id]: num(i.cantidad) } }));
   DX.recetas = {};
   Object.entries(d.recetas || {}).forEach(([k, filas]) => { DX.recetas[k] = filas.map(r => ({ insumo_id: r.insumo_id, cantidad: num(r.cantidad) })); });
   DX.movs = d.movs.map(m => ({ ...m, cantidad: num(m.cantidad), costo_total: num(m.costo_total), costo_unit: num(m.costo_unit) }));
@@ -2300,7 +2311,7 @@ async function cargarClientesReal() {
 // Qué hay que cargar antes de pintar cada pestaña (solo versión real)
 const CARGA = {
   panel: () => cargarVentasReal(sumarDias(hoyVE(), -62), hoyVE()),
-  inventario: () => cargarInventarioReal(),
+  inventario: async () => { await cargarInventarioReal(); await Promise.all([cargarPedidosReal(), cargarProveedoresReal()]); },
   gastos: () => { const m = (GAS.mes || mesVE()) + '-01', fin = sumarDias(sumarDias(m, 32).slice(0, 7) + '-01', -1);
     return cargarVentasReal(sumarDias(m, -1).slice(0, 8) + '01', fin < hoyVE() ? fin : hoyVE()); },
   proveedores: () => cargarProveedoresReal(),
@@ -2438,6 +2449,18 @@ function sembrarBase() {
     { id: nid(), proveedor_id: P('Servicios Técnicos Frío'), tienda_id: 1, numero: 'ST-118', emitida: sumarDias(hoy, -8), vence: sumarDias(hoy, 3), monto_usd: 120, abonos: [] },
     { id: nid(), proveedor_id: P('Envases Valencia'), tienda_id: 1, numero: '000851', emitida: sumarDias(hoy, -2), vence: sumarDias(hoy, 28), monto_usd: 410, abonos: [] },
     { id: nid(), proveedor_id: P('Hielo Polar Carabobo'), tienda_id: 1, numero: 'HP-2290', emitida: sumarDias(hoy, -20), vence: sumarDias(hoy, -6), monto_usd: 60, abonos: [{ fecha: sumarDias(hoy, -7), monto_usd: 60, referencia: 'Efectivo' }] },
+  ];
+  // Detalle de ejemplo (como se copia de la factura) y pedidos de ejemplo
+  const L = (n, c, u) => { const i = DX.insumos.find(x => x.nombre === n); return { insumo_id: i.id, nombre: n, unidad: i.unidad, cantidad: c, costo_unit: u, costo_total: r2(c * u), clase: claseCosto(i) }; };
+  DX.facturas[0].detalle = [L('Vaso 8 oz', 2000, 0.07), L('Tapa domo', 2000, 0.04), L('Cucharilla', 4000, 0.03)];
+  DX.facturas[2].detalle = [L('Vaso 12 oz', 2500, 0.09), L('Vaso de sundae', 1000, 0.08), L('Cucharilla', 3500, 0.03)];
+  DX.pedidos = [
+    { id: nid(), tienda_id: 1, tienda: 'Sambil Valencia', solicitante: 'María González', creado_en: new Date(Date.now() - 864e5).toISOString(), para_fecha: sumarDias(hoy, 3),
+      nota: 'Se están acabando los vasos de 12 oz', estado: 'pendiente', respuesta: null, factura_id: null,
+      items: [{ insumo_id: I('Vaso 12 oz'), nombre: 'Vaso 12 oz', unidad: 'pza', cantidad: 1000 }, { insumo_id: I('Tapa domo'), nombre: 'Tapa domo', unidad: 'pza', cantidad: 1000 }] },
+    { id: nid(), tienda_id: 1, tienda: 'Sambil Valencia', solicitante: 'María González', creado_en: new Date(Date.now() - 3 * 864e5).toISOString(), para_fecha: sumarDias(hoy, 1),
+      nota: '', estado: 'en_camino', respuesta: null, factura_id: null,
+      items: [{ insumo_id: I('Brownie'), nombre: 'Brownie', unidad: 'pza', cantidad: 120 }, { insumo_id: I('Fresas'), nombre: 'Fresas', unidad: 'g', cantidad: 5000 }] },
   ];
   DX.base = true;
 }
@@ -2820,10 +2843,10 @@ function pintarAdmPanel() {
 const INV = { sub: 'existencias' };
 function pintarAdmInventario() {
   const cont = $('adm-contenido'), t = S.tienda.id;
-  const subs = [['existencias', 'Existencias'], ['recibir', 'Recibir mercancía'], ['merma', 'Mermas'], ['conteo', 'Conteo físico'], ['recetas', 'Recetas y costos'], ['movs', 'Movimientos']];
+  const subs = [['existencias', 'Existencias'], ['recibir', 'Recibir mercancía'], ['pedidos', 'Pedidos' + ((DX.pedidos || []).filter(p => (S.perfil.rol === 'dueno' || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length ? ` (${(DX.pedidos || []).filter(p => (S.perfil.rol === 'dueno' || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length})` : '')], ['merma', 'Mermas'], ['conteo', 'Conteo físico'], ['recetas', 'Recetas y costos'], ['movs', 'Movimientos']];
   cont.innerHTML = `<div class="adm-barra"><p>Inventario de <b>${esc(S.tienda.nombre)}</b>. Cada venta descuenta lo que usa según su receta.${DEMO ? ' Las cantidades y costos de ejemplo hay que cambiarlos por los reales.' : (DX.insumos.length ? '' : ' Todavía no hay insumos: agrégalos con <b>+ Insumo</b> y luego arma las recetas.')}</p></div>
     <nav class="sub-tabs">${subs.map(([k, n]) => `<button class="sub-tab ${INV.sub === k ? 'activa' : ''}" data-s="${k}">${n}</button>`).join('')}</nav><div id="inv-cont"></div>`;
-  cont.querySelectorAll('.sub-tab').forEach(b => b.onclick = () => { INV.sub = b.dataset.s; pintarAdmInventario(); });
+  cont.querySelectorAll('.sub-tab').forEach(b => b.onclick = () => { INV.sub = b.dataset.s; if (INV.sub !== 'recibir') INV.pedido = null; pintarAdmInventario(); });
   const ic = $('inv-cont'), activos = DX.insumos.filter(i => i.activo !== false);
   const optsIns = activos.map(i => `<option value="${i.id}">${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('');
   if (INV.sub === 'existencias') {
@@ -2841,6 +2864,7 @@ function pintarAdmInventario() {
         <div class="dos-campos"><label class="campo"><span>Unidad *</span><select id="ie-unidad" class="sel">${['g', 'ml', 'pza'].map(u => `<option ${i?.unidad === u ? 'selected' : ''}>${u}</option>`).join('')}</select></label>
         <label class="campo"><span>Mínimo para alerta *</span><input id="ie-min" class="txt num" value="${i ? fmtCant(i.minimo) : ''}"></label></div>
         <label class="campo"><span>Costo por unidad en dólares *</span><input id="ie-costo" class="txt num" value="${i ? i.costo_usd : ''}" placeholder="Ej. 0,004 por ml"></label>
+        <label class="campo"><span>Tipo de costo (para el balance)</span><select id="ie-clase" class="sel"><option value="directo">Material directo (lo que se come o se bebe)</option><option value="desechable" ${claseCosto(i) === 'desechable' ? 'selected' : ''}>Desechable (vasos, envases, servilletas…)</option></select></label>
         ${i ? `<label class="interruptor"><input type="checkbox" id="ie-activo" checked><span>En uso</span></label>` : ''}</div>
         <div class="modal-pie"><button type="button" class="btn btn-sec" id="ie-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 480);
       r.querySelector('#ie-x').onclick = cerrarModal;
@@ -2849,66 +2873,160 @@ function pintarAdmInventario() {
         const err = m => { r.querySelector('#ie-error').textContent = m; r.querySelector('#ie-error').classList.remove('oculto'); };
         if (nombre.length < 2) return err('Escribe el nombre'); if (!(min >= 0)) return err('Revisa el mínimo'); if (!(costo >= 0)) return err('Revisa el costo');
         if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
-          await rpc('pos_inv_guardar_insumo', { p_clave: A.clave, p_tienda: t, p: { id: i?.id || null, nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, activo: i ? r.querySelector('#ie-activo').checked : true } });
+          await rpc('pos_inv_guardar_insumo', { p_clave: A.clave, p_tienda: t, p: { id: i?.id || null, nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, activo: i ? r.querySelector('#ie-activo').checked : true } });
           cerrarModal(); toast('Insumo guardado'); refrescarAdmin(); }, err);
-        if (i) Object.assign(i, { nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, activo: r.querySelector('#ie-activo').checked });
-        else DX.insumos.push({ id: nid(), nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, stock: {} });
+        if (i) Object.assign(i, { nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, activo: r.querySelector('#ie-activo').checked });
+        else DX.insumos.push({ id: nid(), nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, stock: {} });
         guardarDemo(); cerrarModal(); toast('Insumo guardado'); pintarAdmInventario(); pintarChipStock(); };
     };
     $('in-nuevo').onclick = () => editar(null);
     ic.querySelectorAll('[data-e]').forEach(b => b.onclick = () => editar(DX.insumos.find(i => i.id === Number(b.dataset.e))));
   } else if (INV.sub === 'recibir') {
-    ic.innerHTML = `<form id="f-rec" class="form-caja ancho"><h4>Recibir mercancía</h4>
-      <p class="ayuda">Escribe cuánto llegó y cuánto costó cada línea en total (como viene en la factura o la nota de entrega). El sistema calcula el costo por unidad y actualiza el costo del insumo con promedio ponderado.</p>
+    const ped = INV.pedido && INV.pedido.tienda_id === t ? INV.pedido : null;
+    ic.innerHTML = `<form id="f-rec" class="form-caja ancho"><h4>Recibir mercancía (copia la factura tal cual)</h4>
+      <p class="ayuda">Escribe lo que dice la factura: proveedor, RIF, número, y cada insumo con su cantidad, costo por unidad y costo total. Toma una foto de la factura y adjúntala. La factura queda en <b>Proveedores</b> como pagada o por pagar, y el inventario sube solo.</p>
+      ${ped ? `<div class="aviso-pedido">📦 Recibiendo el pedido N° ${ped.id} (${esc(ped.solicitante || '')}). Revisa que las cantidades sean las que llegaron. <button type="button" class="link" id="rc-sin-ped">Quitar el pedido</button></div>` : ''}
       <div id="mv-error" class="mensaje-error oculto"></div>
-      <div class="dos-campos" style="max-width:640px"><label class="campo"><span>De dónde viene *</span><select id="rc-origen" class="sel"><option value="">Producción central (ChocoTentación)</option>${DX.proveedores.map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('')}</select></label>
-        <label class="campo"><span>N° de nota de entrega o factura</span><input id="mv-nota" class="txt" placeholder="Ej. la nota de DespachoX"></label></div>
-      <div class="rec-cab"><span>Insumo</span><span>Cantidad</span><span>Costo total de la línea</span><span>Costo por unidad</span><span></span></div>
+      <div class="rec-grid">
+        <label class="campo"><span>Proveedor *</span><select id="rc-origen" class="sel"><option value="">Elige el proveedor…</option>
+          ${DX.proveedores.map(p => `<option value="${p.id}">${esc(p.nombre)}${p.rif ? ' · ' + esc(p.rif) : ''}</option>`).join('')}
+          <option value="nuevo">+ Proveedor nuevo (no está en la lista)</option><option value="central">Producción central (${esc(NEGOCIO_NOMBRE)}), sin factura</option></select></label>
+        <label class="campo"><span>RIF</span><input id="rc-rif-ver" class="txt" readonly placeholder="—"></label>
+      </div>
+      <div id="rc-nuevo" class="rec-grid oculto">
+        <label class="campo"><span>Nombre o razón social *</span><input id="rc-n-nombre" class="txt"></label>
+        <label class="campo"><span>RIF *</span><input id="rc-n-rif" class="txt" placeholder="J-12345678-9"></label>
+        <label class="campo"><span>Teléfono</span><input id="rc-n-tel" class="txt" inputmode="tel"></label>
+      </div>
+      <div id="rc-fac">
+        <div class="rec-grid">
+          <label class="campo"><span>N° de factura *</span><input id="rc-num" class="txt"></label>
+          <label class="campo"><span>Fecha de la factura *</span><input id="rc-em" type="date" class="txt" value="${hoyVE()}" max="${hoyVE()}"></label>
+          <label class="campo"><span>Forma de pago *</span><select id="rc-pago" class="sel"><option value="credito">A crédito (queda por pagar)</option><option value="contado">De contado (ya está pagada)</option></select></label>
+          <label class="campo" id="rc-cred"><span>Días de crédito</span><select id="rc-dias" class="sel">${[7, 15, 21, 30, 45].map(d => `<option value="${d}" ${d === 15 ? 'selected' : ''}>${d} días</option>`).join('')}</select></label>
+          <label class="campo oculto" id="rc-ref-c"><span>Cómo se pagó</span><input id="rc-ref" class="txt" placeholder="Pago Móvil, Zelle, efectivo…"></label>
+        </div>
+        <p class="ayuda" id="rc-vence"></p>
+        <div class="rec-foto"><label class="btn btn-sec" for="rc-foto">📷 Foto de la factura</label><input id="rc-foto" type="file" accept="image/*,application/pdf" capture="environment" hidden>
+          <span id="rc-foto-n" class="ayuda">Sin foto todavía</span></div>
+      </div>
+      <div class="rec-cab"><span>Insumo</span><span>Cantidad</span><span>Costo por unidad</span><span>Costo total</span><span></span></div>
       <div id="mv-filas"></div><button type="button" class="link" id="mv-mas">+ otro insumo</button>
-      <div class="rec-total"><span>Total de la recepción</span><b class="num" id="rc-total">$0,00</b></div>
-      ${DX.proveedores.length ? `<label class="interruptor"><input type="checkbox" id="rc-factura"><span>Crear también la factura por pagar al proveedor</span></label>` : ''}
-      <button class="btn btn-primario">Registrar entrada</button></form>`;
+      <div class="rec-total"><span>Total de la factura <i class="ayuda" id="rc-clases"></i></span><b class="num" id="rc-total">$0,00</b></div>
+      <label class="campo"><span>Nota (opcional)</span><input id="rc-nota" class="txt" placeholder="Ej. llegó una caja golpeada"></label>
+      <button class="btn btn-primario">Registrar factura y entrada</button></form>`;
     const unidad = id => DX.insumos.find(x => x.id === id)?.unidad || '';
-    const fmtUnit = n => '$' + new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(n);
+    const fmtUnit = n => new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(n);
+    let foto = null;
+    const origen = () => $('rc-origen').value;
+    const pintarOrigen = () => {
+      const o = origen(), p = DX.proveedores.find(x => String(x.id) === o);
+      $('rc-rif-ver').value = p?.rif || (o === 'central' ? 'No aplica' : '');
+      $('rc-nuevo').classList.toggle('oculto', o !== 'nuevo');
+      $('rc-fac').classList.toggle('oculto', o === 'central');
+    };
+    const pintarPago = () => {
+      const contado = $('rc-pago').value === 'contado';
+      $('rc-cred').classList.toggle('oculto', contado); $('rc-ref-c').classList.toggle('oculto', !contado);
+      const em = $('rc-em').value || hoyVE();
+      $('rc-vence').textContent = contado ? 'Queda registrada como PAGADA.' : `Queda POR PAGAR. Vence el ${fechaLarga(sumarDias(em, Number($('rc-dias').value)))}.`;
+    };
+    $('rc-origen').onchange = pintarOrigen; $('rc-pago').onchange = pintarPago; $('rc-dias').onchange = pintarPago; $('rc-em').onchange = pintarPago;
+    pintarOrigen(); pintarPago();
+    $('rc-foto').onchange = async () => {
+      const f = $('rc-foto').files[0]; if (!f) return;
+      $('rc-foto-n').textContent = 'Preparando la foto…';
+      try { foto = await comprimirFoto(f); $('rc-foto-n').textContent = '✓ ' + (f.name || 'foto') + ` (${Math.round(foto.blob.size / 1024)} KB)`; }
+      catch (e) { foto = null; $('rc-foto-n').textContent = 'No se pudo leer esa foto. Prueba otra vez.'; }
+    };
+    if ($('rc-sin-ped')) $('rc-sin-ped').onclick = () => { INV.pedido = null; pintarAdmInventario(); };
     const recalcular = () => {
-      let tot = 0;
+      let tot = 0, dir = 0, des = 0;
       ic.querySelectorAll('.fila-rec').forEach(d => {
-        const id = Number(d.querySelector('.mv-ins').value), c = leerNum(d.querySelector('.mv-cant').value), m = leerNum(d.querySelector('.mv-costo').value);
-        const ins = DX.insumos.find(x => x.id === id);
-        d.querySelector('.mv-unit').textContent = c > 0 && m >= 0 ? `${fmtUnit(m / c)} / ${unidad(id)}` : (ins ? `antes ${fmtUnit(ins.costo_usd)} / ${ins.unidad}` : '—');
-        d.querySelector('.mv-cant').placeholder = 'Cantidad en ' + unidad(id);
-        if (m > 0) tot += m;
+        const id = Number(d.querySelector('.mv-ins').value), m = leerNum(d.querySelector('.mv-costo').value);
+        d.querySelector('.mv-cant').placeholder = 'En ' + unidad(id);
+        if (m > 0) { tot += m; if (claseCosto(DX.insumos.find(x => x.id === id)) === 'desechable') des += m; else dir += m; }
       });
       $('rc-total').textContent = usd(tot);
+      $('rc-clases').textContent = tot > 0 ? `· material directo ${usd(dir)} · desechable ${usd(des)}` : '';
     };
-    const fila = () => { const d = document.createElement('div'); d.className = 'fila-rec';
-      d.innerHTML = `<select class="sel mv-ins">${optsIns}</select><input class="txt num mv-cant" inputmode="decimal"><div class="con-signo"><span>$</span><input class="txt num mv-costo" inputmode="decimal" placeholder="0,00"></div><span class="mv-unit num">—</span><button type="button" class="quitar" title="Quitar">✕</button>`;
-      $('mv-filas').appendChild(d); d.querySelectorAll('input,select').forEach(x => x.addEventListener('input', recalcular));
+    // Cantidad × costo por unidad = costo total; si escribes uno de los dos, el otro se calcula
+    const cuadrar = (d, quien) => {
+      const c = leerNum(d.querySelector('.mv-cant').value), u = d.querySelector('.mv-cu'), m = d.querySelector('.mv-costo');
+      if (quien === 'cu' || (quien === 'cant' && d.dataset.ult === 'cu')) { if (c > 0 && leerNum(u.value) >= 0 && u.value !== '') m.value = fmt.format(r2(c * leerNum(u.value))); }
+      else if (c > 0 && m.value !== '' && leerNum(m.value) >= 0) u.value = fmtUnit(leerNum(m.value) / c);
+      if (quien !== 'cant') d.dataset.ult = quien;
+      recalcular();
+    };
+    const fila = (ins, cant) => { const d = document.createElement('div'); d.className = 'fila-rec'; d.dataset.ult = 'total';
+      d.innerHTML = `<select class="sel mv-ins">${optsIns}</select><input class="txt num mv-cant" inputmode="decimal">
+        <div class="con-signo"><span>$</span><input class="txt num mv-cu" inputmode="decimal" placeholder="0,00"></div>
+        <div class="con-signo"><span>$</span><input class="txt num mv-costo" inputmode="decimal" placeholder="0,00"></div>
+        <button type="button" class="quitar" title="Quitar">✕</button>`;
+      $('mv-filas').appendChild(d);
+      if (ins) d.querySelector('.mv-ins').value = ins; if (cant) d.querySelector('.mv-cant').value = fmtCant(cant);
+      d.querySelector('.mv-ins').onchange = recalcular;
+      d.querySelector('.mv-cant').oninput = () => cuadrar(d, 'cant');
+      d.querySelector('.mv-cu').oninput = () => cuadrar(d, 'cu');
+      d.querySelector('.mv-costo').oninput = () => cuadrar(d, 'total');
       d.querySelector('.quitar').onclick = () => { if (ic.querySelectorAll('.fila-rec').length > 1) { d.remove(); recalcular(); } };
       recalcular(); };
-    fila(); $('mv-mas').onclick = fila;
+    if (ped && ped.items.length) ped.items.forEach(x => fila(x.insumo_id, x.cantidad)); else fila();
+    $('mv-mas').onclick = () => fila();
     $('f-rec').onsubmit = async e => { e.preventDefault();
-      const err = m => { $('mv-error').textContent = m; $('mv-error').classList.remove('oculto'); };
+      const err = m => { $('mv-error').textContent = m; $('mv-error').classList.remove('oculto'); $('mv-error').scrollIntoView({ block: 'center' }); };
+      const o = origen(), central = o === 'central';
+      if (!o) return err('Elige el proveedor (o "Proveedor nuevo" si no está en la lista)');
+      const nuevo = o === 'nuevo' ? { nombre: limpiar($('rc-n-nombre').value), rif: limpiar($('rc-n-rif').value).toUpperCase(), telefono: soloDigitos($('rc-n-tel').value) } : null;
+      if (nuevo && nuevo.nombre.length < 2) return err('Escribe el nombre del proveedor nuevo');
+      if (nuevo && nuevo.rif.replace(/[^A-Z0-9]/g, '').length < 6) return err('Escribe el RIF del proveedor (ej. J-12345678-9)');
+      const num = limpiar($('rc-num').value), em = $('rc-em').value || hoyVE(), contado = $('rc-pago').value === 'contado';
+      if (!central && !num) return err('Escribe el número de la factura');
+      if (!central && em > hoyVE()) return err('La fecha de la factura no puede ser de mañana');
       const filas = [...ic.querySelectorAll('.fila-rec')].map(d => ({ id: Number(d.querySelector('.mv-ins').value), c: leerNum(d.querySelector('.mv-cant').value), m: leerNum(d.querySelector('.mv-costo').value), d }));
       filas.forEach(x => { x.d.querySelector('.mv-cant').classList.toggle('falta', !(x.c > 0)); x.d.querySelector('.mv-costo').classList.toggle('falta', !(x.m >= 0)); });
       if (filas.some(x => !(x.c > 0))) return err('Escribe la cantidad de cada línea');
-      if (filas.some(x => !(x.m >= 0))) return err('Escribe el costo total de cada línea (0 si fue sin costo)');
-      const origen = Number($('rc-origen').value) || null, nota = limpiar($('mv-nota').value);
+      if (filas.some(x => !(x.m >= 0))) return err('Escribe el costo de cada línea (0 si vino sin costo)');
+      const provId = Number(o) || null, vence = contado ? em : sumarDias(em, Number($('rc-dias').value));
+      if (!central && provId && DX.facturas.some(f => f.proveedor_id === provId && f.numero.toUpperCase() === num.toUpperCase()))
+        return err(`La factura ${num} de ese proveedor ya está registrada`);
+      const total = r2(filas.reduce((a, x) => a + x.m, 0)), nota = limpiar($('rc-nota').value);
       if (!DEMO) return guardando($('f-rec').querySelector('.btn-primario'), async () => {
-        const res = await rpc('pos_inv_recibir', { p_clave: A.clave, p_tienda: t, p_proveedor: origen, p_nota: nota || null,
-          p_lineas: filas.map(x => ({ insumo_id: x.id, cantidad: x.c, costo_total: x.m })), p_factura: !!$('rc-factura')?.checked });
-        toast(`Entrada registrada por ${usd(Number(res.total))}`); INV.sub = 'existencias'; refrescarAdmin(); }, err);
-      const prov = origen ? DX.proveedores.find(p => p.id === origen).nombre : 'Producción central';
+        let foto_path = null;
+        if (foto && !central) {
+          foto_path = `${t}/${hoyVE()}-${Math.random().toString(36).slice(2, 10)}.${foto.ext}`;
+          const { error } = await sb.storage.from('pos-facturas').upload(foto_path, foto.blob, { contentType: foto.blob.type, upsert: false });
+          if (error) throw new Error('No se pudo subir la foto: ' + error.message);
+        }
+        const res = await rpc('pos_inv_recibir2', { p_clave: A.clave, p_tienda: t, p: { central, proveedor_id: provId, proveedor_nuevo: nuevo || undefined,
+          numero: num || null, emitida: em, vence, pagada: contado, referencia_pago: limpiar($('rc-ref').value) || null, foto_path, nota: nota || null,
+          pedido_id: ped?.id || null, lineas: filas.map(x => ({ insumo_id: x.id, cantidad: x.c, costo_total: x.m })) } });
+        INV.pedido = null; toast(`Entrada registrada por ${usd(Number(res.total))}`); INV.sub = 'existencias'; refrescarAdmin(); }, err);
+      // demo
+      let pid = provId, provNom = 'Producción central';
+      if (nuevo) { const limpio = s => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const ya = DX.proveedores.find(p => limpio(p.rif) === limpio(nuevo.rif));
+        if (ya) pid = ya.id; else { pid = nid(); DX.proveedores.push({ id: pid, nombre: nuevo.nombre, rif: nuevo.rif, telefono: nuevo.telefono, vende: '' }); } }
+      if (!central) provNom = DX.proveedores.find(p => p.id === pid).nombre;
+      const detalle = [];
       for (const x of filas) {
         const ins = DX.insumos.find(z => z.id === x.id), antes = Math.max(stockDe(ins, t), 0), unit = x.m / x.c;
         ins.costo_usd = antes + x.c > 0 ? Math.round(((antes * ins.costo_usd) + x.m) / (antes + x.c) * 1e6) / 1e6 : unit;
-        moverStock(t, x.id, x.c, 'entrada', prov + (nota ? ' · ' + nota : ''));
+        moverStock(t, x.id, x.c, 'entrada', provNom + (num && !central ? ' · Fact. ' + num : '') + (nota ? ' · ' + nota : ''));
         Object.assign(DX.movs.at(-1), { costo_total: r2(x.m), costo_unit: Math.round(unit * 1e6) / 1e6 });
+        detalle.push({ insumo_id: ins.id, nombre: ins.nombre, unidad: ins.unidad, cantidad: x.c, costo_unit: Math.round(unit * 1e6) / 1e6, costo_total: r2(x.m), clase: claseCosto(ins) });
       }
-      const total = r2(filas.reduce((a, x) => a + x.m, 0));
-      if (origen && $('rc-factura')?.checked && total > 0)
-        DX.facturas.push({ id: nid(), proveedor_id: origen, tienda_id: t, numero: nota || 'S/N', emitida: hoyVE(), vence: sumarDias(hoyVE(), 15), monto_usd: total, abonos: [] });
-      guardarDemo(); pintarChipStock(); toast(`Entrada registrada por ${usd(total)}`); INV.sub = 'existencias'; pintarAdmInventario(); };
+      let facId = null;
+      if (!central && total > 0) {
+        facId = nid();
+        DX.facturas.push({ id: facId, proveedor_id: pid, tienda_id: t, numero: num, emitida: em, vence, monto_usd: total, nota, detalle,
+          foto_data: foto && foto.demo ? foto.demo : null, pedido_id: ped?.id || null,
+          abonos: contado ? [{ fecha: em, monto_usd: total, referencia: limpiar($('rc-ref').value) || 'De contado' }] : [] });
+      }
+      if (ped) { const p = (DX.pedidos || []).find(x => x.id === ped.id); if (p) Object.assign(p, { estado: 'recibido', factura_id: facId }); }
+      INV.pedido = null; guardarDemo(); pintarChipStock(); toast(`Entrada registrada por ${usd(total)}`); INV.sub = 'existencias'; pintarAdmInventario(); };
+  } else if (INV.sub === 'pedidos') {
+    pintarPedidos(ic, t, optsIns);
   } else if (INV.sub === 'merma') {
     ic.innerHTML = `<form id="f-mov" class="form-caja"><h4>Registrar merma (lo que se pierde)</h4>
       <div id="mv-error" class="mensaje-error oculto"></div>
@@ -3053,21 +3171,167 @@ function pintarAdmGastos() {
 
 /* ---------- PROVEEDORES Y CUENTAS POR PAGAR ---------- */
 const saldoFactura = f => r2(f.monto_usd - (f.abonos || []).reduce((a, x) => a + x.monto_usd, 0));
+/* ---------- Facturas de proveedores y pedidos (etapa 6) ---------- */
+const fechaLarga = d => d ? d.slice(8, 10) + '/' + d.slice(5, 7) + '/' + d.slice(0, 4) : '';
+const RX_DESECHABLE = /^(vaso|tapa|servillet|cucharill|pitillo|envase|bolsa|etiqueta|plato|paleta de madera|removedor|cajita|caja para|caja box|celof|domo|contenedor)/i;
+const claseCosto = i => !i ? 'directo' : (i.clase_costo || (RX_DESECHABLE.test(i.nombre) ? 'desechable' : 'directo'));
+const NOMBRE_CLASE = { directo: 'Material directo', desechable: 'Desechable' };
+// Achica la foto (máx. 1800 px, JPEG) para que suba rápido; los PDF se suben tal cual
+async function comprimirFoto(file) {
+  if (file.type === 'application/pdf') {
+    if (file.size > 8 * 1024 * 1024) throw new Error('PDF muy grande');
+    return { blob: file, ext: 'pdf', demo: null };
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, mal) => { const i = new Image(); i.onload = () => ok(i); i.onerror = mal; i.src = url; });
+    const hacer = (max, q) => { const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+      return c; };
+    const c = hacer(1800, 0.82);
+    const blob = await new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.82));
+    return { blob, ext: 'jpg', demo: DEMO ? hacer(1000).toDataURL('image/jpeg', 0.6) : null };
+  } finally { URL.revokeObjectURL(url); }
+}
+async function verFotoFactura(f) {
+  if (f.foto_data) { const w = window.open(); if (w) w.document.write(`<title>Factura ${esc(f.numero)}</title><img src="${f.foto_data}" style="max-width:100%">`); return; }
+  if (!f.foto_path || DEMO) return toast('Esta factura no tiene foto', true);
+  const { data, error } = await sb.storage.from('pos-facturas').createSignedUrl(f.foto_path, 3600);
+  if (error) return toast('No se pudo abrir la foto: ' + error.message, true);
+  window.open(data.signedUrl, '_blank');
+}
+function estadoFactura(f, hoy = hoyVE()) {
+  const saldo = saldoFactura(f), abonada = (f.abonos || []).length > 0;
+  if (saldo <= 0.009) return { k: 'pagada', html: '<span class="badge ok">Pagada</span>' };
+  if (f.vence < hoy) return { k: 'vencida', html: `<span class="badge mal">Vencida hace ${diasEntre(f.vence, hoy) - 1} días</span>` };
+  if (abonada) return { k: 'abonada', html: `<span class="badge abierta">Abonada · debe ${usd(saldo)}</span>` };
+  if (f.vence <= sumarDias(hoy, 7)) return { k: 'pendiente', html: `<span class="badge abierta">Vence en ${diasEntre(hoy, f.vence) - 1} días</span>` };
+  return { k: 'pendiente', html: '<span class="badge">Por pagar</span>' };
+}
+function verFactura(f) {
+  const p = DX.proveedores.find(x => x.id === f.proveedor_id), det = f.detalle || [];
+  const tot = c => r2(det.filter(x => (x.clase || 'directo') === c).reduce((a, x) => a + Number(x.costo_total), 0));
+  const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">Factura ${esc(f.numero)}</h3><p>${esc(p?.nombre || '')}${p?.rif ? ' · RIF ' + esc(p.rif) : ''}</p></div>
+    <div class="modal-cuerpo">
+      <p class="num">Emitida ${fechaLarga(f.emitida)} · Vence ${fechaLarga(f.vence)} · ${estadoFactura(f).html}</p>
+      ${det.length ? `<table class="tabla-simple num"><thead><tr><th>Insumo</th><th class="der">Cantidad</th><th class="der">Costo por unidad</th><th class="der">Total</th><th>Tipo</th></tr></thead><tbody>
+        ${det.map(x => `<tr><td>${esc(x.nombre)}</td><td class="der">${fmtCant(Number(x.cantidad))} ${esc(x.unidad || '')}</td><td class="der">$${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(x.costo_unit))}</td>
+          <td class="der">${usd(Number(x.costo_total))}</td><td>${NOMBRE_CLASE[x.clase || 'directo']}</td></tr>`).join('')}</tbody></table>
+        <p class="ayuda">Material directo ${usd(tot('directo'))} · Desechable ${usd(tot('desechable'))}</p>` : '<p class="ayuda">Esta factura se cargó sin el detalle de insumos.</p>'}
+      <p class="rec-total"><span>Total</span><b class="num">${usd(f.monto_usd)}</b></p>
+      <h4 style="margin:10px 0 4px">Pagos</h4>
+      ${(f.abonos || []).length ? `<table class="tabla-simple num"><tbody>${f.abonos.map(a => `<tr><td>${fechaLarga(a.fecha)}</td><td>${esc(a.referencia || '')}</td><td class="der">${usd(a.monto_usd)}</td></tr>`).join('')}</tbody></table>` : '<p class="ayuda">Todavía no tiene pagos.</p>'}
+      <p class="num">Saldo: <b>${usd(saldoFactura(f))}</b></p>
+      ${f.nota ? `<p class="ayuda">Nota: ${esc(f.nota)}</p>` : ''}
+    </div>
+    <div class="modal-pie">${f.foto_path || f.foto_data ? '<button type="button" class="btn btn-sec" id="vf-foto">📷 Ver foto</button>' : '<span class="ayuda">Sin foto</span>'}
+      <span class="espacio"></span><button type="button" class="btn btn-primario" id="vf-x">Cerrar</button></div>`, 720);
+  r.querySelector('#vf-x').onclick = cerrarModal;
+  if (r.querySelector('#vf-foto')) r.querySelector('#vf-foto').onclick = () => verFotoFactura(f);
+}
+
+const ESTADO_PEDIDO = { pendiente: ['Por aprobar', 'abierta'], aprobado: ['Aprobado', 'ok'], en_camino: ['En camino', 'ok'], recibido: ['Recibido', ''],
+  rechazado: ['Rechazado', 'mal'], cancelado: ['Cancelado', ''] };
+async function cargarPedidosReal() {
+  DX.pedidos = (await rpc('pos_pedidos_lista', { p_clave: A.clave, p_tienda: S.tienda.id }))
+    .map(p => ({ ...p, items: p.items.map(i => ({ ...i, cantidad: num(i.cantidad) })) }));
+}
+function pintarPedidos(ic, t, optsIns) {
+  const dueno = S.perfil.rol === 'dueno', hoy = hoyVE();
+  const lista = (DX.pedidos || []).filter(p => dueno || p.tienda_id === t);
+  const abiertos = lista.filter(p => ['pendiente', 'aprobado', 'en_camino'].includes(p.estado));
+  const cuando = p => { const d = diasEntre(hoy, p.para_fecha) - 1;
+    return `${fechaLarga(p.para_fecha)} <i class="ayuda">${!['pendiente', 'aprobado', 'en_camino'].includes(p.estado) ? '' : d < 0 ? `(atrasado ${-d} día${d === -1 ? '' : 's'})` : d === 0 ? '(hoy)' : d === 1 ? '(mañana)' : `(faltan ${d} días)`}</i>`; };
+  ic.innerHTML = `<div class="adm-barra"><p>${dueno ? 'Aquí llegan los pedidos de todas tus tiendas. Apruébalos y márcalos <b>En camino</b>; cuando llegue la mercancía, la tienda toca <b>Recibir</b> y copia la factura.'
+      : 'Pide aquí lo que necesita la tienda y para cuándo. El dueño lo aprueba; cuando llegue, toca <b>Recibir</b> y copia la factura.'}</p>
+      <span class="espacio"></span><button class="btn btn-primario" id="pd-nuevo">+ Solicitar pedido</button></div>
+    <div class="pedidos">${lista.map(p => { const [en, cl] = ESTADO_PEDIDO[p.estado] || [p.estado, ''];
+      const abierto = ['pendiente', 'aprobado', 'en_camino'].includes(p.estado);
+      return `<article class="pedido ${abierto ? '' : 'cerrado'}"><header><b>Pedido N° ${p.id}</b>${dueno ? ` · ${esc(p.tienda || '')}` : ''}<span class="espacio"></span><span class="badge ${cl}">${en}</span></header>
+        <p class="ayuda">Lo pidió ${esc(p.solicitante || '—')} el ${fechaLarga(diaVE(p.creado_en))} · Lo necesita para el ${cuando(p)}</p>
+        <ul>${p.items.map(i => `<li><span>${esc(i.nombre)}</span><b class="num">${fmtCant(i.cantidad)} ${esc(i.unidad)}</b></li>`).join('')}</ul>
+        ${p.nota ? `<p class="ayuda">Nota: ${esc(p.nota)}</p>` : ''}${p.respuesta ? `<p class="ayuda">Respuesta: ${esc(p.respuesta)}</p>` : ''}
+        <footer><button class="link" data-wa="${p.id}">Copiar para WhatsApp</button><span class="espacio"></span>
+          ${abierto && dueno && p.estado === 'pendiente' ? `<button class="btn btn-sec" data-est="rechazado" data-id="${p.id}">Rechazar</button><button class="btn btn-sec" data-est="aprobado" data-id="${p.id}">Aprobar</button>` : ''}
+          ${abierto && dueno && p.estado === 'aprobado' ? `<button class="btn btn-sec" data-est="en_camino" data-id="${p.id}">Marcar en camino</button>` : ''}
+          ${abierto && !dueno && p.estado === 'pendiente' ? `<button class="btn btn-sec" data-est="cancelado" data-id="${p.id}">Cancelar</button>` : ''}
+          ${abierto && p.tienda_id === t ? `<button class="btn btn-primario" data-rec="${p.id}">Recibir</button>` : ''}</footer></article>`; }).join('')
+      || '<p class="vacio">Todavía no hay pedidos.</p>'}</div>`;
+  const cambiar = async (p, estado) => {
+    let resp = null;
+    if (estado === 'rechazado') { resp = prompt('¿Por qué se rechaza? (opcional)') ; if (resp === null) return; }
+    if (!DEMO) return guardando(null, async () => { await rpc('pos_pedido_estado', { p_clave: A.clave, p_id: p.id, p_estado: estado, p_respuesta: resp || null });
+      toast('Pedido actualizado'); refrescarAdmin(); });
+    Object.assign(p, { estado, respuesta: resp || p.respuesta }); guardarDemo(); toast('Pedido actualizado'); pintarAdmInventario();
+  };
+  ic.querySelectorAll('[data-est]').forEach(b => b.onclick = () => cambiar(lista.find(p => p.id === Number(b.dataset.id)), b.dataset.est));
+  ic.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => { INV.pedido = lista.find(p => p.id === Number(b.dataset.rec)); INV.sub = 'recibir'; pintarAdmInventario(); });
+  ic.querySelectorAll('[data-wa]').forEach(b => b.onclick = () => { const p = lista.find(x => x.id === Number(b.dataset.wa));
+    copiarTexto(`*Pedido N° ${p.id} · ${p.tienda || S.tienda.nombre}*\nPara el ${fechaLarga(p.para_fecha)}\n` + p.items.map(i => `• ${i.nombre}: ${fmtCant(i.cantidad)} ${i.unidad}`).join('\n') + (p.nota ? `\nNota: ${p.nota}` : '')); });
+  $('pd-nuevo').onclick = () => {
+    const r = abrirModal(`<form id="f-pd"><div class="modal-cab"><h3 class="titulo">Solicitar pedido · ${esc(S.tienda.nombre)}</h3></div><div class="modal-cuerpo">
+      <div id="pd-error" class="mensaje-error oculto"></div>
+      <div id="pd-filas"></div><button type="button" class="link" id="pd-mas">+ otro insumo</button>
+      <div class="campo"><span>¿En cuántos días tiene que llegar? *</span><div class="pd-dias">${[2, 4, 5, 7, 15].map(d => `<button type="button" class="sub-tab" data-d="${d}">${d} días</button>`).join('')}
+        <input id="pd-otro" class="txt num" inputmode="numeric" placeholder="Otro" style="width:80px"></div><p class="ayuda" id="pd-fecha"></p></div>
+      <label class="campo"><span>Nota (opcional)</span><input id="pd-nota" class="txt" placeholder="Ej. que el sirope sea de la marca de siempre"></label></div>
+      <div class="modal-pie"><button type="button" class="btn btn-sec" id="pd-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Enviar pedido</button></div></form>`, 620);
+    let dias = null;
+    const pintarDias = () => { r.querySelectorAll('[data-d]').forEach(b => b.classList.toggle('activa', Number(b.dataset.d) === dias));
+      r.querySelector('#pd-fecha').textContent = dias ? `Tiene que llegar a más tardar el ${fechaLarga(sumarDias(hoy, dias))}.` : ''; };
+    r.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { dias = Number(b.dataset.d); r.querySelector('#pd-otro').value = ''; pintarDias(); });
+    r.querySelector('#pd-otro').oninput = e => { const n = parseInt(soloDigitos(e.target.value), 10); dias = n > 0 ? n : null; pintarDias(); };
+    const fila = () => { const d = document.createElement('div'); d.className = 'dos-campos fila-pd';
+      d.innerHTML = `<select class="sel pd-ins">${optsIns}</select><div style="display:flex;gap:6px"><input class="txt num pd-cant" inputmode="decimal" placeholder="Cantidad"><button type="button" class="quitar" title="Quitar">✕</button></div>`;
+      r.querySelector('#pd-filas').appendChild(d);
+      const ph = () => { const i = DX.insumos.find(x => x.id === Number(d.querySelector('.pd-ins').value)); d.querySelector('.pd-cant').placeholder = i ? `Cantidad en ${i.unidad} (hay ${fmtCant(Math.max(stockDe(i, t), 0))})` : 'Cantidad'; };
+      d.querySelector('.pd-ins').onchange = ph; ph();
+      d.querySelector('.quitar').onclick = () => { if (r.querySelectorAll('.fila-pd').length > 1) d.remove(); }; };
+    fila(); r.querySelector('#pd-mas').onclick = fila; r.querySelector('#pd-x').onclick = cerrarModal;
+    r.querySelector('#f-pd').onsubmit = e => { e.preventDefault();
+      const err = m => { r.querySelector('#pd-error').textContent = m; r.querySelector('#pd-error').classList.remove('oculto'); };
+      const items = [...r.querySelectorAll('.fila-pd')].map(d => ({ insumo_id: Number(d.querySelector('.pd-ins').value), cantidad: leerNum(d.querySelector('.pd-cant').value) }));
+      if (items.some(x => !(x.cantidad > 0))) return err('Escribe la cantidad de cada insumo');
+      if (!dias || dias > 60) return err('Elige en cuántos días tiene que llegar');
+      const nota = limpiar(r.querySelector('#pd-nota').value);
+      if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
+        const id = await rpc('pos_pedido_crear', { p_clave: A.clave, p_tienda: t, p: { dias, nota: nota || null, items } });
+        cerrarModal(); toast(`Pedido N° ${id} enviado`); refrescarAdmin(); }, err);
+      DX.pedidos = DX.pedidos || [];
+      const u = DX.usuarios.find(x => x.id === DX.usuarioActual);
+      DX.pedidos.unshift({ id: nid(), tienda_id: t, tienda: S.tienda.nombre, solicitante: u ? (u.nombre + ' ' + (u.apellido || '')).trim() : 'Encargada',
+        creado_en: new Date().toISOString(), para_fecha: sumarDias(hoy, dias), nota, estado: 'pendiente', respuesta: null, factura_id: null,
+        items: items.map(x => { const i = DX.insumos.find(z => z.id === x.insumo_id); return { ...x, nombre: i.nombre, unidad: i.unidad }; }) });
+      guardarDemo(); cerrarModal(); toast('Pedido enviado'); pintarAdmInventario(); };
+  };
+}
+
+const PROV = { filtro: 'porpagar' };
 function pintarAdmProveedores() {
   const cont = $('adm-contenido'), hoy = hoyVE(), t = S.tienda.id;
-  const fs = DX.facturas.filter(f => f.tienda_id === t).sort((a, b) => (saldoFactura(b) > 0.009) - (saldoFactura(a) > 0.009) || a.vence.localeCompare(b.vence));
-  const pend = fs.filter(f => saldoFactura(f) > 0.009), venc = pend.filter(f => f.vence < hoy), pronto = pend.filter(f => f.vence >= hoy && f.vence <= sumarDias(hoy, 7));
+  const todas = DX.facturas.filter(f => f.tienda_id === t).sort((a, b) => (saldoFactura(b) > 0.009) - (saldoFactura(a) > 0.009) || a.vence.localeCompare(b.vence) || b.emitida.localeCompare(a.emitida));
+  const pend = todas.filter(f => saldoFactura(f) > 0.009), venc = pend.filter(f => f.vence < hoy), pronto = pend.filter(f => f.vence >= hoy && f.vence <= sumarDias(hoy, 7));
+  const pagadoMes = r2(todas.flatMap(f => f.abonos || []).filter(a => a.fecha.slice(0, 7) === hoy.slice(0, 7)).reduce((a, x) => a + x.monto_usd, 0));
+  const fs = todas.filter(f => PROV.filtro === 'todas' || (PROV.filtro === 'pagadas' ? saldoFactura(f) <= 0.009 : saldoFactura(f) > 0.009));
   const prov = id => DX.proveedores.find(p => p.id === id);
-  const estado = f => saldoFactura(f) <= 0.009 ? '<span class="badge ok">Pagada</span>' : f.vence < hoy ? `<span class="badge mal">Vencida hace ${diasEntre(f.vence, hoy) - 1} días</span>` : f.vence <= sumarDias(hoy, 7) ? `<span class="badge abierta">Vence en ${diasEntre(hoy, f.vence) - 1} días</span>` : '<span class="badge">Al día</span>';
+  const debeProv = id => r2(pend.filter(f => f.proveedor_id === id).reduce((a, f) => a + saldoFactura(f), 0));
   cont.innerHTML = `<div class="kpis"><div class="kpi"><span>Por pagar</span><b class="num">${usd(pend.reduce((a, f) => a + saldoFactura(f), 0))}</b><i>${pend.length} facturas</i></div>
       <div class="kpi"><span>Vencido</span><b class="num ${venc.length ? 'rojo' : ''}">${usd(venc.reduce((a, f) => a + saldoFactura(f), 0))}</b><i>${venc.length} facturas</i></div>
-      <div class="kpi"><span>Vence en 7 días</span><b class="num">${usd(pronto.reduce((a, f) => a + saldoFactura(f), 0))}</b><i>${pronto.length} facturas</i></div></div>
-    <div class="adm-barra"><h4 style="margin:0">Facturas de ${esc(S.tienda.nombre)}</h4><span class="espacio"></span><button class="btn btn-sec" id="pv-nuevo">+ Proveedor</button><button class="btn btn-primario" id="fc-nueva">+ Factura</button></div>
+      <div class="kpi"><span>Vence en 7 días</span><b class="num">${usd(pronto.reduce((a, f) => a + saldoFactura(f), 0))}</b><i>${pronto.length} facturas</i></div>
+      <div class="kpi"><span>Pagado este mes</span><b class="num">${usd(pagadoMes)}</b><i>va al balance como costo de venta</i></div></div>
+    <div class="adm-barra"><h4 style="margin:0">Facturas de ${esc(S.tienda.nombre)}</h4>
+      <nav class="sub-tabs">${[['porpagar', 'Por pagar'], ['pagadas', 'Pagadas'], ['todas', 'Todas']].map(([k, n]) => `<button class="sub-tab ${PROV.filtro === k ? 'activa' : ''}" data-pf="${k}">${n}</button>`).join('')}</nav>
+      <span class="espacio"></span><button class="btn btn-sec" id="pv-nuevo">+ Proveedor</button><button class="btn btn-sec" id="fc-nueva">+ Factura sin mercancía</button></div>
+    <p class="ayuda">La mercancía con su factura se carga en <b>Inventario → Recibir mercancía</b> (así también sube el inventario). Aquí registras los pagos. ${S.perfil.rol === 'dueno' ? 'Lo que se paga a proveedores pasa solo al balance desde el 1 de diciembre, separado en material directo y desechable.' : ''}</p>
     <table class="tabla-simple num"><thead><tr><th>Proveedor</th><th>N°</th><th>Emitida</th><th>Vence</th><th class="der">Monto</th><th class="der">Saldo</th><th>Estado</th><th></th></tr></thead><tbody>
-    ${fs.map(f => `<tr><td>${esc(prov(f.proveedor_id)?.nombre || '')}</td><td>${esc(f.numero)}</td><td>${fechaCorta(f.emitida)}</td><td>${fechaCorta(f.vence)}</td><td class="der">${usd(f.monto_usd)}</td><td class="der">${usd(saldoFactura(f))}</td><td>${estado(f)}</td>
-      <td>${saldoFactura(f) > 0.009 ? `<button class="link" data-ab="${f.id}">Abonar</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="8" class="vacio">Sin facturas.</td></tr>'}</tbody></table>
-    <section class="graf"><h4>Proveedores</h4><table class="tabla-simple"><thead><tr><th>Nombre</th><th>RIF</th><th>Teléfono</th><th>Qué vende</th></tr></thead><tbody>
-      ${DX.proveedores.map(p => `<tr><td>${esc(p.nombre)}</td><td>${esc(p.rif)}</td><td class="num">${esc(p.telefono)}</td><td>${esc(p.vende)}</td></tr>`).join('')}</tbody></table></section>`;
+    ${fs.map(f => `<tr><td>${esc(prov(f.proveedor_id)?.nombre || '')}</td><td>${esc(f.numero)}${f.foto_path || f.foto_data ? ' 📷' : ''}</td><td>${fechaCorta(f.emitida)}</td><td>${fechaCorta(f.vence)}</td><td class="der">${usd(f.monto_usd)}</td><td class="der">${usd(saldoFactura(f))}</td><td>${estadoFactura(f, hoy).html}</td>
+      <td class="acciones"><button class="link" data-ver="${f.id}">Ver</button>${saldoFactura(f) > 0.009 ? ` <button class="link" data-ab="${f.id}">Pagar</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="8" class="vacio">${PROV.filtro === 'pagadas' ? 'No hay facturas pagadas.' : 'No hay facturas por pagar.'}</td></tr>`}</tbody></table>
+    <section class="graf"><h4>Proveedores</h4><table class="tabla-simple"><thead><tr><th>Nombre</th><th>RIF</th><th>Teléfono</th><th>Qué vende</th><th class="der">Facturas</th><th class="der">Le debemos</th></tr></thead><tbody>
+      ${DX.proveedores.map(p => `<tr><td>${esc(p.nombre)}</td><td>${esc(p.rif || '')}</td><td class="num">${esc(p.telefono || '')}</td><td>${esc(p.vende || '')}</td>
+        <td class="der num">${todas.filter(f => f.proveedor_id === p.id).length}</td><td class="der num">${usd(debeProv(p.id))}</td></tr>`).join('')}</tbody></table></section>`;
+  cont.querySelectorAll('[data-pf]').forEach(b => b.onclick = () => { PROV.filtro = b.dataset.pf; pintarAdmProveedores(); });
+  cont.querySelectorAll('[data-ver]').forEach(b => b.onclick = () => verFactura(DX.facturas.find(x => x.id === Number(b.dataset.ver))));
   $('pv-nuevo').onclick = () => {
     const r = abrirModal(`<form id="f-pv"><div class="modal-cab"><h3 class="titulo">Nuevo proveedor</h3></div><div class="modal-cuerpo"><div id="pv-error" class="mensaje-error oculto"></div>
       <label class="campo"><span>Nombre *</span><input id="pv-nombre" class="txt"></label><div class="dos-campos"><label class="campo"><span>RIF</span><input id="pv-rif" class="txt" placeholder="J-12345678-9"></label>
