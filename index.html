@@ -363,6 +363,10 @@
   .pedido ul{margin:4px 0;padding:0;list-style:none} .pedido li{display:flex;justify-content:space-between;border-bottom:1px dashed var(--linea);padding:3px 0;font-size:14px}
   .pd-dias{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px}
   td.acciones{white-space:nowrap}
+  .prov-vistas{margin-bottom:14px}
+  .plan-dia.urgente{border-color:#F2B8B5;background:#FFF8F7}
+  .plan-dia h4{margin:0 0 6px}
+  tr.apagado{opacity:.55}
   @media (max-width:700px){.rec-cab{display:none}.fila-rec{grid-template-columns:1fr 1fr;border-bottom:1px solid var(--linea);padding-bottom:6px}.fila-rec .mv-ins{grid-column:1/-1}}
   .rec-cab{font-size:12px;color:var(--suave);font-weight:600;margin:6px 0 4px}
   .fila-rec{margin-bottom:6px}
@@ -2248,7 +2252,7 @@ $('btn-salir-admin').onclick = salirAdmin;
    ===================================================================== */
 const MOD = true;
 const DEMO_KEY = 'pos_demo_v2';
-const DX = { sec: 1, salidas: [], anulaciones: [], insumos: [], recetas: {}, movs: [], gastos: [], proveedores: [], facturas: [], pedidos: [],
+const DX = { sec: 1, salidas: [], anulaciones: [], insumos: [], recetas: {}, movs: [], gastos: [], proveedores: [], facturas: [], pedidos: [], cxp: [], cxpFijos: [], balanceTipos: [],
              usuarios: [], usuarioActual: null, base: false, historia: false };
 const nid = () => DX.sec++;
 
@@ -2314,7 +2318,7 @@ const CARGA = {
   inventario: async () => { await cargarInventarioReal(); await Promise.all([cargarPedidosReal(), cargarProveedoresReal()]); },
   gastos: () => { const m = (GAS.mes || mesVE()) + '-01', fin = sumarDias(sumarDias(m, 32).slice(0, 7) + '-01', -1);
     return cargarVentasReal(sumarDias(m, -1).slice(0, 8) + '01', fin < hoyVE() ? fin : hoyVE()); },
-  proveedores: () => cargarProveedoresReal(),
+  proveedores: async () => { await cargarProveedoresReal(); if (PROV.vista === 'gastos') await cargarCxpReal(); if (PROV.vista === 'plan') await cargarPlanReal(); },
   clientes: () => cargarClientesReal(),
   reportes: async () => { if (REP.tipo === 'general' && REP.rango !== 'otro') [REP.desde, REP.hasta] = rangoReporte(REP.rango);
     REP.desde = REP.desde || hoyVE().slice(0, 8) + '01'; REP.hasta = REP.hasta || hoyVE();
@@ -2454,6 +2458,16 @@ function sembrarBase() {
   const L = (n, c, u) => { const i = DX.insumos.find(x => x.nombre === n); return { insumo_id: i.id, nombre: n, unidad: i.unidad, cantidad: c, costo_unit: u, costo_total: r2(c * u), clase: claseCosto(i) }; };
   DX.facturas[0].detalle = [L('Vaso 8 oz', 2000, 0.07), L('Tapa domo', 2000, 0.04), L('Cucharilla', 4000, 0.03)];
   DX.facturas[2].detalle = [L('Vaso 12 oz', 2500, 0.09), L('Vaso de sundae', 1000, 0.08), L('Cucharilla', 3500, 0.03)];
+  const TB = n => BAL_TIPOS_DEMO.find(x => x.nombre === n).id;
+  DX.cxpFijos = [['Alquiler del local', 'ARRENDAMIENTO', 'Sambil', 1800, 5], ['Condominio', 'CONDOMINIO', 'Sambil', 450, 10], ['Nómina 1ra quincena', 'NOMINA', 'Personal', 800, 15],
+    ['Nómina 2da quincena', 'NOMINA', 'Personal', 800, 28], ['Internet', 'INTERNET', 'Inter', 45, 20], ['Cuota préstamo', 'PRESTAMO', 'Banco', 300, 25]]
+    .map(([concepto, tipo, beneficiario, monto_usd, dia_vence]) => ({ id: nid(), tienda_id: 1, tipo_gasto_id: TB(tipo), concepto, beneficiario, monto_usd, dia_vence, activo: true }));
+  DX.cxp = [{ id: nid(), tienda_id: 1, tipo_gasto_id: TB('MANTENIMIENTO'), concepto: 'Reparación máquina de helados', beneficiario: 'Servicios Técnicos Frío', monto_usd: 180,
+    vence: sumarDias(hoy, -2), pagado_usd: 0, estado: 'pendiente', pagos: [] },
+    { id: nid(), tienda_id: 1, tipo_gasto_id: TB('ALCALDIA'), concepto: 'Impuesto municipal', beneficiario: 'Alcaldía', monto_usd: 95, vence: sumarDias(hoy, 4), pagado_usd: 0, estado: 'pendiente', pagos: [] }];
+  cxpGenerarDemo();   // lo de este mes que ya venció aparece pagado por la contadora (ejemplo)
+  DX.cxp.filter(c => c.fijo_id && c.vence < hoy).forEach(c => Object.assign(c, { estado: 'pagada', pagado_usd: c.monto_usd,
+    pagos: [{ fecha: c.vence, usd: c.monto_usd, proveedor: c.beneficiario, referencia: 'Cargado en el balance' }] }));
   DX.pedidos = [
     { id: nid(), tienda_id: 1, tienda: 'Sambil Valencia', solicitante: 'María González', creado_en: new Date(Date.now() - 864e5).toISOString(), para_fecha: sumarDias(hoy, 3),
       nota: 'Se están acabando los vasos de 12 oz', estado: 'pendiente', respuesta: null, factura_id: null,
@@ -3307,9 +3321,261 @@ function pintarPedidos(ic, t, optsIns) {
   };
 }
 
-const PROV = { filtro: 'porpagar' };
+/* ---------- GASTOS POR PAGAR y PLAN DE PAGOS (etapa 7) ---------- */
+const SECCIONES_BAL = { gasto_fijo_variable: 'Gastos fijos y variables', gasto_operativo: 'Gastos operativos', gasto_financiero: 'Gastos financieros',
+  sin_clasificar: 'Sin clasificar', costo_ventas: 'Costo de ventas', impuesto: 'Impuestos' };
+const ORDEN_SECC = ['costo_ventas', 'gasto_fijo_variable', 'gasto_operativo', 'gasto_financiero', 'impuesto', 'sin_clasificar'];
+// Catálogo de ejemplo para el demo (en la versión real viene del balance)
+const BAL_TIPOS_DEMO = [['ARRENDAMIENTO', 'gasto_fijo_variable'], ['CONDOMINIO', 'gasto_fijo_variable'], ['NOMINA', 'gasto_fijo_variable'],
+  ['INTERNET', 'gasto_fijo_variable'], ['AGUA POTABLE', 'gasto_fijo_variable'], ['LIMPIEZA', 'gasto_fijo_variable'], ['MANTENIMIENTO', 'gasto_fijo_variable'],
+  ['PUBLICIDAD', 'gasto_fijo_variable'], ['SEGURO', 'gasto_fijo_variable'], ['HONORARIOS', 'gasto_fijo_variable'], ['GASTOS OPERATIVOS', 'gasto_operativo'],
+  ['PRESTAMO', 'gasto_financiero'], ['IVA', 'impuesto'], ['ALCALDIA', 'impuesto'], ['MP', 'costo_ventas'], ['DESECHABLE', 'costo_ventas'], ['SIN CLASIFICAR', 'sin_clasificar']]
+  .map(([nombre, seccion], i) => ({ id: 'demo-' + i, nombre, linea: nombre, seccion }));
+const balTipos = () => (DX.balanceTipos && DX.balanceTipos.length ? DX.balanceTipos : BAL_TIPOS_DEMO);
+const tipoBal = id => balTipos().find(x => x.id === id);
+const saldoCxp = c => r2(Math.max(c.monto_usd - (c.pagado_usd || 0), 0));
+async function cargarCxpReal() {
+  const d = await rpc('pos_cxp_datos', { p_clave: A.clave, p_tienda: S.tienda.id });
+  DX.balanceTipos = d.tipos; DX.cxpSinc = d.sincronizado;
+  DX.cxpFijos = d.fijos.map(f => ({ ...f, monto_usd: num(f.monto_usd) }));
+  DX.cxp = d.cuentas.map(c => ({ ...c, monto_usd: num(c.monto_usd), pagado_usd: num(c.pagado_usd), pagos: (c.pagos || []).map(p => ({ ...p, usd: num(p.usd) })) }));
+}
+async function cargarPlanReal() {
+  const hasta = rangoPlan(PROV.rango)[1];
+  REAL.plan = (await rpc('pos_plan_pagos', { p_clave: A.clave, p_tienda: S.tienda.id, p_hasta: hasta }))
+    .map(x => ({ ...x, monto: num(x.monto), saldo: num(x.saldo) }));
+}
+// Demo: crea las cuentas de los gastos fijos del mes y del próximo
+function cxpGenerarDemo() {
+  DX.cxp = DX.cxp || []; DX.cxpFijos = DX.cxpFijos || [];
+  const hoy = hoyVE(), meses = [hoy.slice(0, 7), sumarDias(hoy.slice(0, 8) + '28', 5).slice(0, 7)];
+  for (const f of DX.cxpFijos.filter(x => x.activo !== false)) for (const m of meses)
+    if (!DX.cxp.some(c => c.fijo_id === f.id && c.periodo === m))
+      DX.cxp.push({ id: nid(), tienda_id: f.tienda_id, tipo_gasto_id: f.tipo_gasto_id, concepto: f.concepto, beneficiario: f.beneficiario, monto_usd: f.monto_usd,
+        vence: m + '-' + String(f.dia_vence).padStart(2, '0'), fijo_id: f.id, periodo: m, pagado_usd: 0, estado: 'pendiente', pagos: [] });
+}
+function estadoCxp(c, hoy = hoyVE()) {
+  if (c.estado === 'anulada') return '<span class="badge">Anulada</span>';
+  if (c.estado === 'pagada') return '<span class="badge ok">Pagada</span>';
+  if (c.vence < hoy) return `<span class="badge mal">Vencida hace ${diasEntre(c.vence, hoy) - 1} días</span>`;
+  if (c.estado === 'abonada') return `<span class="badge abierta">Abonada · falta ${usd(saldoCxp(c))}</span>`;
+  const d = diasEntre(hoy, c.vence) - 1;
+  return d <= 7 ? `<span class="badge abierta">${d === 0 ? 'Vence hoy' : d === 1 ? 'Vence mañana' : `Vence en ${d} días`}</span>` : '<span class="badge">Por pagar</span>';
+}
+function opcionesTipos(sel) {
+  const g = {}; balTipos().forEach(t => (g[t.seccion] = g[t.seccion] || []).push(t));
+  return ORDEN_SECC.filter(s => g[s]).map(s => `<optgroup label="${SECCIONES_BAL[s]}">${g[s].map(t => `<option value="${t.id}" ${t.id === sel ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</optgroup>`).join('');
+}
+
+function pintarGastosPorPagar(cont) {
+  const t = S.tienda.id, hoy = hoyVE(); if (DEMO) cxpGenerarDemo();
+  const todas = (DX.cxp || []).filter(c => c.tienda_id === t);
+  const abiertas = todas.filter(c => c.estado === 'pendiente' || c.estado === 'abonada');
+  const venc = abiertas.filter(c => c.vence < hoy), pronto = abiertas.filter(c => c.vence >= hoy && c.vence <= sumarDias(hoy, 7));
+  const pagMes = r2(todas.filter(c => c.estado !== 'anulada').flatMap(c => c.pagos || []).filter(p => p.fecha.slice(0, 7) === hoy.slice(0, 7)).reduce((a, p) => a + p.usd, 0));
+  const lista = todas.filter(c => PROV.filtroG === 'todas' ? true : PROV.filtroG === 'pagadas' ? c.estado === 'pagada' : (c.estado === 'pendiente' || c.estado === 'abonada'))
+    .sort((a, b) => a.vence.localeCompare(b.vence) || a.id - b.id);
+  const porSecc = {}; lista.forEach(c => { const s = tipoBal(c.tipo_gasto_id)?.seccion || 'sin_clasificar'; (porSecc[s] = porSecc[s] || []).push(c); });
+  const suma = arr => r2(arr.reduce((a, c) => a + saldoCxp(c), 0));
+  cont.innerHTML = `<div class="kpis"><div class="kpi"><span>Por pagar</span><b class="num">${usd(suma(abiertas))}</b><i>${abiertas.length} cuentas</i></div>
+      <div class="kpi"><span>Vencido</span><b class="num ${venc.length ? 'rojo' : ''}">${usd(suma(venc))}</b><i>${venc.length} cuentas</i></div>
+      <div class="kpi"><span>Vence en 7 días</span><b class="num">${usd(suma(pronto))}</b><i>${pronto.length} cuentas</i></div>
+      <div class="kpi"><span>Pagado este mes</span><b class="num">${usd(pagMes)}</b><i>según el balance</i></div></div>
+    <div class="adm-barra"><h4 style="margin:0">Gastos por pagar de ${esc(S.tienda.nombre)}</h4>
+      <nav class="sub-tabs">${[['abiertas', 'Por pagar'], ['pagadas', 'Pagadas'], ['todas', 'Todas']].map(([k, n]) => `<button class="sub-tab ${PROV.filtroG === k ? 'activa' : ''}" data-gf="${k}">${n}</button>`).join('')}</nav>
+      <span class="espacio"></span><button class="btn btn-sec" id="cx-fijos">Gastos fijos del mes (${(DX.cxpFijos || []).filter(f => f.tienda_id === t && f.activo !== false).length})</button>
+      <button class="btn btn-primario" id="cx-nueva">+ Cuenta por pagar</button></div>
+    <p class="ayuda">Cuando la contadora carga el pago en el balance con <b>esta tienda y el mismo tipo de gasto</b>, la cuenta se marca pagada sola (se revisa cada 30 minutos). Los gastos fijos se crean solos cada mes.${!DEMO && DX.cxpSinc ? ` Última revisión del balance: ${new Date(DX.cxpSinc).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'short', timeStyle: 'short' })}.` : ''}</p>
+    ${ORDEN_SECC.filter(s => porSecc[s]).map(s => `<section class="graf"><h4>${SECCIONES_BAL[s]} <span class="ayuda">· ${usd(suma(porSecc[s]))} por pagar</span></h4>
+      <table class="tabla-simple num"><thead><tr><th>Vence</th><th>Qué se paga</th><th>Tipo de gasto</th><th>A quién</th><th class="der">Monto</th><th class="der">Pagado</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${porSecc[s].map(c => `<tr><td>${fechaCorta(c.vence)}</td><td>${esc(c.concepto)}${c.fijo_id ? ' <span class="ayuda">(fijo)</span>' : ''}</td><td>${esc(tipoBal(c.tipo_gasto_id)?.nombre || '')}</td>
+        <td>${esc(c.beneficiario || '')}</td><td class="der">${usd(c.monto_usd)}</td><td class="der">${c.pagado_usd ? usd(c.pagado_usd) : '—'}</td><td>${estadoCxp(c, hoy)}</td>
+        <td class="acciones"><button class="link" data-cx="${c.id}">Ver</button></td></tr>`).join('')}</tbody></table></section>`).join('')
+      || `<p class="vacio">${PROV.filtroG === 'pagadas' ? 'Todavía no hay cuentas pagadas.' : 'No hay cuentas por pagar. Agrega los gastos fijos del mes (alquiler, condominio, nómina…) y se crean solos cada mes.'}</p>`}`;
+  cont.querySelectorAll('[data-gf]').forEach(b => b.onclick = () => { PROV.filtroG = b.dataset.gf; pintarAdmProveedores(); });
+  $('cx-nueva').onclick = () => editarCxp(null);
+  $('cx-fijos').onclick = () => verFijos();
+  cont.querySelectorAll('[data-cx]').forEach(b => b.onclick = () => verCxp(todas.find(c => c.id === Number(b.dataset.cx))));
+}
+function editarCxp(c) {
+  const r = abrirModal(`<form id="f-cx"><div class="modal-cab"><h3 class="titulo">${c ? 'Editar cuenta por pagar' : 'Nueva cuenta por pagar'}</h3><p>${esc(S.tienda.nombre)}</p></div><div class="modal-cuerpo">
+    <div id="cx-error" class="mensaje-error oculto"></div>
+    <label class="campo"><span>Tipo de gasto (como está en el balance) *</span><select id="cx-tipo" class="sel"><option value="">Elige…</option>${opcionesTipos(c?.tipo_gasto_id)}</select></label>
+    <div class="dos-campos"><label class="campo"><span>Qué se paga *</span><input id="cx-conc" class="txt" value="${esc(c?.concepto || '')}" placeholder="Ej. Cuota préstamo noviembre"></label>
+      <label class="campo"><span>A quién</span><input id="cx-ben" class="txt" value="${esc(c?.beneficiario || '')}" placeholder="Ej. Banco, Sambil, empleado…"></label></div>
+    <div class="dos-campos"><label class="campo"><span>Monto en dólares *</span><input id="cx-monto" class="txt num" inputmode="decimal" value="${c ? fmt.format(c.monto_usd) : ''}"></label>
+      <label class="campo"><span>Vence *</span><input id="cx-vence" type="date" class="txt" value="${c?.vence || sumarDias(hoyVE(), 7)}"></label></div>
+    <label class="campo"><span>Nota</span><input id="cx-nota" class="txt" value="${esc(c?.nota || '')}"></label></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="cx-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 600);
+  r.querySelector('#cx-x').onclick = cerrarModal;
+  r.querySelector('#f-cx').onsubmit = e => { e.preventDefault();
+    const err = m => { r.querySelector('#cx-error').textContent = m; r.querySelector('#cx-error').classList.remove('oculto'); };
+    const p = { id: c?.id || null, tipo_gasto_id: r.querySelector('#cx-tipo').value, concepto: limpiar(r.querySelector('#cx-conc').value), beneficiario: limpiar(r.querySelector('#cx-ben').value),
+      monto_usd: r2(leerNum(r.querySelector('#cx-monto').value)), vence: r.querySelector('#cx-vence').value, nota: limpiar(r.querySelector('#cx-nota').value) };
+    if (!p.tipo_gasto_id) return err('Elige el tipo de gasto'); if (p.concepto.length < 2) return err('Escribe qué se paga');
+    if (!(p.monto_usd > 0)) return err('Escribe el monto'); if (!p.vence) return err('Escribe la fecha de vencimiento');
+    if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => { await rpc('pos_cxp_guardar', { p_clave: A.clave, p_tienda: S.tienda.id, p });
+      cerrarModal(); toast('Cuenta guardada'); refrescarAdmin(); }, err);
+    if (c) Object.assign(c, p); else DX.cxp.push({ ...p, id: nid(), tienda_id: S.tienda.id, pagado_usd: 0, estado: 'pendiente', pagos: [] });
+    guardarDemo(); cerrarModal(); toast('Cuenta guardada'); pintarAdmProveedores(); };
+}
+function verCxp(c) {
+  const tb = tipoBal(c.tipo_gasto_id);
+  const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">${esc(c.concepto)}</h3><p>${esc(S.tienda.nombre)} · ${esc(tb?.nombre || '')} · ${SECCIONES_BAL[tb?.seccion] || ''}</p></div>
+    <div class="modal-cuerpo"><p class="num">Vence ${fechaLarga(c.vence)} · ${estadoCxp(c)}</p>
+      ${c.beneficiario ? `<p>A quién: <b>${esc(c.beneficiario)}</b></p>` : ''}
+      <p class="rec-total"><span>Monto</span><b class="num">${usd(c.monto_usd)}</b></p>
+      <h4 style="margin:10px 0 4px">Pagos cargados en el balance</h4>
+      ${(c.pagos || []).length ? `<table class="tabla-simple num"><tbody>${c.pagos.map(p => `<tr><td>${fechaLarga(p.fecha)}</td><td>${esc(p.proveedor || '')} ${esc(p.referencia || '')}</td><td class="der">${usd(p.usd)}</td></tr>`).join('')}</tbody></table>`
+        : '<p class="ayuda">Todavía no hay pagos. Se marcan solos cuando la contadora carga el pago en el balance.</p>'}
+      <p class="num">Falta: <b>${usd(saldoCxp(c))}</b></p>${c.nota ? `<p class="ayuda">Nota: ${esc(c.nota)}</p>` : ''}</div>
+    <div class="modal-pie">${c.estado === 'anulada' || c.estado === 'pagada' ? '<button type="button" class="btn btn-sec" data-acc="reabrir">Volver a por pagar</button>'
+      : '<button type="button" class="btn btn-sec" data-acc="anular">Anular</button><button type="button" class="btn btn-sec" data-acc="pagada">Marcar pagada a mano</button><button type="button" class="btn btn-sec" id="cxv-ed">Editar</button>'}
+      <span class="espacio"></span><button type="button" class="btn btn-primario" id="cxv-x">Cerrar</button></div>`, 620);
+  r.querySelector('#cxv-x').onclick = cerrarModal;
+  if (r.querySelector('#cxv-ed')) r.querySelector('#cxv-ed').onclick = () => editarCxp(c);
+  r.querySelectorAll('[data-acc]').forEach(b => b.onclick = () => {
+    const acc = b.dataset.acc;
+    if (acc === 'anular' && !confirm('¿Anular esta cuenta? Ya no saldrá por pagar.')) return;
+    if (!DEMO) return guardando(b, async () => { await rpc('pos_cxp_estado', { p_clave: A.clave, p_id: c.id, p_accion: acc }); cerrarModal(); toast('Listo'); refrescarAdmin(); });
+    c.estado = acc === 'pagada' ? 'pagada' : acc === 'anular' ? 'anulada' : (c.pagado_usd > 0 ? 'abonada' : 'pendiente');
+    guardarDemo(); cerrarModal(); toast('Listo'); pintarAdmProveedores(); });
+}
+function verFijos() {
+  const t = S.tienda.id, fijos = (DX.cxpFijos || []).filter(f => f.tienda_id === t);
+  const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">Gastos fijos de ${esc(S.tienda.nombre)}</h3><p>Se crean solos cada mes como cuenta por pagar con su día de vencimiento.</p></div>
+    <div class="modal-cuerpo">${fijos.length ? `<table class="tabla-simple num"><thead><tr><th>Qué se paga</th><th>Tipo</th><th class="der">Monto aprox.</th><th>Vence el día</th><th></th></tr></thead><tbody>
+      ${fijos.map(f => `<tr class="${f.activo === false ? 'apagado' : ''}"><td>${esc(f.concepto)}${f.activo === false ? ' <span class="ayuda">(apagado)</span>' : ''}</td><td>${esc(tipoBal(f.tipo_gasto_id)?.nombre || '')}</td>
+        <td class="der">${usd(f.monto_usd)}</td><td>${f.dia_vence}</td><td><button class="link" data-fe="${f.id}">Editar</button></td></tr>`).join('')}</tbody></table>` : '<p class="vacio">Todavía no hay gastos fijos.</p>'}</div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="fj-x">Cerrar</button><span class="espacio"></span><button type="button" class="btn btn-primario" id="fj-nuevo">+ Gasto fijo</button></div>`, 680);
+  r.querySelector('#fj-x').onclick = cerrarModal;
+  r.querySelector('#fj-nuevo').onclick = () => editarFijo(null);
+  r.querySelectorAll('[data-fe]').forEach(b => b.onclick = () => editarFijo(fijos.find(f => f.id === Number(b.dataset.fe))));
+}
+function editarFijo(f) {
+  const r = abrirModal(`<form id="f-fj"><div class="modal-cab"><h3 class="titulo">${f ? 'Editar gasto fijo' : 'Nuevo gasto fijo'}</h3><p>${esc(S.tienda.nombre)}</p></div><div class="modal-cuerpo">
+    <div id="fj-error" class="mensaje-error oculto"></div>
+    <label class="campo"><span>Tipo de gasto (como está en el balance) *</span><select id="fj-tipo" class="sel"><option value="">Elige…</option>${opcionesTipos(f?.tipo_gasto_id)}</select></label>
+    <div class="dos-campos"><label class="campo"><span>Qué se paga *</span><input id="fj-conc" class="txt" value="${esc(f?.concepto || '')}" placeholder="Ej. Alquiler del local"></label>
+      <label class="campo"><span>A quién</span><input id="fj-ben" class="txt" value="${esc(f?.beneficiario || '')}"></label></div>
+    <div class="dos-campos"><label class="campo"><span>Monto aproximado en dólares *</span><input id="fj-monto" class="txt num" inputmode="decimal" value="${f ? fmt.format(f.monto_usd) : ''}"></label>
+      <label class="campo"><span>Vence cada mes el día *</span><input id="fj-dia" class="txt num" inputmode="numeric" value="${f?.dia_vence || ''}" placeholder="1 al 28"></label></div>
+    ${f ? `<label class="interruptor"><input type="checkbox" id="fj-activo" ${f.activo !== false ? 'checked' : ''}><span>Se sigue pagando (si lo apagas, deja de crearse cada mes)</span></label>` : ''}
+    <p class="ayuda">Si el monto cambia un mes (por ejemplo la nómina), no pasa nada: la cuenta se marca pagada con lo que cargue la contadora.</p></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="fj-x2">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 600);
+  r.querySelector('#fj-x2').onclick = verFijos;
+  r.querySelector('#f-fj').onsubmit = e => { e.preventDefault();
+    const err = m => { r.querySelector('#fj-error').textContent = m; r.querySelector('#fj-error').classList.remove('oculto'); };
+    const p = { id: f?.id || null, tipo_gasto_id: r.querySelector('#fj-tipo').value, concepto: limpiar(r.querySelector('#fj-conc').value), beneficiario: limpiar(r.querySelector('#fj-ben').value),
+      monto_usd: r2(leerNum(r.querySelector('#fj-monto').value)), dia_vence: parseInt(soloDigitos(r.querySelector('#fj-dia').value), 10), activo: f ? r.querySelector('#fj-activo').checked : true };
+    if (!p.tipo_gasto_id) return err('Elige el tipo de gasto'); if (p.concepto.length < 2) return err('Escribe qué se paga');
+    if (!(p.monto_usd > 0)) return err('Escribe el monto aproximado'); if (!(p.dia_vence >= 1 && p.dia_vence <= 28)) return err('El día de vencimiento va del 1 al 28');
+    if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => { await rpc('pos_cxp_fijo_guardar', { p_clave: A.clave, p_tienda: S.tienda.id, p });
+      cerrarModal(); toast('Gasto fijo guardado'); refrescarAdmin(); }, err);
+    DX.cxpFijos = DX.cxpFijos || [];
+    if (f) { Object.assign(f, p);
+      DX.cxp.filter(c => c.fijo_id === f.id && c.estado === 'pendiente').forEach(c => { if (!p.activo) c.estado = 'anulada';
+        else Object.assign(c, { monto_usd: p.monto_usd, concepto: p.concepto, beneficiario: p.beneficiario, tipo_gasto_id: p.tipo_gasto_id, vence: c.periodo + '-' + String(p.dia_vence).padStart(2, '0') }); }); }
+    else DX.cxpFijos.push({ ...p, id: nid(), tienda_id: S.tienda.id });
+    guardarDemo(); cerrarModal(); toast('Gasto fijo guardado'); pintarAdmProveedores(); };
+}
+
+// ---- Plan de pagos: lo que hay que pagar en la semana, 15 días o hasta una fecha (lo vencido primero) ----
+function rangoPlan(r) {
+  const hoy = hoyVE(), dow = (new Date(hoy + 'T12:00:00Z').getUTCDay() + 6) % 7;   // lunes = 0
+  if (r === 'semana') return [hoy, sumarDias(hoy, 6 - dow)];
+  if (r === 'semana_prox') return [sumarDias(hoy, 7 - dow), sumarDias(hoy, 13 - dow)];
+  if (r === '7') return [hoy, sumarDias(hoy, 7)];
+  if (r === '15') return [hoy, sumarDias(hoy, 15)];
+  if (r === 'mes') return [hoy, sumarDias(sumarDias(hoy.slice(0, 8) + '28', 5).slice(0, 8) + '01', -1)];
+  return [hoy, PROV.hasta || sumarDias(hoy, 30)];
+}
+function planDemo(hasta) {
+  cxpGenerarDemo();
+  const tienda = id => DEMO_DATA.tiendas.find(x => x.id === id)?.nombre || '';
+  const verTodas = S.perfil.rol === 'dueno';
+  const f = DX.facturas.filter(x => (verTodas || x.tienda_id === S.tienda.id) && x.vence <= hasta && saldoFactura(x) > 0.009).map(x => {
+    const p = DX.proveedores.find(z => z.id === x.proveedor_id);
+    return { tipo: 'factura', id: x.id, tienda_id: x.tienda_id, tienda: tienda(x.tienda_id), vence: x.vence, concepto: 'Factura ' + x.numero, beneficiario: p?.nombre || '', rif: p?.rif || '',
+      clase: 'Proveedores (mercancía)', seccion: 'costo_ventas', monto: x.monto_usd, saldo: saldoFactura(x) }; });
+  const g = (DX.cxp || []).filter(c => (verTodas || c.tienda_id === S.tienda.id) && (c.estado === 'pendiente' || c.estado === 'abonada') && c.vence <= hasta).map(c => {
+    const tb = tipoBal(c.tipo_gasto_id);
+    return { tipo: 'gasto', id: c.id, tienda_id: c.tienda_id, tienda: tienda(c.tienda_id), vence: c.vence, concepto: c.concepto, beneficiario: c.beneficiario || '',
+      clase: tb?.nombre || '', seccion: tb?.seccion || 'sin_clasificar', monto: c.monto_usd, saldo: saldoCxp(c) }; });
+  return [...f, ...g].sort((a, b) => a.vence.localeCompare(b.vence) || a.tienda.localeCompare(b.tienda));
+}
+const prioridadPago = (x, hoy) => x.vence < hoy ? ['Urgente: vencido', 'mal', 0] : x.vence <= sumarDias(hoy, 3) ? ['Alta', 'abierta', 1] : ['Normal', '', 2];
+function datosPlan() {
+  const [desde, hasta] = rangoPlan(PROV.rango), hoy = hoyVE();
+  let filas = DEMO ? planDemo(hasta) : (REAL.plan || []);
+  if (PROV.planTienda) filas = filas.filter(x => x.tienda_id === PROV.planTienda);
+  if (PROV.rango === 'semana_prox') filas = filas.filter(x => x.vence >= desde || x.vence < hoy);
+  return { desde, hasta, hoy, filas };
+}
+function textoPlan(d) {
+  const tot = r2(d.filas.reduce((a, x) => a + x.saldo, 0));
+  const grupos = [['VENCIDO (pagar ya)', d.filas.filter(x => x.vence < d.hoy)], ...[...new Set(d.filas.filter(x => x.vence >= d.hoy).map(x => x.vence))].map(v => [fechaLarga(v), d.filas.filter(x => x.vence === v)])];
+  return `*Plan de pagos ${NEGOCIO_NOMBRE}*\nDel ${fechaLarga(d.desde)} al ${fechaLarga(d.hasta)}\n\n` + grupos.filter(g => g[1].length).map(([t, xs]) =>
+    `*${t}*\n` + xs.map(x => `• ${x.tienda} · ${x.concepto}${x.beneficiario ? ' · ' + x.beneficiario : ''}: ${usd(x.saldo)}`).join('\n')).join('\n\n') + `\n\n*TOTAL: ${usd(tot)}*`;
+}
+function htmlPlanImprimir(d) {
+  const tot = r2(d.filas.reduce((a, x) => a + x.saldo, 0)), tiendas = [...new Set(d.filas.map(x => x.tienda))];
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Plan de pagos ${fechaLarga(d.desde)} al ${fechaLarga(d.hasta)}</title><style>
+    @page{size:letter portrait;margin:12mm} body{font:12px Arial,sans-serif;color:#222} h1{font-size:18px;margin:0} p{margin:2px 0 10px;color:#555}
+    table{width:100%;border-collapse:collapse;margin-top:8px} th,td{border-bottom:1px solid #ddd;padding:5px 6px;text-align:left} th{background:#f3eee8;font-size:11px}
+    .der{text-align:right} .urg{color:#b3261e;font-weight:bold} tfoot td{font-weight:bold;border-top:2px solid #222} .res{display:flex;gap:24px;margin-top:12px}</style></head><body>
+    <h1>Plan de pagos · ${esc(NEGOCIO_NOMBRE)}</h1><p>Del ${fechaLarga(d.desde)} al ${fechaLarga(d.hasta)} · hecho el ${fechaLarga(d.hoy)} · lo vencido va primero</p>
+    <table><thead><tr><th>Prioridad</th><th>Vence</th><th>Tienda</th><th>Qué se paga</th><th>A quién</th><th>Tipo</th><th class="der">Por pagar</th></tr></thead><tbody>
+    ${d.filas.map(x => { const [pr] = prioridadPago(x, d.hoy); return `<tr><td class="${x.vence < d.hoy ? 'urg' : ''}">${pr}</td><td>${fechaLarga(x.vence)}</td><td>${esc(x.tienda)}</td><td>${esc(x.concepto)}</td>
+      <td>${esc(x.beneficiario || '')}${x.rif ? ' (' + esc(x.rif) + ')' : ''}</td><td>${esc(x.clase)}</td><td class="der">${usd(x.saldo)}</td></tr>`; }).join('')}</tbody>
+    <tfoot><tr><td colspan="6">Total</td><td class="der">${usd(tot)}</td></tr></tfoot></table>
+    <div class="res">${tiendas.map(tn => `<div><b>${esc(tn)}</b>: ${usd(r2(d.filas.filter(x => x.tienda === tn).reduce((a, x) => a + x.saldo, 0)))}</div>`).join('')}</div>
+    <script>window.onload=()=>window.print()<\/script></body></html>`;
+}
+function pintarPlanPagos(cont) {
+  const d = datosPlan(), dueno = S.perfil.rol === 'dueno';
+  const tot = arr => r2(arr.reduce((a, x) => a + x.saldo, 0));
+  const venc = d.filas.filter(x => x.vence < d.hoy), alta = d.filas.filter(x => prioridadPago(x, d.hoy)[2] === 1);
+  const porDia = [...new Set(d.filas.map(x => x.vence < d.hoy ? 'vencido' : x.vence))];
+  const tiendasLista = dueno ? DEMO ? DEMO_DATA.tiendas : (S.tiendas || []) : [];
+  cont.innerHTML = `<div class="adm-barra"><label class="campo" style="margin:0"><span>Período</span><select id="pl-rango" class="sel corto">
+      ${[['semana', 'Esta semana (hasta el domingo)'], ['semana_prox', 'La semana que viene'], ['7', 'Próximos 7 días'], ['15', 'Próximos 15 días'], ['mes', 'Lo que queda del mes'], ['otro', 'Hasta una fecha']]
+        .map(([k, n]) => `<option value="${k}" ${PROV.rango === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      ${PROV.rango === 'otro' ? `<label class="campo" style="margin:0"><span>Hasta</span><input id="pl-hasta" type="date" class="txt" value="${d.hasta}"></label>` : ''}
+      ${dueno ? `<label class="campo" style="margin:0"><span>Tienda</span><select id="pl-tienda" class="sel corto"><option value="">Todas</option>${tiendasLista.map(t => `<option value="${t.id}" ${PROV.planTienda === t.id ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></label>` : ''}
+      <span class="espacio"></span><button class="btn btn-sec" id="pl-wa">Copiar para WhatsApp</button><button class="btn btn-sec" id="pl-xls">Copiar para Excel</button><button class="btn btn-primario" id="pl-imp">Imprimir o guardar PDF</button></div>
+    <div class="kpis"><div class="kpi"><span>Total a pagar</span><b class="num">${usd(tot(d.filas))}</b><i>del ${fechaCorta(d.desde)} al ${fechaCorta(d.hasta)}</i></div>
+      <div class="kpi"><span>Urgente (vencido)</span><b class="num ${venc.length ? 'rojo' : ''}">${usd(tot(venc))}</b><i>${venc.length} pagos</i></div>
+      <div class="kpi"><span>Prioridad alta</span><b class="num">${usd(tot(alta))}</b><i>vence en 3 días o menos</i></div>
+      <div class="kpi"><span>Proveedores / Gastos</span><b class="num">${usd(tot(d.filas.filter(x => x.tipo === 'factura')))}</b><i>${usd(tot(d.filas.filter(x => x.tipo === 'gasto')))} en gastos</i></div></div>
+    <p class="ayuda">Incluye las facturas de proveedores con saldo y los gastos por pagar${dueno && !PROV.planTienda ? ' de todas las tiendas' : ''}. Lo vencido sale primero. Mándaselo a la contadora por WhatsApp o en PDF.</p>
+    ${porDia.map(k => { const xs = d.filas.filter(x => k === 'vencido' ? x.vence < d.hoy : x.vence === k);
+      return `<section class="graf plan-dia ${k === 'vencido' ? 'urgente' : ''}"><h4>${k === 'vencido' ? '⚠️ Vencido: pagar ya' : 'Vence el ' + fechaLarga(k) + (k === d.hoy ? ' (hoy)' : '')} <span class="ayuda">· ${usd(tot(xs))}</span></h4>
+      <table class="tabla-simple num"><thead><tr><th>Prioridad</th>${k === 'vencido' ? '<th>Venció</th>' : ''}<th>Tienda</th><th>Qué se paga</th><th>A quién</th><th>Tipo</th><th class="der">Por pagar</th></tr></thead><tbody>
+      ${xs.map(x => { const [pr, cl] = prioridadPago(x, d.hoy); return `<tr><td><span class="badge ${cl}">${pr}</span></td>${k === 'vencido' ? `<td>${fechaCorta(x.vence)}</td>` : ''}<td>${esc(x.tienda)}</td><td>${esc(x.concepto)}</td>
+        <td>${esc(x.beneficiario || '')}</td><td>${esc(x.clase)}</td><td class="der">${usd(x.saldo)}</td></tr>`; }).join('')}</tbody></table></section>`; }).join('')
+      || '<p class="vacio">No hay nada por pagar en este período. 🎉</p>'}`;
+  $('pl-rango').onchange = e => { PROV.rango = e.target.value; DEMO ? pintarAdmProveedores() : refrescarAdmin(); };
+  if ($('pl-hasta')) $('pl-hasta').onchange = e => { PROV.hasta = e.target.value; DEMO ? pintarAdmProveedores() : refrescarAdmin(); };
+  if ($('pl-tienda')) $('pl-tienda').onchange = e => { PROV.planTienda = Number(e.target.value) || null; pintarAdmProveedores(); };
+  $('pl-wa').onclick = () => copiarTexto(textoPlan(d));
+  $('pl-xls').onclick = () => copiarTexto(['Prioridad\tVence\tTienda\tQué se paga\tA quién\tTipo\tPor pagar',
+    ...d.filas.map(x => [prioridadPago(x, d.hoy)[0], fechaLarga(x.vence), x.tienda, x.concepto, x.beneficiario || '', x.clase, fmt.format(x.saldo)].join('\t'))].join('\n'));
+  $('pl-imp').onclick = () => { const w = window.open('', '_blank'); if (!w) return toast('Permite las ventanas emergentes para imprimir', true); w.document.write(htmlPlanImprimir(d)); w.document.close(); };
+}
+
+const PROV = { filtro: 'porpagar', vista: 'facturas', filtroG: 'abiertas', rango: 'semana', hasta: null, planTienda: null };
 function pintarAdmProveedores() {
-  const cont = $('adm-contenido'), hoy = hoyVE(), t = S.tienda.id;
+  const raiz = $('adm-contenido');
+  raiz.innerHTML = `<nav class="sub-tabs prov-vistas">${[['facturas', 'Facturas de proveedores'], ['gastos', 'Gastos por pagar'], ['plan', '📅 Plan de pagos']]
+    .map(([k, n]) => `<button class="sub-tab ${PROV.vista === k ? 'activa' : ''}" data-pv="${k}">${n}</button>`).join('')}</nav><div id="prov-cont"></div>`;
+  raiz.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => { PROV.vista = b.dataset.pv; DEMO ? pintarAdmProveedores() : refrescarAdmin(); });
+  if (PROV.vista === 'gastos') return pintarGastosPorPagar($('prov-cont'));
+  if (PROV.vista === 'plan') return pintarPlanPagos($('prov-cont'));
+  pintarFacturasProv();
+}
+function pintarFacturasProv() {
+  const cont = $('prov-cont'), hoy = hoyVE(), t = S.tienda.id;
   const todas = DX.facturas.filter(f => f.tienda_id === t).sort((a, b) => (saldoFactura(b) > 0.009) - (saldoFactura(a) > 0.009) || a.vence.localeCompare(b.vence) || b.emitida.localeCompare(a.emitida));
   const pend = todas.filter(f => saldoFactura(f) > 0.009), venc = pend.filter(f => f.vence < hoy), pronto = pend.filter(f => f.vence >= hoy && f.vence <= sumarDias(hoy, 7));
   const pagadoMes = r2(todas.flatMap(f => f.abonos || []).filter(a => a.fecha.slice(0, 7) === hoy.slice(0, 7)).reduce((a, x) => a + x.monto_usd, 0));
