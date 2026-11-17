@@ -430,6 +430,7 @@
       <label class="campo"><span>Contraseña</span><input type="password" id="login-clave" autocomplete="current-password" required></label>
     </div>
     <div id="paso-codigo" class="oculto">
+      <p class="ayuda" style="margin:0 0 8px">Es la primera vez que entras como dueño en este equipo. Escribe el código de 6 números de tu app autenticadora: queda registrado y aquí no te lo vuelve a pedir.</p>
       <label class="campo"><span>Código de la app autenticadora</span><input type="text" id="login-codigo" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
     </div>
     <button class="btn btn-primario btn-ancho" id="btn-login" type="submit">Entrar</button>
@@ -519,6 +520,7 @@
           <button class="adm-tab" data-tab="reportes" data-rol="dueno encargada" data-mod="1">Reportes</button>
           <button class="adm-tab" data-tab="usuarios" data-rol="dueno" data-mod="1">Usuarios</button>
           <button class="adm-tab" data-tab="clave" id="adm-tab-clave" data-rol="dueno">Clave</button>
+          <button class="adm-tab" data-tab="dispositivos" data-rol="dueno" data-mod="1">Dispositivos</button>
         </nav>
       </div>
       <span class="espacio"></span>
@@ -549,6 +551,18 @@ const fmt = new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFr
 const usd = n => (r2(n) < 0 ? '−$' : '$') + fmt.format(Math.abs(r2(n)));
 const ves = n => (r2(n) < 0 ? '−Bs. ' : 'Bs. ') + fmt.format(Math.abs(r2(n)));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+function llaveDispositivo() {
+  let k = null; try { k = localStorage.getItem('pos_disp'); } catch (e) {}
+  if (!k || k.length < 32) { const a = new Uint8Array(32); crypto.getRandomValues(a); k = [...a].map(b => b.toString(16).padStart(2, '0')).join('');
+    try { localStorage.setItem('pos_disp', k); } catch (e) {} }
+  return k;
+}
+function nombreDispositivo(ua = navigator.userAgent) {
+  const so = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? (/Mobile/.test(ua) ? 'Celular Android' : 'Tablet Android')
+    : /Windows/.test(ua) ? 'Computadora Windows' : /Mac OS X|Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Computadora Linux' : 'Dispositivo';
+  const nav = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
+  return so + (nav ? ' · ' + nav : '');
+}
 const leerNum = s => { // acepta "1.234,56", "1234,56", "1.000" (mil) o "1234.56"
   s = String(s ?? '').trim().replace(/\s/g, ''); if (!s) return NaN;
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
@@ -608,16 +622,28 @@ const api = {
     const { error } = await sb.auth.signInWithPassword({ email, password: clave });
     if (error) throw new Error('Usuario o contraseña incorrectos');
   },
+  // 16/11/2026: el dueño da el código de su app autenticadora UNA SOLA VEZ por dispositivo (etapa 8).
+  // Este equipo se recuerda con una llave guardada aquí; el servidor solo guarda su huella.
   async necesitaCodigo() {
-    // 16/11/2026: el dueño pidió que nunca se pida el código de la app autenticadora
-    return false;
+    if (DEMO) return false;
+    const { data, error } = await sb.rpc('pos_dispositivo_revisar', { p_token: llaveDispositivo(), p_navegador: navigator.userAgent.slice(0, 300) });
+    if (error) return false;
+    if (data.registrar) await this.registrarDispositivo();
+    return !!data.requiere;
+  },
+  async registrarDispositivo() {
+    const { error } = await sb.rpc('pos_dispositivo_registrar', { p_token: llaveDispositivo(), p_nombre: nombreDispositivo(), p_navegador: navigator.userAgent.slice(0, 300) });
+    if (error) throw new Error('No se pudo registrar este dispositivo: ' + error.message);
   },
   async verificarCodigo(codigo) {
+    if (!/^\d{6}$/.test(codigo)) throw new Error('Escribe los 6 números de la app autenticadora');
     const { data: f } = await sb.auth.mfa.listFactors();
     const totp = (f?.totp || []).find(x => x.status === 'verified');
     if (!totp) throw new Error('Tu cuenta no tiene autenticador configurado');
     const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: totp.id, code: codigo });
-    if (error) throw new Error('Código incorrecto o vencido');
+    if (error) throw new Error('Código incorrecto o vencido. Escribe el que sale ahora en la app.');
+    await sb.auth.refreshSession();
+    await this.registrarDispositivo();
   },
   async salir() { if (!DEMO) await sb.auth.signOut(); },
   async perfil() {
@@ -1939,7 +1965,7 @@ function pintarAdmin() {
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('activa', b.dataset.tab === A.tab));
   const vistas = { panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
     cierres: pintarAdmCierres, gastos: pintarAdmGastos, proveedores: pintarAdmProveedores, clientes: pintarAdmClientes,
-    reportes: pintarAdmReportes, usuarios: pintarAdmUsuarios, clave: pintarAdmClave };
+    reportes: pintarAdmReportes, usuarios: pintarAdmUsuarios, clave: pintarAdmClave, dispositivos: pintarAdmDispositivos };
   const f = vistas[A.tab] || pintarAdmProductos;
   if (DEMO || !CARGA[A.tab]) return f();
   const cont = $('adm-contenido'), tab = A.tab;
@@ -2221,6 +2247,32 @@ async function detallePagosCierre(r, boton) {
   pintar();
 }
 
+// Registro de dispositivos del dueño: dónde se ha dado el código de la app autenticadora (solo lo ve el dueño)
+function pintarAdmDispositivos() {
+  const cont = $('adm-contenido');
+  if (DEMO && !DX.dispositivos) DX.dispositivos = [{ id: 1, nombre: nombreDispositivo(), navegador: navigator.userAgent, creado_en: new Date().toISOString(), ultimo_uso: new Date().toISOString(), usos: 1, este: true }];
+  const ds = DX.dispositivos || [];
+  const f = x => new Date(x).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'medium', timeStyle: 'short' });
+  cont.innerHTML = `<div class="adm-barra"><p>Equipos y celulares donde entraste como dueño con el código de tu app autenticadora. En ellos <b>ya no se pide el código</b>; en uno nuevo se pide una sola vez.
+      Si ves uno que no reconoces, o perdiste un celular, tócale <b>Quitar</b>: la próxima vez que alguien entre desde ahí le pedirá el código. Solo tú ves esta lista.</p></div>
+    <table class="tabla-simple"><thead><tr><th>Dispositivo</th><th>Registrado</th><th>Última vez</th><th class="der">Veces</th><th></th></tr></thead><tbody>
+    ${ds.map(d => `<tr><td><b>${esc(d.nombre || 'Dispositivo')}</b>${d.este ? ' <span class="badge ok">Este equipo</span>' : ''}<br><span class="ayuda">${esc((d.navegador || '').slice(0, 90))}</span></td>
+      <td class="num">${f(d.creado_en)}</td><td class="num">${f(d.ultimo_uso)}</td><td class="der num">${d.usos}</td>
+      <td class="acciones"><button class="link" data-dn="${d.id}">Cambiar nombre</button> <button class="link" data-dq="${d.id}">Quitar</button></td></tr>`).join('')
+      || '<tr><td colspan="5" class="vacio">Todavía no hay dispositivos registrados.</td></tr>'}</tbody></table>`;
+  cont.querySelectorAll('[data-dn]').forEach(b => b.onclick = async () => {
+    const d = ds.find(x => x.id === Number(b.dataset.dn)), n = prompt('Nombre para este dispositivo (ej. "Mi celular", "Laptop casa"):', d.nombre || '');
+    if (!n || !n.trim()) return;
+    if (DEMO) { d.nombre = n.trim(); return pintarAdmDispositivos(); }
+    const { error } = await sb.rpc('pos_dispositivo_renombrar', { p_id: d.id, p_nombre: n.trim() }); if (error) return toast(error.message, true);
+    refrescarAdmin(); });
+  cont.querySelectorAll('[data-dq]').forEach(b => b.onclick = async () => {
+    const d = ds.find(x => x.id === Number(b.dataset.dq));
+    if (!confirm(`¿Quitar "${d.nombre || 'este dispositivo'}"? Desde ahí se volverá a pedir el código de la app autenticadora.${d.este ? ' (Es el equipo que estás usando: tendrás que poner el código otra vez.)' : ''}`)) return;
+    if (DEMO) { DX.dispositivos = ds.filter(x => x !== d); return pintarAdmDispositivos(); }
+    const { error } = await sb.rpc('pos_dispositivo_quitar', { p_id: d.id }); if (error) return toast(error.message, true);
+    toast('Dispositivo quitado'); if (d.este) { await api.salir(); location.reload(); } else refrescarAdmin(); });
+}
 function pintarAdmClave() {
   const cont = $('adm-contenido');
   cont.innerHTML = `<form class="adm-clave" id="f-cambiar">
@@ -2324,6 +2376,7 @@ const CARGA = {
     REP.desde = REP.desde || hoyVE().slice(0, 8) + '01'; REP.hasta = REP.hasta || hoyVE();
     await cargarVentasReal(REP.desde, REP.hasta); if (S.perfil.rol === 'dueno' || S.perfil.rol === 'encargada') await cargarInventarioReal(); },
   usuarios: () => cargarUsuariosReal(),
+  dispositivos: async () => { const { data, error } = await sb.rpc('pos_dispositivos_lista'); if (error) throw new Error(error.message); DX.dispositivos = data; },
 };
 // Después de guardar algo: recargar los datos de la pestaña y volver a pintar
 async function refrescarAdmin() { REAL.ventasRango = null; pintarAdmin(); pintarChipStock(); }
