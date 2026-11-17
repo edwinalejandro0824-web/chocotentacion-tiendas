@@ -1744,6 +1744,10 @@ const apiAdmin = {
     const { data, error } = await sb.rpc('pos_admin_cierres', { p_clave: A.clave, p_tienda: tiendaId, p_limite: 60 });
     if (error) throw new Error(error.message); return data;
   },
+  async pagosTurno(turnoId) {
+    const { data, error } = await sb.rpc('pos_admin_pagos_turno', { p_clave: A.clave, p_turno: turnoId });
+    if (error) throw new Error(error.message); return data;
+  },
   async quitarCategoria(id) {
     if (DEMO) {
       if (DEMO_DATA.productos.some(p => p.categoria_id === id)) throw new Error('La categoría tiene productos. Pásalos a otra categoría antes de quitarla.');
@@ -2153,14 +2157,53 @@ async function pintarAdmCierres() {
       $('modal-raiz').innerHTML = `<div class="fondo"><div class="modal" style="width:min(940px,100%)">
         <div class="modal-cab"><h3 class="titulo">Caja #${esc(c.numero)} · ${esc(c.cajero || '')}</h3>
           <p class="num">${esc(r.ventas)} ventas · ${usd(r.total_usd)} · ${ves(r.total_ves)} · ${esc(r.clientes)} clientes</p></div>
-        <div class="modal-cuerpo">${htmlArqueo(r)}</div>
-        <div class="modal-pie">${c.estado === 'cerrado' ? '<button class="btn btn-sec" id="aq-imp">Imprimir arqueo</button>' : ''}<span class="espacio"></span>
+        <div class="modal-cuerpo">${htmlArqueo(r)}<div id="aq-detalle"></div></div>
+        <div class="modal-pie">${c.estado === 'cerrado' ? '<button class="btn btn-sec" id="aq-imp">Imprimir arqueo</button>' : ''}${!DEMO && r.turno && r.turno.id ? '<button class="btn btn-sec" id="aq-pagos">Revisar pagos (por qué no cuadró)</button>' : ''}<span class="espacio"></span>
           <button class="btn btn-primario" id="aq-ok">Cerrar</button></div></div></div>`;
       if ($('aq-imp')) $('aq-imp').onclick = () => window.print();
+      if ($('aq-pagos')) $('aq-pagos').onclick = () => detallePagosCierre(r, $('aq-pagos'));
       $('aq-ok').onclick = () => $('modal-raiz').innerHTML = '';
     };
     $('lista-cierres').appendChild(div);
   }
+}
+
+// Detalle de pagos de una caja: para comparar línea por línea contra el reporte del punto o del banco
+async function detallePagosCierre(r, boton) {
+  const cont = $('aq-detalle'); boton.disabled = true;
+  cont.innerHTML = '<div class="vacio">Cargando pagos…</div>';
+  let d;
+  try { d = await apiAdmin.pagosTurno(r.turno.id); }
+  catch (e) { boton.disabled = false; cont.innerHTML = `<div class="mensaje-error">${esc(e.message)}</div>`; return; }
+  boton.disabled = false;
+  const metodos = (r.metodos || []).filter(m => d.pagos.some(p => p.forma_pago_id === m.forma_pago_id) || (m.diferencia != null && Math.abs(m.diferencia) >= 0.01));
+  const conDif = metodos.filter(m => m.diferencia != null && Math.abs(m.diferencia) >= 0.01);
+  let sel = (conDif[0] || metodos[0] || {}).forma_pago_id;
+  const pintar = () => {
+    const m = metodos.find(x => x.forma_pago_id === sel); if (!m) { cont.innerHTML = '<div class="vacio">No hay pagos en esta caja.</div>'; return; }
+    const ps = d.pagos.filter(p => p.forma_pago_id === sel), dif = m.diferencia, total = ps.reduce((a, p) => a + Number(p.monto), 0);
+    const vs = d.vueltos.filter(v => v.forma_pago_id === sel), tv = vs.reduce((a, v) => a + Number(v.monto), 0);
+    const igual = p => dif != null && Math.abs(Math.abs(dif) - Number(p.monto)) < 0.01;
+    const repetidos = new Map(); ps.forEach(p => { if (p.referencia && String(p.referencia).length >= 6) repetidos.set(p.referencia, (repetidos.get(p.referencia) || 0) + 1); });
+    const pistas = [];
+    if (dif != null && Math.abs(dif) >= 0.01) {
+      const ex = ps.filter(igual); if (ex.length) pistas.push(`Hay ${ex.length} pago(s) de exactamente ${fmtMon(m.moneda, Math.abs(dif))} (marcados abajo): ${dif < 0 ? 'puede ser uno que se cobró por otro medio o que no llegó' : 'puede ser uno cobrado de más'}.`);
+    }
+    const dup = [...repetidos].filter(([, n]) => n > 1); if (dup.length) pistas.push('Referencias repetidas: ' + dup.map(([k, n]) => `${esc(k)} (${n} veces)`).join(', ') + '.');
+    const sinRef = !m.es_efectivo ? ps.filter(p => !p.referencia).length : 0; if (sinRef) pistas.push(`${sinRef} pago(s) sin referencia.`);
+    if (d.anuladas.length) pistas.push(`En esta caja hubo ${d.anuladas.length} venta(s) anulada(s) (no suman en el esperado): ${d.anuladas.map(a => 'N° ' + esc(a.numero)).join(', ')}.`);
+    cont.innerHTML = `<hr><h4 style="margin:12px 0 6px">Pagos de la caja, por método</h4>
+      <div class="adm-barra"><select id="aqd-met" class="sel corto">${metodos.map(x => `<option value="${x.forma_pago_id}" ${x.forma_pago_id === sel ? 'selected' : ''}>${esc(x.forma)}${x.diferencia != null && Math.abs(x.diferencia) >= 0.01 ? ' · ' + textoDif(x.moneda, x.diferencia) : ''}</option>`).join('')}</select>
+        <span class="espacio"></span><button class="btn btn-sec" id="aqd-copiar">Copiar para Excel</button></div>
+      <p class="num">${ps.length} pagos · suman <b>${fmtMon(m.moneda, total)}</b>${tv ? ` · vueltos dados: ${fmtMon(m.moneda, tv)}` : ''} · esperado ${fmtMon(m.moneda, m.esperado)}${m.contado != null ? ` · contado ${fmtMon(m.moneda, m.contado)}` : ''}</p>
+      ${pistas.length ? `<div class="mensaje-error" style="background:#fff7df;color:#5a4400">${pistas.map(x => '• ' + x).join('<br>')}</div>` : ''}
+      <div style="max-height:320px;overflow:auto"><table class="tabla-simple num"><thead><tr><th>Hora</th><th>Venta</th><th>Cliente</th><th>Referencia</th><th class="der">Monto</th></tr></thead><tbody>
+      ${ps.map(p => `<tr ${igual(p) ? 'style="background:#fff0c2"' : ''}><td>${esc(horaCorta(p.fecha))}</td><td>N° ${esc(p.numero)}</td><td>${esc(p.cliente || '')}</td><td>${esc(p.referencia || (m.es_efectivo ? '' : '⚠ sin ref.'))}</td><td class="der">${fmtMon(p.moneda, p.monto)}</td></tr>`).join('') || '<tr><td colspan="5" class="vacio">Sin pagos con este método.</td></tr>'}
+      </tbody></table></div>`;
+    $('aqd-met').onchange = e => { sel = Number(e.target.value); pintar(); };
+    $('aqd-copiar').onclick = () => copiarTexto(tsv(['Hora', 'Venta', 'Cliente', 'Referencia', 'Monto'], ps.map(p => [horaCorta(p.fecha), p.numero, p.cliente, p.referencia, numXls(p.monto)])));
+  };
+  pintar();
 }
 
 function pintarAdmClave() {
