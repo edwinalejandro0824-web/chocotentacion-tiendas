@@ -1803,6 +1803,8 @@ function demoGuardarOpcion(o) {
 
 /* --- entrar / salir --- */
 async function abrirAdmin() {
+  // El dueño entra con su propia sesión: no se le pide la clave de administrador
+  if (!DEMO && S.perfil.rol === 'dueno') { A.clave = ''; return entrarAdmin(); }
   let hay;
   try { hay = await apiAdmin.hayClave(); } catch (e) { return toast('No se pudo verificar: ' + e.message, true); }
   const raiz = $('modal-raiz');
@@ -2584,7 +2586,7 @@ function abrirAnular(v) {
       <label class="campo"><span>Motivo *</span><select id="an-motivo" class="sel"><option value="">Elige el motivo…</option>
         <option>Error al marcar el producto</option><option>El cliente se arrepintió</option><option>Producto en mal estado</option><option>Cobro duplicado</option><option>Otro</option></select></label>
       <label class="campo"><span>Detalle</span><input id="an-detalle" class="txt" placeholder="Explica qué pasó (obligatorio si es Otro)"></label>
-      <label class="campo"><span>Clave de administrador *</span><input id="an-clave" class="txt" type="password" autocomplete="off" placeholder="${DEMO ? 'En el demo es 123456' : ''}"></label></div>
+      ${!DEMO && S.perfil.rol === 'dueno' ? '' : `<label class="campo"><span>Clave de administrador *</span><input id="an-clave" class="txt" type="password" autocomplete="off" placeholder="${DEMO ? 'En el demo es 123456' : ''}"></label>`}</div>
     <div class="modal-pie"><button type="button" class="btn btn-sec" id="an-cancelar">Volver</button><span class="espacio"></span><button class="btn btn-peligro">Anular venta</button></div></form>`, 520);
   r.querySelector('#an-cancelar').onclick = abrirVentasTurno;
   r.querySelector('#f-anular').onsubmit = async e => {
@@ -2601,7 +2603,7 @@ function abrirAnular(v) {
       guardarDemo();
     } else {
       const b = r.querySelector('.btn-peligro'); b.disabled = true;
-      try { Object.assign(v, ventaReal(await rpc('pos_anular_venta', { p_clave: r.querySelector('#an-clave').value, p_venta: v.id, p_motivo: motivo, p_detalle: detalle || null }))); }
+      try { Object.assign(v, ventaReal(await rpc('pos_anular_venta', { p_clave: r.querySelector('#an-clave')?.value || '', p_venta: v.id, p_motivo: motivo, p_detalle: detalle || null }))); }
       catch (x) { b.disabled = false; return err(x.message); }
     }
     S.ventasHoy = r2(S.ventasHoy - v.total_usd); pintarMeta(); pintarChipStock();
@@ -3351,7 +3353,6 @@ $('chip-tasa').addEventListener('click', () => {
       <p>Ahora se está usando: <b>${fmt.format(S.tasa.tasa)}</b> (fecha valor ${esc(String(S.tasa.fecha).slice(8, 10) + '/' + String(S.tasa.fecha).slice(5, 7))}, ${S.tasa.fuente === 'manual' ? 'cargada a mano' : 'automática'})</p>
       <div class="dos-campos"><label class="campo"><span>Fecha valor *</span><input id="tm-fecha" type="date" class="txt" value="${sug}"></label>
       <label class="campo"><span>Tasa (Bs. por dólar) *</span><input id="tm-tasa" class="txt num" inputmode="decimal" placeholder="Ej. 920,5000"></label></div>
-      <label class="campo"><span>Clave de administrador *</span><input id="tm-clave" type="password" class="txt" autocomplete="off"></label>
       <p class="ayuda">Para quitar una tasa cargada a mano, deja la tasa vacía y guarda.</p></div>
     <div class="modal-pie"><button type="button" class="btn btn-sec" id="tm-cancelar">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 520);
   r.querySelector('#tm-cancelar').onclick = cerrarModal;
@@ -3361,7 +3362,7 @@ $('chip-tasa').addEventListener('click', () => {
     const v = r.querySelector('#tm-tasa').value.trim(), t = v ? leerNum(v) : null;
     if (v && !(t > 0)) return err('Revisa la tasa');
     const b = r.querySelector('.btn-primario'); b.disabled = true;
-    try { await rpc('pos_admin_guardar_tasa', { p_clave: r.querySelector('#tm-clave').value, p_fecha: r.querySelector('#tm-fecha').value, p_tasa: t }); }
+    try { await rpc('pos_admin_guardar_tasa', { p_clave: '', p_fecha: r.querySelector('#tm-fecha').value, p_tasa: t }); }
     catch (x) { b.disabled = false; return err(x.message); }
     cerrarModal(); toast(t ? 'Tasa guardada' : 'Tasa a mano quitada'); actualizarTasa();
   };
