@@ -1862,11 +1862,28 @@ async function entrarAdmin() {
   $('vista-admin').classList.remove('oculto');
   $('btn-admin').classList.add('oculto');
   $('selector-tienda').disabled = true;
-  $('adm-tienda').textContent = S.tienda.nombre;
+  A.tiendaInicial = S.tienda.id;
+  pintarSelectorTiendaAdmin();
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('oculto',
     !!((b.dataset.mod && !MOD) || (b.dataset.rol && !b.dataset.rol.split(' ').includes(S.perfil.rol)))));
   A.tab = MOD && (S.perfil.rol === 'dueno' || S.perfil.rol === 'encargada') ? 'panel' : 'productos';
   await recargarAdmin();
+}
+
+// Dueño con varias tiendas: puede cambiar de tienda sin salir de Administrar
+function pintarSelectorTiendaAdmin() {
+  const el = $('adm-tienda'), varias = S.perfil.rol === 'dueno' && (S.tiendas || []).length > 1;
+  if (!varias) { el.textContent = S.tienda.nombre; return; }
+  el.innerHTML = `<select id="adm-sel-tienda" class="sel corto" aria-label="Cambiar de tienda">${S.tiendas.map(t =>
+    `<option value="${t.id}" ${t.id === S.tienda.id ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select>`;
+  $('adm-sel-tienda').onchange = async e => {
+    const t = S.tiendas.find(x => x.id === Number(e.target.value));
+    if (!t || t.id === S.tienda.id) return;
+    S.tienda = t; guardar('pos_tienda', String(t.id));
+    PANEL.tienda = t.id; A.d = null; REAL.ventasRango = null;
+    $('nombre-tienda').textContent = t.nombre; $('selector-tienda').value = t.id;
+    await recargarAdmin();   // se queda en la misma pestaña, ahora con los datos de la otra tienda
+  };
 }
 
 async function salirAdmin() {
@@ -1875,6 +1892,8 @@ async function salirAdmin() {
   $('vista-venta').classList.remove('oculto');
   $('btn-admin').classList.remove('oculto');
   $('selector-tienda').disabled = false;
+  // Si cambió de tienda dentro de Administrar, se carga completa (menú, caja, tasa, papel)
+  if (A.tiendaInicial && A.tiendaInicial !== S.tienda.id) { S.carrito = []; await entrarTienda(S.tienda); return; }
   await recargarVenta();
 }
 
