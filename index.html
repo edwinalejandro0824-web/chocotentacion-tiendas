@@ -339,6 +339,10 @@
   .sub-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0 12px}
   .sub-tab{padding:8px 14px;border-radius:999px;border:1.5px solid var(--linea);background:#fff;font-weight:600;font-size:13.5px}
   .sub-tab.activa{background:var(--cacao);color:#fff;border-color:var(--cacao)}
+  .check.mal{background:#FCEBEA;color:var(--error)}
+  .listo .resultado-arqueo{display:none}
+  .cuadre-final{font-size:17px;font-weight:700;margin:8px 0 12px;padding:10px 12px;border-radius:10px}
+  .cuadre-final.ok{background:#E6F3EB;color:var(--ok)} .cuadre-final.con-dif{background:#FCEBEA;color:var(--error)}
   .form-caja{background:var(--papel);border:1.5px solid var(--linea);border-radius:14px;padding:16px;max-width:560px;display:grid;gap:4px}
   .form-caja.ancho{max-width:none}
   .form-caja h4{margin:0 0 8px}
@@ -1454,7 +1458,7 @@ function demoCerrarTurno(tiendaId, billetes, otros, notas) {
   t.resultado = demoResumen(t, contado);
   guardarDemo();
   return { turno: { numero: t.numero, tienda: S.tienda.nombre, cajero: t.cajero, abierto_en: t.abierto_en, cerrado_en: t.cerrado_en, notas },
-           billetes, declarado: S.d.formas.map(f => ({ forma: f.nombre, moneda: f.moneda, es_efectivo: f.es_efectivo, monto: contado[f.id] })) };
+           billetes, declarado: S.d.formas.map(f => ({ forma: f.nombre, moneda: f.moneda, es_efectivo: f.es_efectivo, monto: contado[f.id] })), resultado: t.resultado };
 }
 
 /* --- formulario de billetes (reutilizado en apertura y cierre) --- */
@@ -1619,12 +1623,17 @@ function abrirCierre() {
 function mostrarDeclaracion(res) {
   prepararImpresionDeclaracion(res);
   const raiz = $('modal-raiz');
-  raiz.innerHTML = `<div class="fondo"><div class="modal" style="width:min(480px,100%)">
+  // 16/11/2026 (pedido del dueño): después de guardar el cierre, el cajero ve si cuadró y, si no, el detalle
+  const r = res.resultado, malos = r ? (r.metodos || []).filter(m => m.diferencia != null && Math.abs(m.diferencia) >= 0.01) : [];
+  raiz.innerHTML = `<div class="fondo"><div class="modal" style="width:min(${r ? 900 : 480}px,100%)">
     <div class="modal-cuerpo listo">
-      <div class="check">✓</div>
+      <div class="check ${malos.length ? 'mal' : ''}">${malos.length ? '!' : '✓'}</div>
       <h3 class="titulo">Caja #${esc(res.turno.numero)} cerrada</h3>
-      <p style="color:var(--suave);margin:6px 0 14px">Lo que declaraste quedó registrado. El cuadre lo revisa el administrador.</p>
-      <div class="declarado num">${res.declarado.map(d => `<div><span>${esc(d.forma)}</span><b>${fmtMon(d.moneda, d.monto)}</b></div>`).join('')}</div>
+      ${!r ? `<p style="color:var(--suave);margin:6px 0 14px">Lo que declaraste quedó registrado.</p>
+        <div class="declarado num">${res.declarado.map(d => `<div><span>${esc(d.forma)}</span><b>${fmtMon(d.moneda, d.monto)}</b></div>`).join('')}</div>`
+      : `<p class="cuadre-final ${malos.length ? 'con-dif' : 'ok'}">${malos.length ? `La caja NO cuadró en ${malos.length} forma${malos.length > 1 ? 's' : ''} de pago: ` + malos.map(m => `<b>${esc(m.forma)} ${textoDif(m.moneda, m.diferencia)}</b>`).join(' · ') : '¡La caja cuadró en todas las formas de pago!'}</p>
+        ${malos.length ? '<p style="color:var(--suave);margin:0 0 8px">Este es el detalle. Avísale a tu encargada. El cierre ya quedó guardado y no se puede cambiar.</p>' : ''}
+        <div style="text-align:left">${htmlArqueo(r)}</div>`}
     </div>
     <div class="modal-pie"><button class="btn btn-sec" id="de-imprimir">Imprimir otra vez</button><span class="espacio"></span>
       <button class="btn btn-primario" id="de-listo">Listo</button></div></div></div>`;
@@ -2918,9 +2927,17 @@ function pintarAdmInventario() {
   const optsIns = activos.map(i => `<option value="${i.id}">${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('');
   if (INV.sub === 'existencias') {
     const valor = r2(activos.reduce((a, i) => a + Math.max(stockDe(i, t), 0) * i.costo_usd, 0));
+    const estadoDe = i => { const s = stockDe(i, t); return s <= 0 ? 'agotado' : s <= i.minimo ? 'poragotarse' : 'bien'; };
+    const cuenta = k => activos.filter(i => estadoDe(i) === k).length;
+    const q = (INV.q || '').toLowerCase();
+    const visibles = activos.filter(i => (!INV.estado || estadoDe(i) === INV.estado) && (!q || i.nombre.toLowerCase().includes(q)));
     ic.innerHTML = `<div class="adm-barra"><p>Valor del inventario: <b class="num">${usd(valor)}</b></p><span class="espacio"></span><button class="btn btn-primario" id="in-nuevo">+ Insumo</button></div>
+      <div class="adm-barra"><nav class="sub-tabs">${[['', 'Todos', activos.length], ['bien', '✓ Bien', cuenta('bien')], ['poragotarse', '⚠ Por agotarse', cuenta('poragotarse')], ['agotado', '✕ Agotados', cuenta('agotado')]]
+        .map(([k, n, c]) => `<button class="sub-tab ${(INV.estado || '') === k ? 'activa' : ''}" data-est="${k}">${n} (${c})</button>`).join('')}</nav>
+        <span class="espacio"></span><input id="in-buscar" class="txt" placeholder="Buscar insumo…" value="${esc(INV.q || '')}" style="max-width:240px"></div>
       <table class="tabla-simple num"><thead><tr><th>Insumo</th><th class="der">Hay</th><th class="der">Mínimo</th><th>Estado</th><th class="der">Costo por unidad</th><th class="der">Valor</th><th></th></tr></thead><tbody>
-      ${activos.map(i => { const s = stockDe(i, t), est = s <= 0 ? '<span class="badge mal">Agotado</span>' : s <= i.minimo ? '<span class="badge abierta">Por agotarse</span>' : '<span class="badge ok">Bien</span>';
+      ${visibles.length ? '' : '<tr><td colspan="7" class="vacio">No hay insumos con ese filtro.</td></tr>'}
+      ${visibles.map(i => { const s = stockDe(i, t), est = s <= 0 ? '<span class="badge mal">Agotado</span>' : s <= i.minimo ? '<span class="badge abierta">Por agotarse</span>' : '<span class="badge ok">Bien</span>';
         return `<tr><td>${esc(i.nombre)}</td><td class="der">${fmtCant(s)} ${esc(i.unidad)}</td><td class="der">${fmtCant(i.minimo)} ${esc(i.unidad)}</td><td>${est}</td>
           <td class="der">$${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(i.costo_usd)} / ${esc(i.unidad)}</td><td class="der">${usd(Math.max(s, 0) * i.costo_usd)}</td>
           <td><button class="link" data-e="${i.id}">Editar</button></td></tr>`; }).join('')}</tbody></table>`;
@@ -2947,6 +2964,8 @@ function pintarAdmInventario() {
         guardarDemo(); cerrarModal(); toast('Insumo guardado'); pintarAdmInventario(); pintarChipStock(); };
     };
     $('in-nuevo').onclick = () => editar(null);
+    ic.querySelectorAll('[data-est]').forEach(b => b.onclick = () => { INV.estado = b.dataset.est || null; pintarAdmInventario(); });
+    $('in-buscar').oninput = e => { INV.q = e.target.value; const pos = e.target.selectionStart; pintarAdmInventario(); const b = $('in-buscar'); b.focus(); b.setSelectionRange(pos, pos); };
     ic.querySelectorAll('[data-e]').forEach(b => b.onclick = () => editar(DX.insumos.find(i => i.id === Number(b.dataset.e))));
   } else if (INV.sub === 'recibir') {
     const ped = INV.pedido && INV.pedido.tienda_id === t ? INV.pedido : null;
