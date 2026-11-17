@@ -2229,7 +2229,8 @@ async function cargarUsuariosReal() {
   DX.usuarios = (await rpc('pos_admin_usuarios', { p_clave: A.clave })).map(u => ({ ...u, apellido: u.apellido || '' }));
 }
 async function cargarClientesReal() {
-  REAL.clientes = (await rpc('pos_admin_clientes', { p_clave: A.clave })).map(c => ({ ...c, total: num(c.total), compras: num(c.compras),
+  // Solo clientes con al menos una compra pagada (los que no tienen fecha de última visita dañaban la pestaña)
+  REAL.clientes = (await rpc('pos_admin_clientes', { p_clave: A.clave })).filter(c => c.ultima).map(c => ({ ...c, total: num(c.total), compras: num(c.compras),
     primera: c.ultima, tiendas: new Set() }));
 }
 // Qué hay que cargar antes de pintar cada pestaña (solo versión real)
