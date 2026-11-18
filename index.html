@@ -642,9 +642,17 @@ const api = {
   },
   async verificarCodigo(codigo) {
     if (!/^\d{6}$/.test(codigo)) throw new Error('Escribe los 6 números de la app autenticadora');
-    const { data: f } = await sb.auth.mfa.listFactors();
-    const totp = (f?.totp || []).find(x => x.status === 'verified');
-    if (!totp) throw new Error('Tu cuenta no tiene autenticador configurado');
+    // Se le pregunta al servidor (getUser) y no a la copia guardada en el navegador, que a veces viene sin los factores
+    let totp = null;
+    try {
+      const { data: u } = await sb.auth.getUser();
+      totp = (u?.user?.factors || []).find(x => x.factor_type === 'totp' && x.status === 'verified') || null;
+    } catch (e) { /* se prueba el otro camino */ }
+    if (!totp) {
+      const { data: f } = await sb.auth.mfa.listFactors();
+      totp = (f?.totp || []).find(x => x.status === 'verified') || null;
+    }
+    if (!totp) throw new Error('No se pudo leer tu autenticador. Sal, vuelve a entrar y prueba otra vez. Si sigue igual, avisa a soporte.');
     const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: totp.id, code: codigo });
     if (error) throw new Error('Código incorrecto o vencido. Escribe el que sale ahora en la app.');
     await sb.auth.refreshSession();
