@@ -1858,8 +1858,8 @@ function demoGuardarOpcion(o) {
 
 /* --- entrar / salir --- */
 async function abrirAdmin() {
-  // El dueño entra con su propia sesión: no se le pide la clave de administrador
-  if (!DEMO && S.perfil.rol === 'dueno') { A.clave = ''; return entrarAdmin(); }
+  // El dueño y las encargadas entran con su propia sesión: no se les pide la clave de administrador (18/11/2026)
+  if (!DEMO && (S.perfil.rol === 'dueno' || S.perfil.rol === 'encargada')) { A.clave = ''; return entrarAdmin(); }
   let hay;
   try { hay = await apiAdmin.hayClave(); } catch (e) { return toast('No se pudo verificar: ' + e.message, true); }
   const raiz = $('modal-raiz');
@@ -2737,7 +2737,7 @@ function abrirAnular(v) {
       <label class="campo"><span>Motivo *</span><select id="an-motivo" class="sel"><option value="">Elige el motivo…</option>
         <option>Error al marcar el producto</option><option>El cliente se arrepintió</option><option>Producto en mal estado</option><option>Cobro duplicado</option><option>Otro</option></select></label>
       <label class="campo"><span>Detalle</span><input id="an-detalle" class="txt" placeholder="Explica qué pasó (obligatorio si es Otro)"></label>
-      ${!DEMO && S.perfil.rol === 'dueno' ? '' : `<label class="campo"><span>Clave de administrador *</span><input id="an-clave" class="txt" type="password" autocomplete="off" placeholder="${DEMO ? 'En el demo es 123456' : ''}"></label>`}</div>
+      ${!DEMO && (S.perfil.rol === 'dueno' || S.perfil.rol === 'encargada') ? '' : `<label class="campo"><span>Clave de administrador *</span><input id="an-clave" class="txt" type="password" autocomplete="off" placeholder="${DEMO ? 'En el demo es 123456' : ''}"></label>`}</div>
     <div class="modal-pie"><button type="button" class="btn btn-sec" id="an-cancelar">Volver</button><span class="espacio"></span><button class="btn btn-peligro">Anular venta</button></div></form>`, 520);
   r.querySelector('#an-cancelar').onclick = abrirVentasTurno;
   r.querySelector('#f-anular').onsubmit = async e => {
