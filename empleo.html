@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trabaja con nosotros · ChocoTentación</title>
+<meta name="description" content="Postúlate para trabajar en ChocoTentación: Sambil Valencia, Ciudad Traki Guacara, C.C. Las Américas Maracay y nuestra fábrica.">
+<meta property="og:title" content="Trabaja con nosotros · ChocoTentación">
+<meta property="og:description" content="Déjanos tus datos y tu currículum. ¡Te contactamos!">
+<link rel="icon" href="icono-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--cacao:#2B1610;--crema:#FBF6F0;--linea:#EADFD3;--suave:#7A6658;--naranja:#E8561E;--naranja-2:#C9440F;--ok:#2E7D4F;--error:#B3261E;color-scheme:light}
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:Inter,system-ui,sans-serif;background:var(--crema);color:var(--cacao);font-size:16px}
+  header{background:var(--cacao);color:#fff;padding:28px 20px 34px;text-align:center}
+  header h1{font-family:Fraunces,Georgia,serif;font-size:30px;margin:4px 0 6px}
+  header p{margin:0 auto;max-width:520px;opacity:.85;line-height:1.45}
+  .marca{font-family:Fraunces,Georgia,serif;font-weight:700;font-size:20px;letter-spacing:.3px;color:#F5C9A6}
+  main{max-width:620px;margin:-18px auto 40px;padding:0 14px}
+  form,.listo{background:#fff;border-radius:18px;padding:22px 18px;box-shadow:0 12px 40px rgba(43,22,16,.12)}
+  h2{font-family:Fraunces,Georgia,serif;font-size:19px;margin:18px 0 10px}
+  h2:first-child{margin-top:0}
+  label{display:grid;gap:5px;margin-bottom:12px;font-weight:600;font-size:14px}
+  label small{font-weight:400;color:var(--suave)}
+  input,select,textarea{font:inherit;padding:12px 13px;border:1.5px solid var(--linea);border-radius:12px;background:#fff;color:#000;width:100%}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--naranja)}
+  textarea{min-height:84px;resize:vertical}
+  .dos{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+  .chips label{display:flex;align-items:center;gap:7px;margin:0;padding:9px 13px;border:1.5px solid var(--linea);border-radius:99px;font-weight:500;cursor:pointer}
+  .chips input{width:auto;margin:0}
+  .chips label:has(input:checked){border-color:var(--naranja);background:#FFF1EA}
+  .gps{display:flex;gap:10px;align-items:center;margin:-4px 0 12px;font-size:14px;color:var(--suave)}
+  .btn{display:inline-flex;justify-content:center;align-items:center;gap:8px;border:0;border-radius:14px;padding:15px 18px;font:600 16px Inter,sans-serif;cursor:pointer}
+  .btn-sec{background:#F3EBE3;color:var(--cacao);padding:10px 14px;font-size:14px}
+  .btn-primario{background:var(--naranja);color:#fff;width:100%;margin-top:6px}
+  .btn-primario:disabled{opacity:.6}
+  .archivo{border:2px dashed var(--linea);border-radius:14px;padding:16px;text-align:center;cursor:pointer;color:var(--suave);font-weight:500}
+  .archivo.ok{border-color:var(--ok);color:var(--ok);background:#EEF7F1}
+  .error{background:#FCEBEA;color:var(--error);border-radius:12px;padding:11px 13px;margin-bottom:12px;font-weight:600}
+  .oculto{display:none!important}
+  .acepto{display:flex;gap:9px;align-items:flex-start;font-weight:400;font-size:13px;color:var(--suave)}
+  .acepto input{width:auto;margin-top:3px}
+  .sedes{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;color:var(--suave);margin:14px 0 0}
+  .sedes div{background:#fff;border-radius:12px;padding:10px 12px}
+  .listo{text-align:center} .listo .check{width:64px;height:64px;border-radius:50%;background:#E6F3EB;color:var(--ok);display:grid;place-items:center;font-size:34px;margin:0 auto 10px}
+  footer{text-align:center;color:var(--suave);font-size:12px;margin:-20px 0 30px}
+  @media (max-width:480px){.dos{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="marca">ChocoTentación</div>
+  <h1>¡Trabaja con nosotros!</h1>
+  <p>Buscamos gente con buena energía para nuestras tiendas y nuestra fábrica. Déjanos tus datos y tu currículum: si tu perfil encaja, te escribimos por WhatsApp.</p>
+</header>
+<main>
+  <form id="f" novalidate>
+    <div id="err" class="error oculto"></div>
+    <h2>Tus datos</h2>
+    <div class="dos"><label>Nombre *<input id="nombres" autocomplete="given-name" required></label><label>Apellido *<input id="apellidos" autocomplete="family-name" required></label></div>
+    <div class="dos"><label>Edad *<input id="edad" type="number" inputmode="numeric" min="14" max="80" required></label>
+      <label>Teléfono (WhatsApp) *<input id="telefono" type="tel" inputmode="tel" placeholder="0412 1234567" autocomplete="tel" required></label></div>
+    <label>Correo <small>(opcional)</small><input id="correo" type="email" autocomplete="email"></label>
+    <h2>¿Dónde vives?</h2>
+    <label>Zona o municipio *<select id="zona" required><option value="">Elige tu zona…</option></select></label>
+    <label id="otra-zona" class="oculto">Escribe tu zona<input id="zona_texto" placeholder="Ciudad, municipio o sector"></label>
+    <label>Sector o urbanización <small>(opcional)</small><input id="sector" placeholder="Ej. Urb. Los Guayabitos"></label>
+    <div class="gps"><button type="button" class="btn btn-sec" id="btn-gps">📍 Usar mi ubicación</button><span id="gps-txt">Opcional: nos ayuda a ver qué tan cerca estás de una tienda.</span></div>
+    <h2>Lo que buscas</h2>
+    <label>Cargo que te interesa *<select id="cargo" required>
+      <option value="">Elige…</option><option>Atención al cliente / Cajero(a)</option><option>Operador(a) de tienda</option><option>Promotor(a) de ventas</option>
+      <option>Producción (fábrica)</option><option>Líder de tienda</option><option>Gerente</option><option>Administración</option><option>Cualquiera</option></select></label>
+    <label>Disponibilidad<select id="disponibilidad"><option>Tiempo completo</option><option>Medio tiempo</option><option>Fines de semana</option></select></label>
+    <h2>Experiencia</h2>
+    <label>¿Cuánta experiencia de trabajo tienes? *<select id="exp" required>
+      <option value="">Elige…</option><option value="ninguna">No tengo experiencia (primer empleo)</option><option value="menos_6">Menos de 6 meses</option>
+      <option value="6_12">De 6 meses a 1 año</option><option value="1_2">De 1 a 2 años</option><option value="mas_2">Más de 2 años</option></select></label>
+    <div style="font-weight:600;font-size:14px;margin-bottom:8px">¿En qué has trabajado? <small style="font-weight:400;color:var(--suave)">(marca todas las que apliquen)</small></div>
+    <div class="chips">
+      <label><input type="checkbox" value="atencion">Atención al cliente</label><label><input type="checkbox" value="heladeria">Heladería / postres / café</label>
+      <label><input type="checkbox" value="caja">Caja</label><label><input type="checkbox" value="ventas">Ventas</label>
+      <label><input type="checkbox" value="cocina">Cocina / producción</label><label><input type="checkbox" value="otro">Otro</label></div>
+    <label>Cuéntanos brevemente <small>(opcional)</small><textarea id="detalle" maxlength="800" placeholder="Dónde trabajaste, qué hacías…"></textarea></label>
+    <h2>Currículum</h2>
+    <label class="archivo" id="lbl-cv" for="cv">📎 Adjuntar currículum (PDF, Word o foto, máx. 6 MB)</label>
+    <input id="cv" type="file" accept=".pdf,.doc,.docx,image/*" class="oculto">
+    <label class="acepto"><input type="checkbox" id="acepto"> Acepto que ChocoTentación guarde mis datos para evaluarme en sus procesos de selección y contactarme.</label>
+    <button class="btn btn-primario" id="enviar">Enviar mi postulación</button>
+  </form>
+  <div class="listo oculto" id="listo"><div class="check">✓</div><h2>¡Recibimos tu postulación!</h2>
+    <p>Gracias por querer formar parte de ChocoTentación. Si tu perfil encaja con lo que buscamos, te escribiremos por WhatsApp.</p></div>
+  <div class="sedes"><div><b>Sambil Valencia</b><br>Nivel Feria</div><div><b>Ciudad Traki Guacara</b></div><div><b>C.C. Las Américas</b><br>Maracay</div><div><b>Nuestra fábrica</b><br>Estado Aragua</div></div>
+</main>
+<footer>ChocoTentación · Tus datos solo los ve nuestro equipo de selección.</footer>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://ebvpgqlhsydtjvlklszu.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_QkUVAVlh7FqJLj71__e8sw_EnOLd_zL';
+const sb = window.supabase ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false } }) : null;
+const $ = id => document.getElementById(id);
+let gps = null, cv = null;
+const error = m => { $('err').textContent = m; $('err').classList.remove('oculto'); $('err').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+(async () => {
+  if (!sb) return error('No hay conexión. Revisa tu internet y vuelve a abrir la página.');
+  const { data } = await sb.rpc('pos_post_zonas_lista');
+  const grupos = {};
+  (data || []).forEach(z => (grupos[z.estado] = grupos[z.estado] || []).push(z));
+  $('zona').innerHTML = '<option value="">Elige tu zona…</option>' + Object.entries(grupos).map(([e, zs]) =>
+    `<optgroup label="${e}">${zs.map(z => `<option value="${z.id}">${z.nombre}</option>`).join('')}</optgroup>`).join('') + '<option value="otra">Otra zona (escríbela)</option>';
+})();
+$('zona').onchange = () => $('otra-zona').classList.toggle('oculto', $('zona').value !== 'otra');
+$('btn-gps').onclick = () => {
+  if (!navigator.geolocation) return $('gps-txt').textContent = 'Tu teléfono no permite compartir la ubicación.';
+  $('gps-txt').textContent = 'Buscando tu ubicación…';
+  navigator.geolocation.getCurrentPosition(p => { gps = { lat: p.coords.latitude, lng: p.coords.longitude }; $('gps-txt').textContent = '✓ Ubicación agregada'; },
+    () => { $('gps-txt').textContent = 'No se pudo obtener la ubicación. No pasa nada: con la zona basta.'; }, { enableHighAccuracy: false, timeout: 12000 });
+};
+$('cv').onchange = () => { const f = $('cv').files[0]; cv = null;
+  if (!f) return; if (f.size > 6 * 1024 * 1024) { $('lbl-cv').textContent = '⚠️ El archivo pasa de 6 MB. Elige otro.'; $('lbl-cv').classList.remove('ok'); return; }
+  cv = f; $('lbl-cv').textContent = '✓ ' + f.name; $('lbl-cv').classList.add('ok'); };
+$('f').onsubmit = async e => { e.preventDefault(); $('err').classList.add('oculto');
+  const v = id => $(id).value.trim(), tel = v('telefono').replace(/\D/g, ''), edad = parseInt(v('edad'), 10);
+  if (v('nombres').length < 2 || v('apellidos').length < 2) return error('Escribe tu nombre y tu apellido.');
+  if (!(edad >= 14 && edad <= 80)) return error('Escribe tu edad.');
+  if (tel.length < 10 || tel.length > 13) return error('Escribe tu teléfono completo, por ejemplo 0412 1234567.');
+  if (!v('zona') || (v('zona') === 'otra' && v('zona_texto').length < 3)) return error('Dinos en qué zona vives.');
+  if (!v('cargo')) return error('Elige el cargo que te interesa.');
+  if (!v('exp')) return error('Dinos cuánta experiencia tienes.');
+  if (!cv) return error('Adjunta tu currículum (puede ser una foto).');
+  if (!$('acepto').checked) return error('Marca la casilla de aceptación para poder enviar.');
+  const b = $('enviar'); b.disabled = true; b.textContent = 'Enviando…';
+  try {
+    const ext = (cv.name.split('.').pop() || '').toLowerCase().replace('jpeg', 'jpg');
+    const extOk = ['pdf', 'jpg', 'png', 'doc', 'docx', 'webp'].includes(ext) ? ext : (cv.type.includes('png') ? 'png' : cv.type.includes('pdf') ? 'pdf' : 'jpg');
+    const path = `postulaciones/${crypto.randomUUID()}.${extOk}`;
+    const up = await sb.storage.from('pos-cv').upload(path, cv, { contentType: cv.type || 'application/octet-stream', upsert: false });
+    if (up.error) throw new Error('No se pudo subir el currículum. Prueba con un PDF o una foto más liviana.');
+    const { error: err } = await sb.rpc('pos_postular', { p: { nombres: v('nombres'), apellidos: v('apellidos'), edad, telefono: tel, correo: v('correo'),
+      zona_id: v('zona') === 'otra' ? null : Number(v('zona')), zona_texto: v('zona') === 'otra' ? v('zona_texto') : null, sector: v('sector'),
+      lat: gps?.lat ?? null, lng: gps?.lng ?? null, gps: !!gps, cargo: v('cargo'), disponibilidad: v('disponibilidad'), experiencia_tiempo: v('exp'),
+      experiencia_tipos: [...document.querySelectorAll('.chips input:checked')].map(x => x.value), experiencia_detalle: v('detalle'), cv_path: path } });
+    if (err) throw new Error(err.message);
+    $('f').classList.add('oculto'); $('listo').classList.remove('oculto'); window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (x) { error(x.message || 'No se pudo enviar. Revisa tu conexión e intenta de nuevo.'); b.disabled = false; b.textContent = 'Enviar mi postulación'; }
+};
+</script>
+</body>
+</html>

@@ -369,6 +369,7 @@
   .pedidos{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
   .pedido{background:var(--papel);border:1.5px solid var(--linea);border-radius:14px;padding:12px 14px;display:grid;gap:4px;align-content:start}
   .pedido.cerrado{opacity:.65}
+  .pedido a.btn{text-decoration:none;color:var(--ok);font-size:14px}
   .pedido header,.pedido footer{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .pedido ul{margin:4px 0;padding:0;list-style:none} .pedido li{display:flex;justify-content:space-between;border-bottom:1px dashed var(--linea);padding:3px 0;font-size:14px}
   .pd-dias{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:4px}
@@ -2372,12 +2373,13 @@ function pintarNomina() {
   if (DEMO) nomDatosDemo();
   const cont = NOM.raiz === 'vista' ? $('nom-raiz') : $('adm-contenido');
   if (!NOMD) return cont.innerHTML = '<p class="vacio">Cargando…</p>';
-  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${[['nominas', 'Nóminas'], ['trabajadores', `Trabajadores (${NOMD.trabajadores.filter(t => t.activo).length})`], ['ajustes', 'Ajustes']]
+  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${[['nominas', 'Nóminas'], ['trabajadores', `Trabajadores (${NOMD.trabajadores.filter(t => t.activo).length})`], ['postulaciones', '📥 Postulaciones'], ['ajustes', 'Ajustes']]
     .map(([k, n]) => `<button class="sub-tab ${NOM.vista === k ? 'activa' : ''}" data-nv="${k}">${n}</button>`).join('')}</nav><div id="nom-cont"></div>`;
   cont.querySelectorAll('[data-nv]').forEach(b => b.onclick = () => { NOM.vista = b.dataset.nv; NOM.periodoId = null; NOMP = null; pintarNomina(); });
   const c = $('nom-cont');
   if (NOM.vista === 'trabajadores') return pintarNomTrabajadores(c);
   if (NOM.vista === 'ajustes') return pintarNomAjustes(c);
+  if (NOM.vista === 'postulaciones') return pintarPostulaciones(c);
   if (NOM.periodoId && NOMP) return pintarNomPeriodo(c);
   pintarNomPeriodos(c);
 }
@@ -2676,6 +2678,61 @@ function pintarNomAjustes(c) {
       try { await rpc('pos_nom_entidad_guardar', { p }); cerrarModal(); nomRefrescar(); } catch (x) { toast(x.message, true); } }; };
   c.querySelectorAll('[data-ee]').forEach(b => b.onclick = () => editarEnt(NOMD.entidades.find(x => x.id === Number(b.dataset.ee))));
   c.querySelector('#na-ent').onclick = () => editarEnt(null);
+}
+
+// ---- Postulaciones (página pública empleo.html) ----
+const POST = { estado: 'activas', sede: '', viab: '', datos: null };
+const EMPLEO_URL = 'https://edwinalejandro0824-web.github.io/chocotentacion-tiendas/empleo.html';
+const POST_ESTADOS = { nuevo: ['Nuevo', 'abierta'], contactado: ['Contactado', ''], entrevista: ['Entrevista', 'ok'], contratado: ['Contratado', 'ok'], descartado: ['Descartado', 'mal'] };
+const POST_EXP = { ninguna: 'Sin experiencia', menos_6: 'Menos de 6 meses', '6_12': '6 a 12 meses', '1_2': '1 a 2 años', mas_2: 'Más de 2 años' };
+const POST_TIPOS = { atencion: 'atención al cliente', heladeria: 'heladería/postres', caja: 'caja', ventas: 'ventas', cocina: 'cocina/producción', otro: 'otro' };
+function postDemo() {
+  const hoy = Date.now(), P = (n, a, edad, zona, km, sede, exp, tipos, pt, v, estado = 'nuevo') => ({ id: nid(), creado_en: new Date(hoy - Math.random() * 6 * 864e5).toISOString(),
+    nombres: n, apellidos: a, edad, telefono: '0412' + Math.floor(1e6 + Math.random() * 8e6), zona_texto: zona, distancia_km: km, sede_cercana: sede, cargo: 'Atención al cliente / Cajero(a)',
+    experiencia_tiempo: exp, experiencia_tipos: tipos, puntaje: pt, viabilidad: v, estado, cv_path: null, experiencia_detalle: 'Trabajé en una heladería del centro comercial.' });
+  return { postulaciones: [P('Andrea', 'Mora', 22, 'San Diego', 7.2, 'Sambil Valencia', '1_2', ['atencion', 'caja'], 95, 'Muy viable'),
+    P('José', 'Rivas', 27, 'Guacara (centro)', 1.6, 'Ciudad Traki Guacara', 'menos_6', ['ventas'], 86, 'Muy viable'),
+    P('Carla', 'Peña', 38, 'Turmero', 13.4, 'La Fábrica (Cagua)', 'mas_2', ['cocina'], 64, 'Viable'),
+    P('Luis', 'Gil', 48, 'Puerto Cabello', 28.5, 'Sambil Valencia', 'ninguna', [], 8, 'No viable (vive lejos)')] };
+}
+async function pintarPostulaciones(c) {
+  if (!POST.datos) {
+    c.innerHTML = '<p class="vacio">Cargando postulaciones…</p>';
+    try { POST.datos = DEMO ? postDemo() : await rpc('pos_postulaciones_lista', {}); } catch (e) { return c.innerHTML = `<p class="mensaje-error">${esc(e.message)}</p>`; }
+  }
+  const todas = POST.datos.postulaciones, sedes = [...new Set(todas.map(x => x.sede_cercana).filter(Boolean))].sort();
+  const lista = todas.filter(x => (POST.estado === 'todas' || (POST.estado === 'activas' ? !['descartado', 'contratado'].includes(x.estado) : x.estado === POST.estado))
+    && (!POST.sede || x.sede_cercana === POST.sede) && (!POST.viab || (x.viabilidad || '').startsWith(POST.viab)))
+    .sort((a, b) => (b.puntaje || 0) - (a.puntaje || 0) || b.creado_en.localeCompare(a.creado_en));
+  const nuevos = todas.filter(x => x.estado === 'nuevo').length;
+  const colorV = v => /^Muy/.test(v) ? 'ok' : /^Viable/.test(v) ? 'abierta' : /^Poco/.test(v) ? '' : 'mal';
+  const wa = t => 'https://wa.me/' + (t.startsWith('0') ? '58' + t.slice(1) : t);
+  c.innerHTML = `<div class="adm-barra"><p>Enlace para Instagram: <b>${EMPLEO_URL}</b>. Se ordenan solas por tus prioridades: <b>1)</b> que viva cerca (10 km o menos de una sede), <b>2)</b> la edad, <b>3)</b> la experiencia. ${nuevos ? `<b>${nuevos} nuevas.</b>` : ''}</p>
+      <span class="espacio"></span><button class="btn btn-sec" id="ps-copiar">Copiar enlace</button><button class="btn btn-sec" id="ps-act">↻ Actualizar</button></div>
+    <div class="adm-barra"><nav class="sub-tabs">${[['activas', 'Por revisar'], ['entrevista', 'Entrevista'], ['contratado', 'Contratados'], ['descartado', 'Descartados'], ['todas', 'Todas']]
+      .map(([k, n]) => `<button class="sub-tab ${POST.estado === k ? 'activa' : ''}" data-pe="${k}">${n}</button>`).join('')}</nav>
+      <select id="ps-sede" class="sel corto"><option value="">Todas las sedes</option>${sedes.map(x => `<option ${POST.sede === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+      <select id="ps-v" class="sel corto"><option value="">Toda viabilidad</option>${['Muy viable', 'Viable', 'Poco viable', 'No'].map(x => `<option value="${x}" ${POST.viab === x ? 'selected' : ''}>${x === 'No' ? 'No viable / no apto' : x}</option>`).join('')}</select></div>
+    <div class="pedidos">${lista.map(x => `<article class="pedido"><header><b>${esc(x.nombres)} ${esc(x.apellidos)}</b> · ${x.edad} años<span class="espacio"></span><span class="badge ${colorV(x.viabilidad)}">${esc(x.viabilidad || '')} · ${x.puntaje ?? 0} pts</span></header>
+        <p class="ayuda">📍 ${esc(x.zona_texto || 'Sin zona')}${x.sector ? ' · ' + esc(x.sector) : ''}${x.distancia_km != null ? ` — a <b>${fmtCant(Number(x.distancia_km))} km</b> de ${esc(x.sede_cercana)}` : ''}${x.ubicacion_gps ? ' (GPS)' : ''}</p>
+        <p class="ayuda">💼 ${esc(x.cargo || '')} · ${esc(POST_EXP[x.experiencia_tiempo] || '')}${(x.experiencia_tipos || []).length ? ' en ' + x.experiencia_tipos.map(t => POST_TIPOS[t] || t).join(', ') : ''}${x.disponibilidad ? ' · ' + esc(x.disponibilidad) : ''}</p>
+        ${x.experiencia_detalle ? `<p class="ayuda">“${esc(x.experiencia_detalle)}”</p>` : ''}
+        <p class="ayuda">Llegó el ${new Date(x.creado_en).toLocaleDateString('es-VE')} · <span class="badge ${POST_ESTADOS[x.estado][1]}">${POST_ESTADOS[x.estado][0]}</span>${x.nota ? ' · ' + esc(x.nota) : ''}</p>
+        <footer><a class="btn btn-sec" href="${wa(x.telefono)}" target="_blank" rel="noopener">WhatsApp ${esc(x.telefono)}</a>${x.cv_path ? `<button class="btn btn-sec" data-cv="${x.id}">📎 Currículum</button>` : ''}
+          <span class="espacio"></span><select class="sel corto" data-pst="${x.id}">${Object.entries(POST_ESTADOS).map(([k, [n]]) => `<option value="${k}" ${x.estado === k ? 'selected' : ''}>${n}</option>`).join('')}</select></footer></article>`).join('')
+      || '<p class="vacio">No hay postulaciones con ese filtro.</p>'}</div>`;
+  c.querySelectorAll('[data-pe]').forEach(b => b.onclick = () => { POST.estado = b.dataset.pe; pintarPostulaciones(c); });
+  c.querySelector('#ps-sede').onchange = e => { POST.sede = e.target.value; pintarPostulaciones(c); };
+  c.querySelector('#ps-v').onchange = e => { POST.viab = e.target.value; pintarPostulaciones(c); };
+  c.querySelector('#ps-copiar').onclick = () => copiarTexto(EMPLEO_URL);
+  c.querySelector('#ps-act').onclick = () => { POST.datos = null; pintarPostulaciones(c); };
+  c.querySelectorAll('[data-cv]').forEach(b => b.onclick = async () => { const x = todas.find(z => z.id === Number(b.dataset.cv));
+    const { data, error } = await sb.storage.from('pos-cv').createSignedUrl(x.cv_path, 3600);
+    if (error) return toast('No se pudo abrir el currículum: ' + error.message, true); window.open(data.signedUrl, '_blank'); });
+  c.querySelectorAll('[data-pst]').forEach(s => s.onchange = async () => { const x = todas.find(z => z.id === Number(s.dataset.pst)), est = s.value;
+    let nota = null; if (est === 'descartado' || est === 'entrevista') { nota = prompt(est === 'entrevista' ? '¿Cuándo es la entrevista? (opcional)' : '¿Por qué se descarta? (opcional)'); }
+    if (!DEMO) { try { await rpc('pos_postulacion_estado', { p_id: x.id, p_estado: est, p_nota: nota || null }); } catch (e) { return toast(e.message, true); } }
+    Object.assign(x, { estado: est, nota: nota || x.nota }); toast('Listo'); pintarPostulaciones(c); });
 }
 function pintarAdmNomina() { NOM.raiz = 'admin'; pintarNomina(); }
 
