@@ -378,6 +378,8 @@
   .plan-dia.urgente{border-color:#F2B8B5;background:#FFF8F7}
   .plan-dia h4{margin:0 0 6px}
   tr.apagado{opacity:.55}
+  .tabla-simple tr.sep td{background:#F7EFE6;padding-top:8px} .texto-error{color:var(--error)}
+  .ev-act{display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px dashed var(--linea);font-size:15px;cursor:pointer} .ev-act span{flex:1} .ev-act input{width:20px;height:20px}
   @media (max-width:700px){.rec-cab{display:none}.fila-rec{grid-template-columns:1fr 1fr;border-bottom:1px solid var(--linea);padding-bottom:6px}.fila-rec .mv-ins{grid-column:1/-1}}
   .rec-cab{font-size:12px;color:var(--suave);font-weight:600;margin:6px 0 4px}
   .fila-rec{margin-bottom:6px}
@@ -540,6 +542,7 @@
           <button class="adm-tab" data-tab="proveedores" data-rol="dueno encargada" data-mod="1">Proveedores</button>
           <button class="adm-tab" data-tab="clientes" data-rol="dueno encargada" data-mod="1">Clientes</button>
           <button class="adm-tab" data-tab="reportes" data-rol="dueno encargada" data-mod="1">Reportes</button>
+          <button class="adm-tab" data-tab="evaluacion" data-rol="dueno encargada" data-mod="1">⭐ Evaluación</button>
           <button class="adm-tab" data-tab="nomina" data-rol="dueno" data-mod="1">Nómina</button>
           <button class="adm-tab" data-tab="usuarios" data-rol="dueno" data-mod="1">Usuarios</button>
           <button class="adm-tab" data-tab="clave" id="adm-tab-clave" data-rol="dueno">Clave</button>
@@ -1991,7 +1994,7 @@ async function recargarVenta() {
 /* --- pantalla --- */
 function pintarAdmin() {
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('activa', b.dataset.tab === A.tab));
-  const vistas = { nomina: pintarAdmNomina, panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
+  const vistas = { nomina: pintarAdmNomina, evaluacion: pintarAdmEvaluacion, panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
     cierres: pintarAdmCierres, gastos: pintarAdmGastos, proveedores: pintarAdmProveedores, clientes: pintarAdmClientes,
     reportes: pintarAdmReportes, usuarios: pintarAdmUsuarios, clave: pintarAdmClave, dispositivos: pintarAdmDispositivos };
   const f = vistas[A.tab] || pintarAdmProductos;
@@ -2373,13 +2376,14 @@ function pintarNomina() {
   if (DEMO) nomDatosDemo();
   const cont = NOM.raiz === 'vista' ? $('nom-raiz') : $('adm-contenido');
   if (!NOMD) return cont.innerHTML = '<p class="vacio">Cargando…</p>';
-  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${[['nominas', 'Nóminas'], ['trabajadores', `Trabajadores (${NOMD.trabajadores.filter(t => t.activo).length})`], ['postulaciones', '📥 Postulaciones'], ['ajustes', 'Ajustes']]
+  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${[['nominas', 'Nóminas'], ['trabajadores', `Trabajadores (${NOMD.trabajadores.filter(t => t.activo).length})`], ['bonos', '🎯 Bonos'], ['postulaciones', '📥 Postulaciones'], ['ajustes', 'Ajustes']]
     .map(([k, n]) => `<button class="sub-tab ${NOM.vista === k ? 'activa' : ''}" data-nv="${k}">${n}</button>`).join('')}</nav><div id="nom-cont"></div>`;
   cont.querySelectorAll('[data-nv]').forEach(b => b.onclick = () => { NOM.vista = b.dataset.nv; NOM.periodoId = null; NOMP = null; pintarNomina(); });
   const c = $('nom-cont');
   if (NOM.vista === 'trabajadores') return pintarNomTrabajadores(c);
   if (NOM.vista === 'ajustes') return pintarNomAjustes(c);
   if (NOM.vista === 'postulaciones') return pintarPostulaciones(c);
+  if (NOM.vista === 'bonos') return pintarBonos(c);
   if (NOM.periodoId && NOMP) return pintarNomPeriodo(c);
   pintarNomPeriodos(c);
 }
@@ -2735,6 +2739,296 @@ async function pintarPostulaciones(c) {
     Object.assign(x, { estado: est, nota: nota || x.nota }); toast('Listo'); pintarPostulaciones(c); });
 }
 function pintarAdmNomina() { NOM.raiz = 'admin'; pintarNomina(); }
+
+/* =====================================================================
+   EVALUACIÓN DIARIA Y BONOS (etapa 12): el líder evalúa cada día; el dueño y
+   Gestión de Gente ven el % de la semana y del mes y el bono (30 % gestión
+   proporcional + 70 % venta todo o nada contra la meta de la tienda).
+   ===================================================================== */
+const FUNCIONES = { cajero: 'Cajero(a)', promotor: 'Promotor(a)', produccion: 'Producción', lider: 'Líder', gerente: 'Gerente' };
+const BON_GRUPOS = { operador: 'Operador', lider: 'Líder', gerente: 'Gerente de operaciones' };
+const EV = { fecha: null, tienda: null, datos: null, abierto: null };
+const BON = { vista: 'resumen', mes: null, res: null, funcion: 'cajero', tienda: null };
+const pctTxt = n => n == null ? '—' : (Math.round(Number(n) * 10) / 10).toLocaleString('es-VE') + ' %';
+const lunesDe = f => sumarDias(f, -((new Date(f + 'T12:00:00Z').getUTCDay() + 6) % 7));
+const finDeMes = m => sumarDias((m.slice(5, 7) === '12' ? (Number(m.slice(0, 4)) + 1) + '-01' : m.slice(0, 5) + String(Number(m.slice(5, 7)) + 1).padStart(2, '0')) + '-01', -1);
+const colorPct = n => n == null ? '' : n >= 90 ? 'ok' : n >= 70 ? 'abierta' : 'mal';
+const nombreMes = m => new Date(m + '-15T12:00:00Z').toLocaleDateString('es-VE', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+// ---- Demo: datos de ejemplo ----
+function bonSembrarDemo() {
+  nomSembrarDemo();
+  const ts = DEMO_DATA.tiendas;
+  DX.nom.trabajadores.forEach(t => { if (t.grupo !== 'tiendas' || t.bono_grupo !== undefined) return;
+    t.tienda_id = t.centro === 'Norte' ? (ts[1] || ts[0]).id : ts[0].id;
+    t.bono_grupo = /^l[ií]der/i.test(t.cargo || '') ? 'lider' : 'operador'; t.funcion = t.bono_grupo === 'lider' ? 'lider' : 'cajero'; });
+  if (DX.bon) return;
+  const A = (funcion, nombre, peso, orden) => ({ id: nid(), funcion, nombre, peso, orden, activo: true });
+  DX.bon = { actividades: [A('cajero', 'Caja cuadrada al cierre', 40, 1), A('cajero', 'Datos del cliente completos en cada venta', 30, 2), A('cajero', 'Uniforme y puesto limpio', 30, 3),
+      A('promotor', 'Ofrece la promoción del día', 50, 1), A('promotor', 'Degustaciones hechas', 50, 2),
+      A('lider', 'Apertura a tiempo', 30, 1), A('lider', 'Evaluó a su equipo', 30, 2), A('lider', 'Inventario y pedidos al día', 40, 3)],
+    dias: [], metas: [], meses: [],
+    montos: [...ts.map(t => ({ grupo: 'operador', tienda_id: t.id, total_usd: 130, pct_gestion: 30 })), ...ts.map(t => ({ grupo: 'lider', tienda_id: t.id, total_usd: 180, pct_gestion: 30 })),
+      { grupo: 'gerente', tienda_id: null, total_usd: 400, pct_gestion: 30 }] };
+  guardarDemo();
+}
+const bonCerradoDemo = f => DX.bon.meses.some(m => m.mes === f.slice(0, 7));
+function evalDatosDemo(tienda, desde, hasta) {
+  bonSembrarDemo();
+  const rol = S.perfil.rol, ts = DX.nom.trabajadores.filter(t => t.activo && t.bono_grupo && (!tienda || t.tienda_id === tienda) && (rol !== 'encargada' || t.bono_grupo === 'operador'));
+  return { rol, hoy: hoyVE(), actividades: DX.bon.actividades, trabajadores: ts,
+    dias: DX.bon.dias.filter(d => d.fecha >= desde && d.fecha <= hasta && ts.some(t => t.id === d.trabajador_id)) };
+}
+function evalGuardarDemo(t, fecha, funcion, ok, nota) {
+  if (bonCerradoDemo(fecha)) throw new Error('Ese mes ya se cerró');
+  if (S.perfil.rol === 'encargada' && fecha < sumarDias(hoyVE(), -3)) throw new Error('Solo puedes evaluar hoy y hasta 3 días atrás');
+  const acts = DX.bon.actividades.filter(a => a.funcion === funcion && a.activo).sort((a, b) => a.orden - b.orden);
+  const tot = acts.reduce((s, a) => s + a.peso, 0); if (!tot) throw new Error('Esa función todavía no tiene actividades cargadas');
+  const marcas = acts.map(a => ({ id: a.id, nombre: a.nombre, peso: a.peso, ok: ok.includes(a.id) }));
+  const pct = r2(marcas.filter(m => m.ok).reduce((s, m) => s + m.peso, 0) * 100 / tot);
+  DX.bon.dias = DX.bon.dias.filter(d => !(d.trabajador_id === t.id && d.fecha === fecha));
+  DX.bon.dias.push({ id: nid(), trabajador_id: t.id, fecha, funcion, marcas, pct, nota, evaluador_nombre: `${S.perfil.nombre || ''}`.trim(), actualizado: new Date().toISOString() });
+  guardarDemo(); return pct;
+}
+function bonResumenDemo(mes) {
+  bonSembrarDemo();
+  const cerr = DX.bon.meses.find(m => m.mes === mes); if (cerr) return { ...cerr.resultado, cerrado: true, cerrado_en: cerr.cerrado_en };
+  const ini = mes + '-01', fin = finDeMes(mes), meta = id => DX.bon.metas.find(m => m.mes === mes && (m.tienda_id ?? null) === id);
+  const tiendas = DEMO_DATA.tiendas.map(t => { const m = meta(t.id), ventas = m?.ventas_manual_usd ?? r2(ventasEn(ini, fin, t.id).reduce((a, v) => a + v.total_usd, 0));
+    return { id: t.id, nombre: t.nombre, meta_usd: m?.meta_usd ?? null, ventas_manual_usd: m?.ventas_manual_usd ?? null, ventas_usd: ventas, cumple: !!(m?.meta_usd > 0 && ventas >= m.meta_usd) }; });
+  const totV = tiendas.reduce((a, t) => a + t.ventas_usd, 0), mg = meta(null);
+  const todas = { meta_usd: mg?.meta_usd ?? null, ventas_usd: totV, cumple: !!(mg?.meta_usd > 0 && totV >= mg.meta_usd) };
+  const filas = DX.nom.trabajadores.filter(t => t.bono_grupo && (t.activo || DX.bon.dias.some(d => d.trabajador_id === t.id && d.fecha >= ini && d.fecha <= fin))).map(t => {
+    const mo = DX.bon.montos.find(m => m.grupo === t.bono_grupo && m.tienda_id === t.tienda_id) || DX.bon.montos.find(m => m.grupo === t.bono_grupo && m.tienda_id == null) || { total_usd: 0, pct_gestion: 30 };
+    const ds = DX.bon.dias.filter(d => d.trabajador_id === t.id && d.fecha >= ini && d.fecha <= fin).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const pm = ds.length ? r2(ds.reduce((a, d) => a + d.pct, 0) / ds.length) : 0;
+    const cumple = t.bono_grupo === 'gerente' ? todas.cumple : !!tiendas.find(x => x.id === t.tienda_id)?.cumple;
+    const gmax = r2(mo.total_usd * mo.pct_gestion / 100), vmax = r2(mo.total_usd * (100 - mo.pct_gestion) / 100), g = r2(gmax * pm / 100), v = cumple ? vmax : 0;
+    return { trabajador_id: t.id, nombre: nomNombre(t), cargo: t.cargo, funcion: t.funcion, bono_grupo: t.bono_grupo, tienda_id: t.tienda_id, dias: ds.length, pct_mes: pm,
+      detalle: ds.map(d => ({ fecha: d.fecha, pct: d.pct, funcion: d.funcion })), bono_total: mo.total_usd, gestion_max: gmax, venta_max: vmax, gestion_usd: g, cumple_venta: cumple, venta_usd: v, total_usd: r2(g + v) }; });
+  return { mes: ini, cerrado: false, tiendas, todas, filas, montos: DX.bon.montos };
+}
+
+// ---- Llamadas (real o demo) ----
+async function evalCargar(tienda, desde, hasta) {
+  return DEMO ? evalDatosDemo(tienda, desde, hasta) : await rpc('pos_eval_datos', { p_tienda: tienda, p_desde: desde, p_hasta: hasta });
+}
+async function bonCargarResumen() {
+  BON.res = DEMO ? bonResumenDemo(BON.mes) : await rpc('pos_bon_resumen', { p_mes: BON.mes + '-01' });
+  BON.res.filas.forEach(f => ['pct_mes', 'bono_total', 'gestion_max', 'venta_max', 'gestion_usd', 'venta_usd', 'total_usd'].forEach(k => f[k] = Number(f[k] || 0)));
+  BON.res.tiendas.forEach(t => ['ventas_usd'].forEach(k => t[k] = Number(t[k] || 0)));
+}
+const bonTiendas = () => BON.res?.tiendas || (DEMO ? DEMO_DATA.tiendas : S.tiendas) || [];
+
+// ---- Pantalla de evaluación del día (la usa la encargada en Administrar, y el dueño/Katherine en Nómina → Bonos) ----
+async function pintarEvaluacion(c, tiendaId) {
+  const hoy = hoyVE();
+  if (!EV.fecha || EV.fecha > hoy) EV.fecha = hoy;
+  const lunes = lunesDe(EV.fecha), domingo = sumarDias(lunes, 6), mes = EV.fecha.slice(0, 7), desde = [lunes, mes + '-01'].sort()[0], hasta = [domingo, finDeMes(mes)].sort()[1];
+  if (!tiendaId) return c.innerHTML = '<p class="vacio">Elige la tienda.</p>';
+  c.innerHTML = '<p class="vacio">Cargando…</p>';
+  let d; try { d = await evalCargar(tiendaId, desde, hasta); } catch (e) { return c.innerHTML = `<p class="mensaje-error">${esc(e.message)}</p>`; }
+  d.dias.forEach(x => x.pct = Number(x.pct));
+  const esEnc = d.rol === 'encargada', minF = esEnc ? sumarDias(hoy, -3) : '2026-01-01';
+  if (EV.fecha < minF) EV.fecha = minF;
+  const del = (t, f) => d.dias.find(x => x.trabajador_id === t.id && x.fecha === f);
+  const acts = f => d.actividades.filter(a => a.funcion === f && a.activo).sort((a, b) => a.orden - b.orden || a.id - b.id);
+  const semana = Array.from({ length: 7 }, (_, i) => sumarDias(lunes, i));
+  const prom = xs => xs.length ? xs.reduce((a, x) => a + x.pct, 0) / xs.length : null;
+  const evaluados = d.trabajadores.filter(t => del(t, EV.fecha)).length;
+  c.innerHTML = `<div class="adm-barra"><p>Marca lo que cada uno <b>cumplió hoy</b>. El % del día sale solo; el de la semana y el del mes se acumulan.${esEnc ? ' Puedes evaluar hoy y hasta 3 días atrás.' : ''}</p></div>
+    <div class="adm-barra"><button class="btn btn-sec" id="ev-ant" ${EV.fecha <= minF ? 'disabled' : ''}>‹</button>
+      <input type="date" id="ev-f" class="txt" value="${EV.fecha}" min="${minF}" max="${hoy}" style="max-width:170px">
+      <button class="btn btn-sec" id="ev-sig" ${EV.fecha >= hoy ? 'disabled' : ''}>›</button>
+      <b>${new Date(EV.fecha + 'T12:00:00Z').toLocaleDateString('es-VE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}</b>
+      <span class="espacio"></span><span class="badge ${evaluados === d.trabajadores.length && evaluados ? 'ok' : 'abierta'}">${evaluados} de ${d.trabajadores.length} evaluados</span></div>
+    ${d.trabajadores.length ? '' : `<p class="vacio">No hay trabajadores con bono en esta tienda. ${esEnc ? 'Avísale a Gestión de Gente.' : 'Asígnalos en Nómina → Bonos → Montos y personas.'}</p>`}
+    <div class="pedidos ev-lista">${d.trabajadores.map(t => { const x = del(t, EV.fecha), f = x?.funcion || t.funcion || 'cajero', as = acts(f);
+      const ok = new Set((x?.marcas || []).filter(m => m.ok).map(m => m.id));
+      return `<article class="pedido" data-ev="${t.id}"><header><b>${esc(nomNombre(t))}</b><span class="ayuda">${esc(t.cargo || BON_GRUPOS[t.bono_grupo] || '')}</span><span class="espacio"></span>
+          ${x ? `<span class="badge ${colorPct(x.pct)}">Guardado · ${pctTxt(x.pct)}</span>` : '<span class="badge">Sin evaluar</span>'}</header>
+        <label class="campo" style="margin:6px 0"><span>Función de este día</span><select class="sel corto ev-fun">${Object.entries(FUNCIONES).map(([k, n]) => `<option value="${k}" ${k === f ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <div class="ev-acts">${as.length ? as.map(a => `<label class="ev-act"><input type="checkbox" value="${a.id}" ${x ? (ok.has(a.id) ? 'checked' : '') : 'checked'}><span>${esc(a.nombre)}</span><b>${fmtCant(Number(a.peso))} %</b></label>`).join('')
+          : `<p class="ayuda">⚠️ ${FUNCIONES[f]} todavía no tiene actividades. Las carga Gestión de Gente en Nómina → Bonos → Actividades.</p>`}</div>
+        <input class="txt ev-nota" placeholder="Nota (opcional)" value="${esc(x?.nota || '')}" style="margin-top:6px">
+        <footer style="margin-top:8px"><span class="ev-pct ayuda"></span><span class="espacio"></span>${x ? '<button class="btn btn-sec ev-quitar" title="Quitar la evaluación de este día (no trabajó)">No trabajó</button>' : ''}
+          <button class="btn btn-primario ev-guardar" ${as.length ? '' : 'disabled'}>${x ? 'Actualizar' : 'Guardar'}</button></footer></article>`; }).join('')}</div>
+    ${d.trabajadores.length ? `<section class="graf"><h4>Semana del ${fechaCorta(lunes)} al ${fechaCorta(domingo)} y mes de ${nombreMes(mes)}</h4>
+      <table class="tabla-simple num"><thead><tr><th>Trabajador</th>${semana.map(f => `<th class="der">${DIAS_CORTOS[new Date(f + 'T12:00:00Z').getUTCDay()]} ${f.slice(8)}</th>`).join('')}<th class="der">Semana</th><th class="der">Mes</th><th class="der">Días</th></tr></thead><tbody>
+      ${d.trabajadores.map(t => { const ds = d.dias.filter(x => x.trabajador_id === t.id), sem = ds.filter(x => x.fecha >= lunes && x.fecha <= domingo), dm = ds.filter(x => x.fecha.startsWith(mes));
+        return `<tr><td>${esc(nomNombre(t))}</td>${semana.map(f => { const x = ds.find(z => z.fecha === f); return `<td class="der">${x ? `<span class="badge ${colorPct(x.pct)}">${pctTxt(x.pct)}</span>` : '—'}</td>`; }).join('')}
+          <td class="der"><b>${pctTxt(prom(sem))}</b></td><td class="der"><b>${pctTxt(prom(dm))}</b></td><td class="der">${dm.length}</td></tr>`; }).join('')}</tbody></table>
+      <p class="ayuda">El % del mes es lo acumulado vs lo correcto: el promedio de los días evaluados. Los días que no trabajó no cuentan.</p></section>` : ''}`;
+  const ir = f => { EV.fecha = f; pintarEvaluacion(c, tiendaId); };
+  c.querySelector('#ev-f').onchange = e => e.target.value && ir(e.target.value);
+  c.querySelector('#ev-ant').onclick = () => ir(sumarDias(EV.fecha, -1));
+  c.querySelector('#ev-sig').onclick = () => ir(sumarDias(EV.fecha, 1));
+  c.querySelectorAll('[data-ev]').forEach(card => {
+    const t = d.trabajadores.find(z => z.id === Number(card.dataset.ev)), x = del(t, EV.fecha);
+    const calc = () => { const cs = [...card.querySelectorAll('.ev-act input')], tot = cs.reduce((a, i) => a + Number(acts(card.querySelector('.ev-fun').value).find(z => z.id === Number(i.value))?.peso || 0), 0);
+      const okp = cs.filter(i => i.checked).reduce((a, i) => a + Number(acts(card.querySelector('.ev-fun').value).find(z => z.id === Number(i.value))?.peso || 0), 0);
+      card.querySelector('.ev-pct').innerHTML = tot ? `Hoy: <b>${pctTxt(okp * 100 / tot)}</b>` : ''; };
+    card.querySelectorAll('.ev-act input').forEach(i => i.onchange = calc); calc();
+    card.querySelector('.ev-fun').onchange = e => { const f = e.target.value, as = acts(f);
+      card.querySelector('.ev-acts').innerHTML = as.length ? as.map(a => `<label class="ev-act"><input type="checkbox" value="${a.id}" checked><span>${esc(a.nombre)}</span><b>${fmtCant(Number(a.peso))} %</b></label>`).join('')
+        : `<p class="ayuda">⚠️ ${FUNCIONES[f]} todavía no tiene actividades.</p>`;
+      card.querySelector('.ev-guardar').disabled = !as.length;
+      card.querySelectorAll('.ev-act input').forEach(i => i.onchange = calc); calc(); };
+    card.querySelector('.ev-guardar').onclick = async ev => {
+      const f = card.querySelector('.ev-fun').value, ok = [...card.querySelectorAll('.ev-act input:checked')].map(i => Number(i.value)), nota = limpiar(card.querySelector('.ev-nota').value) || null;
+      await guardando(ev.target, async () => {
+        const p = DEMO ? evalGuardarDemo(t, EV.fecha, f, ok, nota) : await rpc('pos_eval_guardar', { p_trabajador: t.id, p_fecha: EV.fecha, p_funcion: f, p_ok: ok, p_nota: nota });
+        toast(`${nomNombre(t)}: ${pctTxt(Number(p))}`); pintarEvaluacion(c, tiendaId); });
+    };
+    const q = card.querySelector('.ev-quitar');
+    if (q) q.onclick = async () => { if (!confirm(`¿Quitar la evaluación de ${nomNombre(t)} de este día? (no cuenta para su %)`)) return;
+      await guardando(q, async () => {
+        if (DEMO) { if (bonCerradoDemo(EV.fecha)) throw new Error('Ese mes ya se cerró'); DX.bon.dias = DX.bon.dias.filter(z => z !== x); guardarDemo(); }
+        else await rpc('pos_eval_quitar', { p_trabajador: t.id, p_fecha: EV.fecha });
+        pintarEvaluacion(c, tiendaId); }); };
+  });
+}
+function pintarAdmEvaluacion() { pintarEvaluacion($('adm-contenido'), S.tienda.id); }
+
+// ---- Nómina → Bonos (dueño y Gestión de Gente) ----
+async function pintarBonos(c) {
+  if (!BON.mes) BON.mes = mesVE();
+  c.innerHTML = `<nav class="sub-tabs" style="margin-bottom:10px">${[['resumen', 'Resumen del mes'], ['evaluar', 'Evaluar'], ['actividades', 'Actividades por función'], ['montos', 'Montos y personas']]
+    .map(([k, n]) => `<button class="sub-tab ${BON.vista === k ? 'activa' : ''}" data-bv="${k}">${n}</button>`).join('')}</nav><div id="bon-cont"><p class="vacio">Cargando…</p></div>`;
+  c.querySelectorAll('[data-bv]').forEach(b => b.onclick = () => { BON.vista = b.dataset.bv; pintarBonos(c); });
+  const k = $('bon-cont');
+  try { if (!BON.res || BON.res.mes.slice(0, 7) !== BON.mes) await bonCargarResumen(); if (!DEMO && BON.vista !== 'resumen') await cargarBonActividades(); }
+  catch (e) { return k.innerHTML = `<p class="mensaje-error">${esc(e.message)}</p>`; }
+  if (BON.vista === 'evaluar') { BON.tienda = BON.tienda || bonTiendas()[0]?.id;
+    k.innerHTML = `<div class="adm-barra"><label class="campo" style="margin:0"><span>Tienda</span><select id="bv-t" class="sel corto">${bonTiendas().map(t => `<option value="${t.id}" ${t.id === BON.tienda ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></label>
+      <p class="ayuda">Aquí también evalúas al líder y al gerente (la encargada solo ve a los operadores de su tienda, en Administrar → Evaluación).</p></div><div id="bv-ev"></div>`;
+    k.querySelector('#bv-t').onchange = e => { BON.tienda = Number(e.target.value); pintarEvaluacion($('bv-ev'), BON.tienda); };
+    return pintarEvaluacion($('bv-ev'), BON.tienda); }
+  if (BON.vista === 'actividades') return pintarBonActividades(k);
+  if (BON.vista === 'montos') return pintarBonMontos(k);
+  pintarBonResumen(k, c);
+}
+let BON_ACTS = null;
+async function cargarBonActividades() { const d = await rpc('pos_eval_datos', { p_tienda: null, p_desde: hoyVE(), p_hasta: hoyVE() }); BON_ACTS = d.actividades; }
+const bonActs = () => DEMO ? (bonSembrarDemo(), DX.bon.actividades) : (BON_ACTS || []);
+
+function pintarBonResumen(k, c) {
+  const R = BON.res, tn = id => R.tiendas.find(t => t.id === id)?.nombre || (id ? '' : '—');
+  const ini = BON.mes + '-01', fin = finDeMes(BON.mes), semanas = [];
+  for (let l = lunesDe(ini); l <= fin; l = sumarDias(l, 7)) semanas.push(l);
+  const sem = (f, l) => { const xs = f.detalle.filter(x => x.fecha >= l && x.fecha <= sumarDias(l, 6)); return xs.length ? xs.reduce((a, x) => a + Number(x.pct), 0) / xs.length : null; };
+  const filas = R.filas, tot = key => r2(filas.reduce((a, f) => a + f[key], 0)), cerr = R.cerrado, pasado = BON.mes < mesVE();
+  const grupos = [...new Set(filas.map(f => f.tienda_id))];
+  k.innerHTML = `<div class="adm-barra"><label class="campo" style="margin:0"><span>Mes</span><input type="month" id="br-mes" class="txt" value="${BON.mes}" max="${mesVE()}"></label>
+      <p>Bono = <b>30 % gestión</b> (según el % de la evaluación diaria) + <b>70 % venta</b> (completo si la tienda llegó a su meta del mes; si no, nada).</p><span class="espacio"></span>
+      ${cerr ? `<span class="badge ok">Cerrado · cuentas por pagar creadas</span>${S.perfil.rol === 'dueno' ? '<button class="btn btn-sec" id="br-reabrir">Reabrir</button>' : ''}`
+        : `<button class="btn btn-primario" id="br-cerrar" ${pasado ? '' : 'disabled title="Se cierra cuando termina el mes"'}>Cerrar mes y pasar a cuentas por pagar</button>`}
+      <button class="btn btn-sec" id="br-copiar">Copiar para Excel</button></div>
+    <section class="graf"><h4>Metas de venta de ${nombreMes(BON.mes)}</h4>
+      <table class="tabla-simple num"><thead><tr><th>Tienda</th><th class="der">Meta del mes $</th><th class="der">Vendido $</th><th class="der">Avance</th><th>¿Llegó?</th><th class="der">Ventas a mano $ <span class="ayuda">(si no vende con el sistema)</span></th></tr></thead><tbody>
+      ${R.tiendas.map(t => `<tr><td>${esc(t.nombre)}</td><td class="der"><input class="txt num br-meta" data-t="${t.id}" value="${t.meta_usd != null ? fmt.format(t.meta_usd) : ''}" placeholder="Sin meta" style="max-width:110px" ${cerr ? 'disabled' : ''}></td>
+        <td class="der">${usd(t.ventas_usd)}</td><td class="der">${t.meta_usd > 0 ? pctTxt(t.ventas_usd * 100 / t.meta_usd) : '—'}</td>
+        <td>${t.meta_usd > 0 ? (t.cumple ? '<span class="badge ok">Sí ✓</span>' : '<span class="badge mal">Todavía no</span>') : '<span class="badge abierta">Falta la meta</span>'}</td>
+        <td class="der"><input class="txt num br-man" data-t="${t.id}" value="${t.ventas_manual_usd != null ? fmt.format(t.ventas_manual_usd) : ''}" placeholder="Del sistema" style="max-width:110px" ${cerr ? 'disabled' : ''}></td></tr>`).join('')}
+      <tr><td><b>Todas (meta del gerente)</b></td><td class="der"><input class="txt num br-meta" data-t="" value="${R.todas.meta_usd != null ? fmt.format(R.todas.meta_usd) : ''}" placeholder="Sin meta" style="max-width:110px" ${cerr ? 'disabled' : ''}></td>
+        <td class="der"><b>${usd(R.todas.ventas_usd)}</b></td><td class="der">${R.todas.meta_usd > 0 ? pctTxt(R.todas.ventas_usd * 100 / R.todas.meta_usd) : '—'}</td>
+        <td>${R.todas.meta_usd > 0 ? (R.todas.cumple ? '<span class="badge ok">Sí ✓</span>' : '<span class="badge mal">Todavía no</span>') : '<span class="badge abierta">Falta la meta</span>'}</td><td></td></tr></tbody></table>
+      ${cerr ? '' : '<button class="btn btn-sec" id="br-metas" style="margin-top:8px">Guardar metas</button>'}</section>
+    <section class="graf"><h4>Bonos de ${nombreMes(BON.mes)}${cerr ? '' : ' (va calculando con lo evaluado hasta hoy)'}</h4>
+      <table class="tabla-simple num"><thead><tr><th>Trabajador</th><th>Grupo</th>${semanas.map((l, i) => `<th class="der" title="Semana del ${fechaCorta(l)}">S${i + 1}</th>`).join('')}<th class="der">Días</th><th class="der">% mes</th>
+        <th class="der">Gestión $</th><th class="der">Venta $</th><th class="der">Total $</th></tr></thead><tbody>
+      ${grupos.map(g => { const fs = filas.filter(f => f.tienda_id === g);
+        return `<tr class="sep"><td colspan="${semanas.length + 7}"><b>${esc(tn(g))}</b></td></tr>` + fs.map(f => `<tr><td>${esc(f.nombre)}</td><td>${BON_GRUPOS[f.bono_grupo]}</td>
+          ${semanas.map(l => { const v = sem(f, l); return `<td class="der">${v == null ? '—' : `<span class="badge ${colorPct(v)}">${pctTxt(v)}</span>`}</td>`; }).join('')}
+          <td class="der">${f.dias}</td><td class="der"><b>${f.dias ? pctTxt(f.pct_mes) : '—'}</b></td>
+          <td class="der">${usd(f.gestion_usd)} <span class="ayuda">de ${usd(f.gestion_max)}</span></td><td class="der">${f.cumple_venta ? usd(f.venta_usd) + ' ✓' : `$0,00 <span class="ayuda">de ${usd(f.venta_max)}</span>`}</td>
+          <td class="der"><b>${usd(f.total_usd)}</b></td></tr>`).join(''); }).join('') || `<tr><td colspan="${semanas.length + 7}" class="vacio">No hay trabajadores con bono. Asígnalos en "Montos y personas".</td></tr>`}
+      <tr class="total"><td colspan="${semanas.length + 4}"><b>Total</b></td><td class="der"><b>${usd(tot('gestion_usd'))}</b></td><td class="der"><b>${usd(tot('venta_usd'))}</b></td><td class="der"><b>${usd(tot('total_usd'))}</b></td></tr></tbody></table>
+      <p class="ayuda">Al cerrar el mes se crean en cada tienda dos cuentas por pagar ("Bono de gestión" y "Bono de venta", tipos BONO GESTION y BONO MES del balance) que vencen el día 7 del mes siguiente. Después del cierre ya no se pueden cambiar las evaluaciones de ese mes.</p></section>`;
+  k.querySelector('#br-mes').onchange = e => { if (!e.target.value) return; BON.mes = e.target.value; BON.res = null; pintarBonos(c); };
+  k.querySelector('#br-copiar').onclick = () => copiarTexto(tsv(['Tienda', 'Trabajador', 'Grupo', ...semanas.map((l, i) => 'S' + (i + 1) + ' %'), 'Días', '% mes', 'Gestión $', 'Venta $', 'Total $'],
+    filas.map(f => [tn(f.tienda_id), f.nombre, BON_GRUPOS[f.bono_grupo], ...semanas.map(l => { const v = sem(f, l); return v == null ? '' : numXls(v); }), f.dias, numXls(f.pct_mes), numXls(f.gestion_usd), numXls(f.venta_usd), numXls(f.total_usd)])));
+  const mb = k.querySelector('#br-metas');
+  if (mb) mb.onclick = () => guardando(mb, async () => {
+    const leer = (sel, t) => { const v = k.querySelector(`${sel}[data-t="${t}"]`)?.value.trim(); return v ? leerNum(v) : null; };
+    for (const t of [...R.tiendas.map(x => x.id), null]) {
+      const meta = leer('.br-meta', t ?? ''), man = t == null ? null : leer('.br-man', t);
+      if (DEMO) { DX.bon.metas = DX.bon.metas.filter(m => !(m.mes === BON.mes && (m.tienda_id ?? null) === t)); if (meta != null || man != null) DX.bon.metas.push({ mes: BON.mes, tienda_id: t, meta_usd: meta, ventas_manual_usd: man }); }
+      else await rpc('pos_bon_meta_guardar', { p_tienda: t, p_mes: BON.mes + '-01', p_meta: meta, p_ventas_manual: man });
+    }
+    if (DEMO) guardarDemo(); BON.res = null; toast('Metas guardadas'); pintarBonos(c); });
+  const cb = k.querySelector('#br-cerrar');
+  if (cb) cb.onclick = () => { if (!confirm(`¿Cerrar los bonos de ${nombreMes(BON.mes)}? Se crean las cuentas por pagar (total ${usd(tot('total_usd'))}) y ya no se pueden cambiar las evaluaciones de ese mes.`)) return;
+    guardando(cb, async () => {
+      if (DEMO) { DX.bon.meses.push({ mes: BON.mes, resultado: R, cerrado_en: new Date().toISOString() }); guardarDemo(); toast('Mes cerrado'); }
+      else { const r = await rpc('pos_bon_cerrar', { p_mes: BON.mes + '-01' }); toast(`Mes cerrado: ${r.cuentas} cuentas por pagar creadas`); }
+      BON.res = null; pintarBonos(c); }); };
+  const rb = k.querySelector('#br-reabrir');
+  if (rb) rb.onclick = () => { if (!confirm('¿Reabrir el mes? Se borran las cuentas por pagar de bonos que no se han pagado.')) return;
+    guardando(rb, async () => { if (DEMO) { DX.bon.meses = DX.bon.meses.filter(m => m.mes !== BON.mes); guardarDemo(); } else await rpc('pos_bon_reabrir', { p_mes: BON.mes + '-01' });
+      BON.res = null; toast('Mes reabierto'); pintarBonos(c); }); };
+}
+
+function pintarBonActividades(k) {
+  const as = bonActs().filter(a => a.funcion === BON.funcion).sort((a, b) => a.orden - b.orden || a.id - b.id);
+  const suma = as.filter(a => a.activo).reduce((s, a) => s + Number(a.peso), 0);
+  k.innerHTML = `<div class="adm-barra"><p>Las actividades que el líder marca cada día y cuánto vale cada una. Lo ideal es que las activas sumen <b>100 %</b>.</p></div>
+    <nav class="sub-tabs" style="margin-bottom:10px">${Object.entries(FUNCIONES).map(([f, n]) => `<button class="sub-tab ${BON.funcion === f ? 'activa' : ''}" data-bf="${f}">${n} (${bonActs().filter(a => a.funcion === f && a.activo).length})</button>`).join('')}</nav>
+    <table class="tabla-simple num"><thead><tr><th>#</th><th>Actividad</th><th class="der">% que vale</th><th>Activa</th><th></th></tr></thead><tbody>
+    ${as.map(a => `<tr class="${a.activo ? '' : 'apagado'}"><td><input class="txt num ba-ord" data-a="${a.id}" value="${a.orden}" style="max-width:50px"></td><td><input class="txt ba-nom" data-a="${a.id}" value="${esc(a.nombre)}"></td>
+      <td class="der"><input class="txt num ba-peso" data-a="${a.id}" value="${fmtCant(Number(a.peso))}" style="max-width:70px"></td>
+      <td><input type="checkbox" class="ba-act" data-a="${a.id}" ${a.activo ? 'checked' : ''}></td><td><button class="btn btn-sec ba-g" data-a="${a.id}">Guardar</button></td></tr>`).join('')
+      || '<tr><td colspan="5" class="vacio">Todavía no hay actividades para esta función.</td></tr>'}
+    <tr class="total"><td></td><td><b>Suma de las activas</b></td><td class="der"><b class="${Math.abs(suma - 100) < 0.01 ? '' : 'texto-error'}">${fmtCant(suma)} %</b></td><td colspan="2">${Math.abs(suma - 100) < 0.01 || !as.length ? '' : '⚠️ no suman 100 % (igual se calcula sobre lo que sumen)'}</td></tr></tbody></table>
+    <form id="ba-nueva" class="adm-barra" style="margin-top:10px"><input id="ba-n" class="txt" placeholder="Nueva actividad de ${FUNCIONES[BON.funcion]}" style="flex:1">
+      <input id="ba-p" class="txt num" placeholder="%" style="max-width:70px"><button class="btn btn-primario">+ Agregar</button></form>`;
+  k.querySelectorAll('[data-bf]').forEach(b => b.onclick = () => { BON.funcion = b.dataset.bf; pintarBonActividades(k); });
+  const guardar = async p => {
+    if (DEMO) { if (!p.nombre) throw new Error('Escribe la actividad'); if (!(p.peso > 0)) throw new Error('Escribe el % de la actividad');
+      if (p.id) Object.assign(DX.bon.actividades.find(a => a.id === p.id), p);
+      else DX.bon.actividades.push({ ...p, id: nid(), activo: true, orden: Math.max(0, ...DX.bon.actividades.filter(a => a.funcion === p.funcion).map(a => a.orden)) + 1 });
+      guardarDemo(); }
+    else { await rpc('pos_eval_actividad_guardar', { p }); await cargarBonActividades(); }
+    toast('Guardado'); pintarBonActividades(k); };
+  k.querySelectorAll('.ba-g').forEach(b => b.onclick = () => { const id = Number(b.dataset.a), v = s => k.querySelector(`${s}[data-a="${id}"]`);
+    guardando(b, () => guardar({ id, funcion: BON.funcion, nombre: limpiar(v('.ba-nom').value), peso: leerNum(v('.ba-peso').value), orden: parseInt(v('.ba-ord').value) || 0, activo: v('.ba-act').checked })); });
+  k.querySelector('#ba-nueva').onsubmit = e => { e.preventDefault();
+    guardando(k.querySelector('#ba-nueva button'), () => guardar({ funcion: BON.funcion, nombre: limpiar($('ba-n').value), peso: leerNum($('ba-p').value) })); };
+}
+
+function pintarBonMontos(k) {
+  const R = BON.res, ts = R.tiendas, mo = (g, t) => R.montos.find(m => m.grupo === g && (m.tienda_id ?? null) === t);
+  const trabs = NOMD.trabajadores.filter(t => t.activo && (t.grupo === 'tiendas' || t.bono_grupo)).sort((a, b) => (a.tienda_id || 99) - (b.tienda_id || 99) || nomNombre(a).localeCompare(nomNombre(b)));
+  const celda = (g, t) => { const m = mo(g, t); return `<td class="der"><input class="txt num bm-tot" data-g="${g}" data-t="${t ?? ''}" value="${m ? fmt.format(Number(m.total_usd)) : ''}" placeholder="—" style="max-width:90px">
+    ${m ? `<br><span class="ayuda">gestión ${usd(m.total_usd * m.pct_gestion / 100)} · venta ${usd(m.total_usd * (100 - m.pct_gestion) / 100)}</span>` : ''}</td>`; };
+  k.innerHTML = `<section class="graf"><h4>Bono total del mes por persona ($)</h4>
+      <table class="tabla-simple num"><thead><tr><th>Grupo</th>${ts.map(t => `<th class="der">${esc(t.nombre)}</th>`).join('')}</tr></thead><tbody>
+      ${['operador', 'lider'].map(g => `<tr><td>${BON_GRUPOS[g]}</td>${ts.map(t => celda(g, t.id)).join('')}</tr>`).join('')}
+      <tr><td>${BON_GRUPOS.gerente}</td>${celda('gerente', null)}<td colspan="${Math.max(ts.length - 1, 0)}" class="ayuda">El mismo para cualquier tienda; su venta se mide contra la meta de todas las tiendas juntas.</td></tr></tbody></table>
+      <div class="adm-barra" style="margin-top:8px"><label class="campo" style="margin:0"><span>% de gestión (el resto es venta)</span><input id="bm-pct" class="txt num" value="${fmtCant(Number(R.montos[0]?.pct_gestion ?? 30))}" style="max-width:70px"></label>
+        <button class="btn btn-primario" id="bm-g">Guardar montos</button></div></section>
+    <section class="graf"><h4>Quién entra en los bonos</h4><p class="ayuda">La tienda decide qué líder lo evalúa y qué monto cobra. La función es la que sale de primera al evaluar (se puede cambiar cada día).</p>
+      <table class="tabla-simple"><thead><tr><th>Trabajador</th><th>Cargo</th><th>Tienda</th><th>Grupo de bono</th><th>Función habitual</th></tr></thead><tbody>
+      ${trabs.map(t => `<tr data-bt="${t.id}"><td>${esc(nomNombre(t))}</td><td>${esc(t.cargo || '—')}</td>
+        <td><select class="sel corto bt-t"><option value="">—</option>${ts.map(x => `<option value="${x.id}" ${t.tienda_id === x.id ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></td>
+        <td><select class="sel corto bt-g"><option value="">Sin bono</option>${Object.entries(BON_GRUPOS).map(([g, n]) => `<option value="${g}" ${t.bono_grupo === g ? 'selected' : ''}>${n}</option>`).join('')}</select></td>
+        <td><select class="sel corto bt-f"><option value="">—</option>${Object.entries(FUNCIONES).map(([f, n]) => `<option value="${f}" ${t.funcion === f ? 'selected' : ''}>${n}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></section>`;
+  k.querySelector('#bm-g').onclick = e => guardando(e.target, async () => {
+    const pctG = leerNum($('bm-pct').value); if (!(pctG >= 0 && pctG <= 100)) throw new Error('El % de gestión va de 0 a 100');
+    for (const i of k.querySelectorAll('.bm-tot')) { const v = i.value.trim(); if (!v) continue;
+      const g = i.dataset.g, t = i.dataset.t ? Number(i.dataset.t) : null, tot = leerNum(v);
+      if (DEMO) { const m = DX.bon.montos.find(x => x.grupo === g && (x.tienda_id ?? null) === t); if (m) Object.assign(m, { total_usd: tot, pct_gestion: pctG }); else DX.bon.montos.push({ grupo: g, tienda_id: t, total_usd: tot, pct_gestion: pctG }); }
+      else await rpc('pos_bon_monto_guardar', { p_grupo: g, p_tienda: t, p_total: tot, p_pct_gestion: pctG }); }
+    if (DEMO) guardarDemo(); BON.res = null; toast('Montos guardados'); pintarBonos(k.parentElement); });
+  k.querySelectorAll('[data-bt]').forEach(tr => tr.querySelectorAll('select').forEach(s => s.onchange = async () => {
+    const t = NOMD.trabajadores.find(x => x.id === Number(tr.dataset.bt)), v = c => tr.querySelector(c).value;
+    const p = { tienda_id: Number(v('.bt-t')) || null, bono_grupo: v('.bt-g') || null, funcion: v('.bt-f') || null };
+    try {
+      if (DEMO) { Object.assign(DX.nom.trabajadores.find(x => x.id === t.id), p); guardarDemo(); }
+      else await rpc('pos_nom_trabajador_bono', { p_id: t.id, p_tienda: p.tienda_id, p_grupo: p.bono_grupo, p_funcion: p.funcion });
+      Object.assign(t, p); BON.res = null; toast('Guardado');
+    } catch (e) { toast(e.message, true); } }));
+}
 
 // Registro de dispositivos del dueño: dónde se ha dado el código de la app autenticadora (solo lo ve el dueño)
 function pintarAdmDispositivos() {
