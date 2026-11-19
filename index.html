@@ -133,6 +133,7 @@
   .modal-cab h3{margin:0;font-size:24px}
   .modal-cab p{margin:4px 0 0;color:var(--suave)}
   .modal-cuerpo{padding:8px 24px 16px;overflow:auto}
+  .modal>form{display:flex;flex-direction:column;min-height:0;flex:1 1 auto}
   .modal-pie{padding:14px 24px;border-top:1px solid var(--linea);display:flex;align-items:center;gap:12px}
   .grupo{margin-top:14px}
   .grupo h4{margin:0 0 8px;font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--suave)}
@@ -302,6 +303,10 @@
   .adm-tab{white-space:nowrap}
   .sel,.txt{padding:9px 11px;border:1.5px solid var(--linea);border-radius:9px;outline:none;font:inherit;background:#fff;min-width:0;width:100%}
   .sel.corto,.txt.corto{width:auto}
+  .tabla-scroll{overflow-x:auto;max-width:100%}
+  .nm-tabla td,.nm-tabla th{padding:4px 5px;white-space:nowrap} .nm-tabla .txt{padding:5px 6px;min-height:0;font-size:13px}
+  .nm-tabla tr.nm-centro td{background:var(--crema,#f6efe6);font-weight:700;padding-top:8px}
+  .nt-horario{display:grid;grid-template-columns:repeat(7,1fr);gap:6px} .nt-horario label{display:grid;gap:2px;text-align:center}
   .sel:focus,.txt:focus{border-color:var(--naranja)}
   .tabla-simple{width:100%;border-collapse:collapse;font-size:14px;background:var(--papel);border-radius:12px;overflow:hidden;margin-top:8px}
   .tabla-simple th{text-align:left;font-size:12px;color:var(--suave);font-weight:600;padding:9px 10px;border-bottom:1px solid var(--linea);background:#FFFCF8}
@@ -453,6 +458,17 @@
   </div>
 </section>
 
+<!-- ================= NÓMINA (rol 'nomina') ================= -->
+<section id="vista-nomina" class="oculto">
+  <header class="barra">
+    <div class="marca">ChocoTentación<small>Nómina</small></div>
+    <div class="espacio"></div>
+    <span class="usuario" id="nom-usuario"></span>
+    <button class="btn-barra" id="nom-salir">Salir</button>
+  </header>
+  <main class="admin" id="nom-raiz" style="padding:18px 22px"></main>
+</section>
+
 <!-- ================= APP ================= -->
 <section id="vista-app" class="oculto">
   <header class="barra">
@@ -523,6 +539,7 @@
           <button class="adm-tab" data-tab="proveedores" data-rol="dueno encargada" data-mod="1">Proveedores</button>
           <button class="adm-tab" data-tab="clientes" data-rol="dueno encargada" data-mod="1">Clientes</button>
           <button class="adm-tab" data-tab="reportes" data-rol="dueno encargada" data-mod="1">Reportes</button>
+          <button class="adm-tab" data-tab="nomina" data-rol="dueno" data-mod="1">Nómina</button>
           <button class="adm-tab" data-tab="usuarios" data-rol="dueno" data-mod="1">Usuarios</button>
           <button class="adm-tab" data-tab="clave" id="adm-tab-clave" data-rol="dueno">Clave</button>
           <button class="adm-tab" data-tab="dispositivos" data-rol="dueno" data-mod="1">Dispositivos</button>
@@ -581,7 +598,7 @@ function toast(msg, error = false) {
   document.body.appendChild(t); setTimeout(() => t.remove(), error ? 5000 : 2500);
 }
 function mostrar(vista) {
-  for (const v of ['vista-login', 'vista-tienda', 'vista-app']) $(v).classList.toggle('oculto', v !== vista);
+  for (const v of ['vista-login', 'vista-tienda', 'vista-app', 'vista-nomina']) $(v).classList.toggle('oculto', v !== vista);
 }
 function inicioDiaVenezuela() { // Venezuela es UTC-4 todo el año
   const ahora = new Date(Date.now() - 4 * 3600e3);
@@ -642,17 +659,9 @@ const api = {
   },
   async verificarCodigo(codigo) {
     if (!/^\d{6}$/.test(codigo)) throw new Error('Escribe los 6 números de la app autenticadora');
-    // Se le pregunta al servidor (getUser) y no a la copia guardada en el navegador, que a veces viene sin los factores
-    let totp = null;
-    try {
-      const { data: u } = await sb.auth.getUser();
-      totp = (u?.user?.factors || []).find(x => x.factor_type === 'totp' && x.status === 'verified') || null;
-    } catch (e) { /* se prueba el otro camino */ }
-    if (!totp) {
-      const { data: f } = await sb.auth.mfa.listFactors();
-      totp = (f?.totp || []).find(x => x.status === 'verified') || null;
-    }
-    if (!totp) throw new Error('No se pudo leer tu autenticador. Sal, vuelve a entrar y prueba otra vez. Si sigue igual, avisa a soporte.');
+    const { data: f } = await sb.auth.mfa.listFactors();
+    const totp = (f?.totp || []).find(x => x.status === 'verified');
+    if (!totp) throw new Error('Tu cuenta no tiene autenticador configurado');
     const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: totp.id, code: codigo });
     if (error) throw new Error('Código incorrecto o vencido. Escribe el que sale ahora en la app.');
     await sb.auth.refreshSession();
@@ -1981,7 +1990,7 @@ async function recargarVenta() {
 /* --- pantalla --- */
 function pintarAdmin() {
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('activa', b.dataset.tab === A.tab));
-  const vistas = { panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
+  const vistas = { nomina: pintarAdmNomina, panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
     cierres: pintarAdmCierres, gastos: pintarAdmGastos, proveedores: pintarAdmProveedores, clientes: pintarAdmClientes,
     reportes: pintarAdmReportes, usuarios: pintarAdmUsuarios, clave: pintarAdmClave, dispositivos: pintarAdmDispositivos };
   const f = vistas[A.tab] || pintarAdmProductos;
@@ -2265,6 +2274,411 @@ async function detallePagosCierre(r, boton) {
   pintar();
 }
 
+/* =====================================================================
+   NÓMINA (etapa 10): solo el dueño y la administrativa (rol 'nomina')
+   ===================================================================== */
+const NOM = { vista: 'nominas', periodoId: null, grupo: '', centro: '', q: '', soloActivos: true };
+let NOMD = null, NOMP = null;   // datos generales y la nómina abierta
+const NOM_GRUPOS = { tiendas: 'Tiendas (semanal, lunes a domingo)', fabrica: 'Fábrica (semanal, sábado a viernes)', administrativo: 'Administrativos (quincenal)' };
+const NOM_GRUPO_CORTO = { tiendas: 'Tiendas', fabrica: 'Fábrica', administrativo: 'Administrativos' };
+const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+const CONCEPTOS_DESC = ['Inventario', 'Ausencia', 'Adelanto', 'Uniforme', 'Otro'];
+const nomDow = f => new Date(f + 'T12:00:00Z').getUTCDay();
+const nomNombre = t => `${t.nombres || ''} ${t.apellidos || ''}`.trim();
+const nomSum = a => (a || []).reduce((s, x) => s + (Number(x?.monto ?? x) || 0), 0);
+function nomFechas(p) { const r = []; for (let f = p.desde; f <= p.hasta; f = sumarDias(f, 1)) r.push(f); return r; }
+
+// Demo: datos de ejemplo con nombres inventados
+function nomSembrarDemo() {
+  if (DX.nom) return;
+  const hoy = hoyVE(), id = () => nid();
+  const ent = [{ id: id(), nombre: 'MI EMPRESA TIENDAS, C.A.', rif: 'J-00000000-0', direccion: 'Av. Principal, C.C. Centro, Local 1' },
+               { id: id(), nombre: 'MI EMPRESA FÁBRICA, C.A.', rif: 'J-00000001-0', direccion: 'Zona Industrial, Galpón 3' }];
+  const T = (nombres, apellidos, grupo, centro, cargo, extra) => ({ id: id(), cedula: String(20000000 + Math.floor(Math.random() * 9e6)), nombres, apellidos, grupo, centro,
+    entidad_id: grupo === 'fabrica' ? ent[1].id : ent[0].id, cargo, tipo: 'fijo', fecha_ingreso: sumarDias(hoy, -200), paquete_mensual_usd: 240, tarifa_extra_usd: 1,
+    bono_traslado_usd: 0, bono_fijo_usd: 0, horario: [8, 8, 8, 8, 8, 0, 0], activo: true, ...extra });
+  DX.nom = { config: { sueldo_minimo_bs: 130, cestaticket_usd: 40, ivss_pct: 4, rpe_pct: 0.5, faov_pct: 1, horas_semana: 40, descontar_retardos: false },
+    entidades: ent, periodos: [], lineas: {},
+    trabajadores: [T('Ana', 'Pérez', 'tiendas', 'Centro', 'Operador integral', { horario: [11, 11, 0, 0, 11, 7, 11] }),
+      T('Luis', 'Gómez', 'tiendas', 'Centro', 'Líder de tienda', { tarifa_extra_usd: 1.25, bono_traslado_usd: 14, horario: [11, 0, 11, 11, 0, 11, 11] }),
+      T('María', 'Rojas', 'tiendas', 'Norte', 'Operador integral', { horario: [0, 9, 11, 11, 7, 11, 11] }),
+      T('Carlos', 'Díaz', 'fabrica', 'Fábrica', 'Operador integral', { tarifa_extra_usd: 1.5, bono_traslado_usd: 10, horario: [8, 8, 8, 8, 8, 8, 0] }),
+      T('Rosa', 'Medina', 'fabrica', 'Fábrica', 'A destajo', { tipo: 'destajo', paquete_mensual_usd: 0, tarifa_extra_usd: 1.5 }),
+      T('Laura', 'Suárez', 'administrativo', 'Administración', 'Analista', { bono_fijo_usd: 30 })] };
+}
+async function cargarNominaReal() {
+  NOMD = await rpc('pos_nom_datos', {});
+  NOMD.trabajadores.forEach(t => ['paquete_mensual_usd', 'tarifa_extra_usd', 'bono_traslado_usd', 'bono_fijo_usd'].forEach(k => t[k] = num(t[k])));
+  if (NOM.periodoId) { NOMP = await rpc('pos_nom_periodo', { p_id: NOM.periodoId }); if (!NOMP) NOM.periodoId = null; }
+}
+function nomDatosDemo() {
+  nomSembrarDemo();
+  NOMD = { ...DX.nom, tasa: S.tasa?.tasa || S.tasa || 900,
+    periodos: DX.nom.periodos.map(p => ({ ...p, personas: (DX.nom.lineas[p.id] || []).length,
+      total_usd: (DX.nom.lineas[p.id] || []).reduce((a, l) => a + (l.calculo?.total_usd || 0), 0) })) };
+  NOMP = NOM.periodoId ? { ...DX.nom.periodos.find(p => p.id === NOM.periodoId), lineas: DX.nom.lineas[NOM.periodoId] || [] } : null;
+  if (NOMP && !NOMP.id) { NOMP = null; NOM.periodoId = null; }
+}
+const nomRefrescar = () => DEMO ? pintarNomina() : (NOM.raiz === 'admin' ? refrescarAdmin() : abrirVistaNomina());
+const nomRpc = async (fn, args, demo) => { if (DEMO) { const r = demo(); guardarDemo(); return r; } return rpc(fn, args); };
+
+// ---- La regla del cálculo (una sola para todos) ----
+function nomHorasIniciales(t, p) { return nomFechas(p).map(f => Number(t.horario?.[(nomDow(f) + 6) % 7] || 0)); }
+function calcNomina(t, p, d, cfg) {
+  const fechas = nomFechas(p), quinc = p.grupo === 'administrativo', base = quinc ? 15 : 7, tasa = Number(p.tasa);
+  const horas = quinc ? [] : (d.horas || nomHorasIniciales(t, p)).map(Number);
+  const horasTot = r2(horas.reduce((a, x) => a + (x || 0), 0));
+  const faltasAuto = quinc ? 0 : fechas.filter((f, i) => Number(t.horario?.[(nomDow(f) + 6) % 7] || 0) > 0 && !(horas[i] > 0)).length;
+  const faltas = d.faltas != null && d.faltas !== '' ? Number(d.faltas) : faltasAuto;
+  const diasPag = Math.max(base - faltas, 0), lunes = fechas.filter(f => nomDow(f) === 1).length;
+  const trabajados = quinc ? diasPag : horas.filter(h => h > 0).length;
+  const extraAuto = quinc ? 0 : Math.max(0, horasTot - Number(cfg.horas_semana) * fechas.length / 7);
+  const extraH = r2(extraAuto + Number(d.extra_ajuste || 0));
+  const traslado = d.traslado != null && d.traslado !== '' ? Number(d.traslado) : r2(Number(t.bono_traslado_usd || 0) * diasPag / base);
+  const bonoFijo = d.bono_fijo != null && d.bono_fijo !== '' ? Number(d.bono_fijo) : Number(t.bono_fijo_usd || 0);
+  const valorHora = Number(t.paquete_mensual_usd || 0) / 30 / 8;
+  const descRetardo = cfg.descontar_retardos ? r2(Number(d.retardo_min || 0) / 60 * valorHora) : 0;
+  const descuentos = r2(nomSum(d.descuentos) + descRetardo), otros = r2(nomSum(d.otros));
+  if (t.tipo === 'destajo') {
+    const pago = r2(horasTot * Number(t.tarifa_extra_usd || 0));
+    const comp = r2(pago + traslado + bonoFijo + otros - descuentos);
+    return { tipo: 'destajo', tasa, horas_total: horasTot, dias_trabajados: trabajados, faltas, pago_destajo: pago, traslado, bono_fijo: bonoFijo, otros,
+      descuentos, desc_retardo: descRetardo, complementarios_usd: comp, ley_neto_bs: 0, ticket_usd: 0, ticket_bs: 0, total_usd: comp, total_bs: r2(comp * tasa) };
+  }
+  const ticket = r2(Number(cfg.cestaticket_usd) / 30 * diasPag);
+  const sueldoBs = r2(Number(cfg.sueldo_minimo_bs) / 30 * diasPag), sueldoUsd = sueldoBs / tasa;
+  const complemento = r2(Math.max(Number(t.paquete_mensual_usd || 0) / 30 * diasPag - ticket - sueldoUsd, 0));
+  const baseSem = Number(cfg.sueldo_minimo_bs) * 12 / 52;
+  const ivss = r2(baseSem * Number(cfg.ivss_pct) / 100 * lunes), rpe = r2(baseSem * Number(cfg.rpe_pct) / 100 * lunes), faov = r2(sueldoBs * Number(cfg.faov_pct) / 100);
+  const leyNeto = r2(sueldoBs - ivss - rpe - faov), pagoExtra = r2(extraH * Number(t.tarifa_extra_usd || 0));
+  const comp = r2(complemento + traslado + bonoFijo + pagoExtra + otros - descuentos);
+  const total = r2(leyNeto / tasa + ticket + comp);
+  return { tipo: 'fijo', tasa, dias_periodo: base, dias_pagados: diasPag, dias_trabajados: trabajados, descanso: Math.max(diasPag - trabajados, 0), faltas, lunes,
+    horas_total: horasTot, horas_extra: extraH, tarifa_extra: Number(t.tarifa_extra_usd || 0), pago_extra: pagoExtra,
+    sueldo_bs: sueldoBs, ivss, rpe, faov, ley_neto_bs: leyNeto, ticket_usd: ticket, ticket_bs: r2(ticket * tasa),
+    complemento, traslado, bono_fijo: bonoFijo, otros, descuentos, desc_retardo: descRetardo, complementarios_usd: comp,
+    juridica_bs: r2(leyNeto + ticket * tasa), personal_usd: comp, total_usd: total, total_bs: r2(total * tasa) };
+}
+
+// ---- Pantalla principal ----
+async function abrirVistaNomina() {
+  NOM.raiz = 'vista';
+  mostrar('vista-nomina');
+  $('nom-usuario').textContent = S.perfil?.nombre || '';
+  try { await cargarNominaReal(); } catch (e) { $('nom-raiz').innerHTML = `<p class="mensaje-error">${esc(e.message)}</p>`; return; }
+  pintarNomina();
+}
+function pintarNomina() {
+  if (DEMO) nomDatosDemo();
+  const cont = NOM.raiz === 'vista' ? $('nom-raiz') : $('adm-contenido');
+  if (!NOMD) return cont.innerHTML = '<p class="vacio">Cargando…</p>';
+  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${[['nominas', 'Nóminas'], ['trabajadores', `Trabajadores (${NOMD.trabajadores.filter(t => t.activo).length})`], ['ajustes', 'Ajustes']]
+    .map(([k, n]) => `<button class="sub-tab ${NOM.vista === k ? 'activa' : ''}" data-nv="${k}">${n}</button>`).join('')}</nav><div id="nom-cont"></div>`;
+  cont.querySelectorAll('[data-nv]').forEach(b => b.onclick = () => { NOM.vista = b.dataset.nv; NOM.periodoId = null; NOMP = null; pintarNomina(); });
+  const c = $('nom-cont');
+  if (NOM.vista === 'trabajadores') return pintarNomTrabajadores(c);
+  if (NOM.vista === 'ajustes') return pintarNomAjustes(c);
+  if (NOM.periodoId && NOMP) return pintarNomPeriodo(c);
+  pintarNomPeriodos(c);
+}
+
+function pintarNomPeriodos(c) {
+  const ps = NOMD.periodos.filter(p => !NOM.grupo || p.grupo === NOM.grupo);
+  c.innerHTML = `<div class="adm-barra"><p>Cada nómina se arma con las horas de cada día según el horario de cada trabajador; ahí anotas las faltas, retardos, horas extras y descuentos, y el sistema calcula todo.</p>
+      <span class="espacio"></span><button class="btn btn-primario" id="nm-nueva">+ Nueva nómina</button></div>
+    <nav class="sub-tabs" style="margin-bottom:10px">${[['', 'Todas'], ...Object.entries(NOM_GRUPO_CORTO)].map(([k, n]) => `<button class="sub-tab ${NOM.grupo === k ? 'activa' : ''}" data-ng="${k}">${n}</button>`).join('')}</nav>
+    <table class="tabla-simple num"><thead><tr><th>Grupo</th><th>Período</th><th>Pago</th><th class="der">Tasa</th><th class="der">Personas</th><th class="der">Total $</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${ps.map(p => `<tr><td>${NOM_GRUPO_CORTO[p.grupo]}</td><td>${fechaCorta(p.desde)} al ${fechaCorta(p.hasta)}</td><td>${fechaCorta(p.fecha_pago)}</td><td class="der">${fmt.format(p.tasa)}</td>
+      <td class="der">${p.personas}</td><td class="der">${usd(p.total_usd)}</td><td>${p.estado === 'cerrado' ? '<span class="badge ok">Cerrada</span>' : '<span class="badge abierta">Abierta</span>'}</td>
+      <td class="acciones"><button class="link" data-np="${p.id}">Abrir</button></td></tr>`).join('') || '<tr><td colspan="8" class="vacio">Todavía no hay nóminas. Toca "+ Nueva nómina".</td></tr>'}</tbody></table>`;
+  c.querySelectorAll('[data-ng]').forEach(b => b.onclick = () => { NOM.grupo = b.dataset.ng; pintarNomina(); });
+  c.querySelectorAll('[data-np]').forEach(b => b.onclick = async () => { NOM.periodoId = Number(b.dataset.np);
+    if (!DEMO) { try { NOMP = await rpc('pos_nom_periodo', { p_id: NOM.periodoId }); } catch (e) { return toast(e.message, true); } }
+    pintarNomina(); });
+  $('nm-nueva').onclick = nuevaNomina;
+}
+function sugerirPeriodo(g) {
+  const hoy = hoyVE(), ult = NOMD.periodos.filter(p => p.grupo === g).sort((a, b) => b.desde.localeCompare(a.desde))[0];
+  if (g === 'administrativo') {
+    const d = ult ? sumarDias(ult.hasta, 1) : (Number(hoy.slice(8)) <= 15 ? hoy.slice(0, 8) + '01' : hoy.slice(0, 8) + '16');
+    const fin = Number(d.slice(8)) === 1 ? d.slice(0, 8) + '15' : sumarDias(sumarDias(d.slice(0, 8) + '28', 5).slice(0, 8) + '01', -1);
+    return [d, fin];
+  }
+  if (ult) return [sumarDias(ult.hasta, 1), sumarDias(ult.hasta, 7)];
+  const inicio = g === 'fabrica' ? 6 : 1;   // fábrica empieza el sábado; tiendas el lunes
+  let d = hoy; while (nomDow(d) !== inicio) d = sumarDias(d, -1);
+  d = sumarDias(d, -7);   // la semana que acaba de terminar
+  return [d, sumarDias(d, 6)];
+}
+function nuevaNomina() {
+  const g0 = NOM.grupo || 'tiendas', [d0, h0] = sugerirPeriodo(g0);
+  const r = abrirModal(`<form id="f-nn"><div class="modal-cab"><h3 class="titulo">Nueva nómina</h3></div><div class="modal-cuerpo">
+    <div id="nn-error" class="mensaje-error oculto"></div>
+    <label class="campo"><span>Grupo *</span><select id="nn-g" class="sel">${Object.entries(NOM_GRUPOS).map(([k, n]) => `<option value="${k}" ${k === g0 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+    <div class="dos-campos"><label class="campo"><span>Desde *</span><input id="nn-d" type="date" class="txt" value="${d0}"></label><label class="campo"><span>Hasta *</span><input id="nn-h" type="date" class="txt" value="${h0}"></label></div>
+    <div class="dos-campos"><label class="campo"><span>Fecha de pago *</span><input id="nn-p" type="date" class="txt" value="${sumarDias(h0, 1)}"></label>
+      <label class="campo"><span>Tasa BCV del día de pago *</span><input id="nn-t" class="txt num" inputmode="decimal" value="${NOMD.tasa ? fmt.format(NOMD.tasa) : ''}"></label></div>
+    <p class="ayuda">Entran todos los trabajadores activos del grupo, con las horas de su horario. Después ajustas lo que cambió en la semana.</p></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="nn-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Crear nómina</button></div></form>`, 560);
+  r.querySelector('#nn-x').onclick = cerrarModal;
+  r.querySelector('#nn-g').onchange = e => { const [d, h] = sugerirPeriodo(e.target.value); r.querySelector('#nn-d').value = d; r.querySelector('#nn-h').value = h; r.querySelector('#nn-p').value = sumarDias(h, 1); };
+  r.querySelector('#nn-d').onchange = e => { const g = r.querySelector('#nn-g').value; if (g !== 'administrativo') { r.querySelector('#nn-h').value = sumarDias(e.target.value, 6); r.querySelector('#nn-p').value = sumarDias(e.target.value, 7); } };
+  r.querySelector('#f-nn').onsubmit = async e => { e.preventDefault();
+    const err = m => { r.querySelector('#nn-error').textContent = m; r.querySelector('#nn-error').classList.remove('oculto'); };
+    const g = r.querySelector('#nn-g').value, d = r.querySelector('#nn-d').value, h = r.querySelector('#nn-h').value, pg = r.querySelector('#nn-p').value, tasa = leerNum(r.querySelector('#nn-t').value);
+    if (!d || !h || h < d) return err('Revisa las fechas'); if (!(tasa > 0)) return err('Escribe la tasa BCV');
+    if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
+      NOM.periodoId = await rpc('pos_nom_periodo_crear', { p_grupo: g, p_desde: d, p_hasta: h, p_fecha_pago: pg, p_tasa: tasa });
+      cerrarModal(); toast('Nómina creada'); nomRefrescar(); }, err);
+    if (DX.nom.periodos.some(p => p.grupo === g && p.desde === d)) return err('Ya hay una nómina de ese grupo que empieza ese día');
+    const pid = nid(); DX.nom.periodos.unshift({ id: pid, grupo: g, desde: d, hasta: h, fecha_pago: pg, tasa, estado: 'borrador' });
+    DX.nom.lineas[pid] = DX.nom.trabajadores.filter(t => t.grupo === g && t.activo).map(t => ({ id: nid(), trabajador_id: t.id, datos: {}, calculo: null }));
+    NOM.periodoId = pid; guardarDemo(); cerrarModal(); toast('Nómina creada'); pintarNomina(); };
+}
+
+function pintarNomPeriodo(c) {
+  const p = NOMP, cfg = NOMD.config, quinc = p.grupo === 'administrativo', cerrada = p.estado === 'cerrado', fechas = nomFechas(p);
+  const tr = id => NOMD.trabajadores.find(t => t.id === id);
+  const lineas = p.lineas.map(l => ({ ...l, t: tr(l.trabajador_id) })).filter(l => l.t)
+    .sort((a, b) => (a.t.centro || '').localeCompare(b.t.centro || '') || nomNombre(a.t).localeCompare(nomNombre(b.t)));
+  // calcular las que no tienen cálculo (recién creadas) y guardarlas
+  const pendientes = [];
+  lineas.forEach(l => { l.datos = l.datos || {}; if (!quinc && !l.datos.horas) l.datos.horas = nomHorasIniciales(l.t, p); const c2 = calcNomina(l.t, p, l.datos, cfg);
+    if (!cerrada && JSON.stringify(c2) !== JSON.stringify(l.calculo)) { l.calculo = c2; pendientes.push(l); } else if (!l.calculo) l.calculo = c2; });
+  if (pendientes.length) nomGuardarLineas(pendientes);
+  const ro = cerrada ? 'disabled' : '';
+  const inp = (l, k, v, w = 56, extra = '') => `<input class="txt num nm-in" data-l="${l.id}" data-k="${k}" value="${v ?? ''}" inputmode="decimal" style="width:${w}px" ${ro} ${extra}>`;
+  let centro = null;
+  const filas = lineas.map(l => { const d = l.datos, k = l.calculo, cab = l.t.centro !== centro ? (centro = l.t.centro, `<tr class="nm-centro"><td colspan="${quinc ? 9 : 16}">${esc(centro || 'Sin centro')}</td></tr>`) : '';
+    return cab + `<tr data-fila="${l.id}"><td><button class="link" data-rec="${l.id}">${esc(nomNombre(l.t))}</button><br><span class="ayuda">${esc(l.t.cargo || '')}${l.t.tipo === 'destajo' ? ' · a destajo' : ''}</span></td>
+      ${quinc ? '' : (d.horas || []).map((h, i) => `<td>${inp(l, 'h' + i, h, 44)}</td>`).join('') + `<td class="der" data-o="horas">${fmtCant(k.horas_total)}</td>`}
+      <td>${inp(l, 'faltas', d.faltas ?? '', 40, `placeholder="${k.faltas}"`)}</td>
+      <td>${inp(l, 'extra_ajuste', d.extra_ajuste ?? '', 44, `placeholder="${quinc ? '0' : '+0'}"`)}${quinc ? '' : `<br><span class="ayuda" data-o="extra">${k.horas_extra ? fmtCant(k.horas_extra) + ' h' : ''}</span>`}</td>
+      <td>${inp(l, 'retardo_min', d.retardo_min ?? '', 44, 'placeholder="min"')}</td>
+      <td>${inp(l, 'traslado', d.traslado ?? '', 52, `placeholder="${fmt.format(k.traslado)}"`)}</td>
+      ${quinc ? `<td>${inp(l, 'bono_fijo', d.bono_fijo ?? '', 52, `placeholder="${fmt.format(k.bono_fijo)}"`)}</td>` : ''}
+      <td><button class="link" data-desc="${l.id}" ${ro}>${k.descuentos ? usd(k.descuentos) : 'Agregar'}</button>${nomSum(d.otros) ? `<br><span class="ayuda">+${usd(nomSum(d.otros))} otros</span>` : ''}</td>
+      <td class="der" data-o="total"><b>${usd(k.total_usd)}</b><br><span class="ayuda">${ves(k.total_bs)}</span></td></tr>`; }).join('');
+  const T = k => r2(lineas.reduce((a, l) => a + (l.calculo?.[k] || 0), 0));
+  c.innerHTML = `<div class="adm-barra"><button class="btn btn-sec" id="nm-volver">← Nóminas</button>
+      <h4 style="margin:0">${NOM_GRUPO_CORTO[p.grupo]} · ${fechaLarga(p.desde)} al ${fechaLarga(p.hasta)}</h4>${cerrada ? '<span class="badge ok">Cerrada</span>' : '<span class="badge abierta">Abierta</span>'}
+      <span class="espacio"></span><span class="ayuda">Pago ${fechaLarga(p.fecha_pago)} · Tasa ${fmt.format(p.tasa)}</span></div>
+    <div class="kpis"><div class="kpi"><span>Total de la nómina</span><b class="num">${usd(T('total_usd'))}</b><i>${ves(T('total_bs'))}</i></div>
+      <div class="kpi"><span>Cuenta jurídica (ley + cestaticket)</span><b class="num">${ves(T('juridica_bs'))}</b><i>${lineas.length} personas</i></div>
+      <div class="kpi"><span>Cuenta personal (complementos)</span><b class="num">${usd(T('complementarios_usd'))}</b><i>${ves(T('complementarios_usd') * p.tasa)}</i></div>
+      <div class="kpi"><span>Horas extras</span><b class="num">${usd(T('pago_extra'))}</b><i>${fmtCant(T('horas_extra'))} horas</i></div></div>
+    <div class="adm-barra"><button class="btn btn-sec" id="nm-recibos">🧾 Recibos</button><button class="btn btn-sec" id="nm-relacion">Relación de pago</button><button class="btn btn-sec" id="nm-xls">Copiar para Excel</button>
+      ${cerrada ? '' : '<button class="btn btn-sec" id="nm-agregar">+ Agregar trabajador</button>'}<span class="espacio"></span>
+      ${cerrada ? (S.perfil.rol === 'dueno' || DEMO ? '<button class="btn btn-sec" id="nm-reabrir">Reabrir</button>' : '') : '<button class="btn btn-sec" id="nm-borrar">Borrar</button><button class="btn btn-primario" id="nm-cerrar">Cerrar nómina</button>'}</div>
+    <p class="ayuda">${quinc ? 'Quincenal: anota las faltas, las horas extras de la quincena y los descuentos.' : `Horas trabajadas cada día (vienen del horario). Pasado de ${fmtCant(cfg.horas_semana)} h en la semana se pagan como horas extras. Si un día con horario quedó en 0 cuenta como falta; puedes cambiar las faltas a mano.`}
+      Lo que está en gris es lo que el sistema calcula; si escribes otro número, manda el tuyo.</p>
+    <div class="tabla-scroll"><table class="tabla-simple nm-tabla"><thead><tr><th>Trabajador</th>
+      ${quinc ? '' : fechas.map(f => `<th>${DIAS_CORTOS[nomDow(f)]}<br>${f.slice(8)}</th>`).join('') + '<th class="der">Horas</th>'}
+      <th>Faltas</th><th>Extra (h)</th><th>Retardo</th><th>Traslado $</th>${quinc ? '<th>Bono fijo $</th>' : ''}<th>Descuentos</th><th class="der">Total</th></tr></thead>
+      <tbody>${filas || `<tr><td colspan="16" class="vacio">No hay trabajadores en esta nómina.</td></tr>`}</tbody></table></div>`;
+  $('nm-volver').onclick = () => { NOM.periodoId = null; NOMP = null; DEMO ? pintarNomina() : nomRefrescar(); };
+  c.querySelectorAll('.nm-in').forEach(i => i.onchange = () => {
+    const l = lineas.find(x => x.id === Number(i.dataset.l)), k = i.dataset.k, v = i.value.trim();
+    if (k.startsWith('h')) { l.datos.horas[Number(k.slice(1))] = leerNum(v) || 0; }
+    else if (v === '') delete l.datos[k]; else l.datos[k] = leerNum(v);
+    l.calculo = calcNomina(l.t, p, l.datos, cfg); nomGuardarLineas([l]);
+    setTimeout(() => { const a = document.activeElement, key = a?.dataset?.l ? [a.dataset.l, a.dataset.k] : null; pintarNomPeriodo(c);
+      if (key) { const n = c.querySelector(`.nm-in[data-l="${key[0]}"][data-k="${key[1]}"]`); if (n) { n.focus(); n.select?.(); } } }, 0); });
+  c.querySelectorAll('[data-desc]').forEach(b => b.onclick = () => editarDescuentos(lineas.find(x => x.id === Number(b.dataset.desc)), () => pintarNomPeriodo(c)));
+  c.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => { const l = lineas.find(x => x.id === Number(b.dataset.rec)); nomImprimir([nomReciboHTML(l.t, p, l.datos, l.calculo)], 'Recibo ' + nomNombre(l.t)); });
+  $('nm-recibos').onclick = () => nomImprimir(lineas.map(l => nomReciboHTML(l.t, p, l.datos, l.calculo)), 'Recibos de nómina');
+  $('nm-relacion').onclick = () => nomImprimir([nomRelacionHTML(p, lineas)], 'Relación de nómina', true);
+  $('nm-xls').onclick = () => copiarTexto(['Centro\tTrabajador\tCédula\tCargo\tDías pagados\tHoras\tHoras extra\tSueldo ley Bs\tIVSS\tRPE\tFAOV\tNeto ley Bs\tCestaticket $\tComplemento $\tTraslado $\tBono fijo $\tHoras extra $\tOtros $\tDescuentos $\tCuenta jurídica Bs\tCuenta personal $\tTotal $\tTotal Bs',
+    ...lineas.map(l => { const k = l.calculo; return [l.t.centro, nomNombre(l.t), l.t.cedula, l.t.cargo, k.dias_pagados ?? k.dias_trabajados, k.horas_total, k.horas_extra || 0, k.sueldo_bs || 0, k.ivss || 0, k.rpe || 0, k.faov || 0, k.ley_neto_bs,
+      k.ticket_usd, k.complemento || k.pago_destajo || 0, k.traslado, k.bono_fijo, k.pago_extra || 0, k.otros, k.descuentos, k.juridica_bs || 0, k.complementarios_usd, k.total_usd, k.total_bs]
+      .map(x => typeof x === 'number' ? fmt.format(x) : (x ?? '')).join('\t'); })].join('\n'));
+  if ($('nm-agregar')) $('nm-agregar').onclick = () => nomAgregar(lineas);
+  if ($('nm-cerrar')) $('nm-cerrar').onclick = () => nomEstado('cerrado');
+  if ($('nm-reabrir')) $('nm-reabrir').onclick = () => nomEstado('borrador');
+  if ($('nm-borrar')) $('nm-borrar').onclick = async () => { if (!confirm('¿Borrar esta nómina? Se pierde lo anotado.')) return;
+    if (DEMO) { DX.nom.periodos = DX.nom.periodos.filter(x => x.id !== p.id); delete DX.nom.lineas[p.id]; guardarDemo(); NOM.periodoId = null; return pintarNomina(); }
+    try { await rpc('pos_nom_periodo_borrar', { p_id: p.id }); NOM.periodoId = null; NOMP = null; nomRefrescar(); } catch (e) { toast(e.message, true); } };
+}
+function nomGuardarLineas(ls) {
+  if (DEMO) { ls.forEach(l => { const x = DX.nom.lineas[NOMP.id].find(z => z.id === l.id); if (x) Object.assign(x, { datos: l.datos, calculo: l.calculo }); }); guardarDemo(); return; }
+  ls.forEach(l => { const x = NOMP.lineas.find(z => z.id === l.id); if (x) Object.assign(x, { datos: l.datos, calculo: l.calculo });
+    rpc('pos_nom_linea_guardar', { p_id: l.id, p_datos: l.datos, p_calculo: l.calculo }).catch(e => toast('No se guardó ' + nomNombre(l.t) + ': ' + e.message, true)); });
+}
+async function nomEstado(estado) {
+  const p = NOMP;
+  if (estado === 'cerrado' && !confirm('¿Cerrar la nómina? Ya no se podrá cambiar (solo el dueño puede reabrirla).')) return;
+  if (DEMO) { DX.nom.periodos.find(x => x.id === p.id).estado = estado; guardarDemo(); return pintarNomina(); }
+  try { await rpc('pos_nom_periodo_estado', { p_id: p.id, p_estado: estado }); toast(estado === 'cerrado' ? 'Nómina cerrada' : 'Nómina reabierta'); nomRefrescar(); } catch (e) { toast(e.message, true); }
+}
+function nomAgregar(lineas) {
+  const ya = new Set(lineas.map(l => l.trabajador_id)), cand = NOMD.trabajadores.filter(t => !ya.has(t.id) && t.activo);
+  if (!cand.length) return toast('No hay más trabajadores activos para agregar');
+  const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">Agregar a esta nómina</h3></div><div class="modal-cuerpo">
+    <select id="na-t" class="sel">${cand.map(t => `<option value="${t.id}">${esc(nomNombre(t))} · ${esc(t.centro || '')} (${NOM_GRUPO_CORTO[t.grupo]})</option>`).join('')}</select></div>
+    <div class="modal-pie"><button class="btn btn-sec" id="na-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario" id="na-ok">Agregar</button></div>`, 520);
+  r.querySelector('#na-x').onclick = cerrarModal;
+  r.querySelector('#na-ok').onclick = async () => { const tid = Number(r.querySelector('#na-t').value);
+    if (DEMO) { DX.nom.lineas[NOMP.id].push({ id: nid(), trabajador_id: tid, datos: {}, calculo: null }); guardarDemo(); cerrarModal(); return pintarNomina(); }
+    try { await rpc('pos_nom_linea_agregar', { p_periodo: NOMP.id, p_trabajador: tid }); cerrarModal(); nomRefrescar(); } catch (e) { toast(e.message, true); } };
+}
+function editarDescuentos(l, listo) {
+  const filas = (tipo, arr) => (arr || []).map(x => `<div class="dos-campos fila-${tipo}"><select class="sel cc">${(tipo === 'desc' ? CONCEPTOS_DESC : ['Bono', 'Comisión', 'Reintegro', 'Otro']).map(cn => `<option ${cn === x.concepto ? 'selected' : ''}>${cn}</option>`).join('')}</select>
+    <div style="display:flex;gap:6px"><input class="txt num mm" inputmode="decimal" value="${x.monto != null ? fmt.format(x.monto) : ''}" placeholder="$"><input class="txt dd" value="${esc(x.detalle || '')}" placeholder="Detalle"><button type="button" class="quitar">✕</button></div></div>`).join('');
+  const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">${esc(nomNombre(l.t))}</h3><p>Descuentos y otros pagos de esta nómina (en dólares)</p></div><div class="modal-cuerpo">
+    <h4 style="margin:0 0 6px">Descuentos</h4><div id="dz-desc">${filas('desc', l.datos.descuentos)}</div><button type="button" class="link" id="dz-mas-d">+ descuento</button>
+    <h4 style="margin:14px 0 6px">Otros pagos</h4><div id="dz-otros">${filas('otros', l.datos.otros)}</div><button type="button" class="link" id="dz-mas-o">+ otro pago</button></div>
+    <div class="modal-pie"><button class="btn btn-sec" id="dz-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario" id="dz-ok">Guardar</button></div>`, 620);
+  const enganchar = () => r.querySelectorAll('.quitar').forEach(b => b.onclick = () => b.closest('.dos-campos').remove());
+  r.querySelector('#dz-mas-d').onclick = () => { r.querySelector('#dz-desc').insertAdjacentHTML('beforeend', filas('desc', [{ concepto: 'Inventario' }])); enganchar(); };
+  r.querySelector('#dz-mas-o').onclick = () => { r.querySelector('#dz-otros').insertAdjacentHTML('beforeend', filas('otros', [{ concepto: 'Bono' }])); enganchar(); };
+  enganchar();
+  r.querySelector('#dz-x').onclick = cerrarModal;
+  r.querySelector('#dz-ok').onclick = () => {
+    const leerF = sel => [...r.querySelectorAll(sel)].map(f => ({ concepto: f.querySelector('.cc').value, monto: r2(leerNum(f.querySelector('.mm').value)), detalle: limpiar(f.querySelector('.dd').value) })).filter(x => x.monto > 0);
+    l.datos.descuentos = leerF('.fila-desc'); l.datos.otros = leerF('.fila-otros');
+    l.calculo = calcNomina(l.t, NOMP, l.datos, NOMD.config); nomGuardarLineas([l]); cerrarModal(); listo(); };
+}
+
+// ---- Recibos e impresión ----
+function nomImprimir(partes, titulo, horizontal) {
+  const w = window.open('', '_blank'); if (!w) return toast('Permite las ventanas emergentes para imprimir', true);
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>
+    @page{size:letter ${horizontal ? 'landscape' : 'portrait'};margin:10mm} body{font:11px Arial,sans-serif;color:#222;margin:0}
+    .recibo{border:1px solid #999;padding:10px 12px;margin-bottom:10mm;page-break-inside:avoid} .recibo:nth-child(2n){page-break-after:always}
+    h2{font-size:14px;margin:0} h3{font-size:12px;margin:8px 0 3px;border-bottom:1px solid #ccc} table{width:100%;border-collapse:collapse} td,th{padding:2px 4px;text-align:left;vertical-align:top}
+    th{background:#f1ebe4;font-size:10px} .der{text-align:right} .tot td{font-weight:bold;border-top:1px solid #333} .cab{display:flex;justify-content:space-between;gap:10px}
+    .grande{font-size:13px;font-weight:bold} .firma{margin-top:22px;display:flex;justify-content:space-between} .nota{color:#666;font-size:10px}
+    .rel td,.rel th{border-bottom:1px solid #ddd;font-size:10px}</style></head><body>${partes.join('')}<script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+function nomReciboHTML(t, p, d, k) {
+  const ent = NOMD.entidades.find(e => e.id === t.entidad_id) || {}, b = n => fmt.format(n || 0), fila = (c, x, y, z = '') => `<tr><td>${c}</td><td class="der">${x}</td><td class="der">${y}</td><td class="der">${z}</td></tr>`;
+  const conceptos = (arr, signo = '') => (arr || []).map(x => `<tr><td>${esc(x.concepto)}${x.detalle ? ' · ' + esc(x.detalle) : ''}</td><td></td><td class="der">${signo}${b(x.monto)}</td></tr>`).join('');
+  return `<div class="recibo"><div class="cab"><div><h2>${esc(ent.nombre || NEGOCIO_NOMBRE)}</h2><div>RIF: ${esc(ent.rif || '—')}</div></div><div class="der"><b>RECIBO DE PAGO</b><br>Período: ${fechaLarga(p.desde)} al ${fechaLarga(p.hasta)}<br>Fecha de pago: ${fechaLarga(p.fecha_pago)} · Tasa BCV ${b(p.tasa)}</div></div>
+    <table style="margin-top:6px"><tr><td><b>Trabajador:</b> ${esc(nomNombre(t))}</td><td><b>C.I.:</b> V-${esc(t.cedula)}</td><td><b>Cargo:</b> ${esc(t.cargo || '')}</td><td><b>Ingreso:</b> ${t.fecha_ingreso ? fechaLarga(t.fecha_ingreso) : '—'}</td></tr></table>
+    ${k.tipo === 'destajo' ? `<h3>Pago por horas (a destajo)</h3><table>${fila(`Horas trabajadas: ${fmtCant(k.horas_total)} × $${b(t.tarifa_extra_usd)}`, '', '$' + b(k.pago_destajo))}</table>` : `
+    <h3>1. Pago de ley (Bs.) — sueldo mensual Bs. ${b(NOMD.config.sueldo_minimo_bs)}</h3><table><tr><th>Concepto</th><th class="der">Días</th><th class="der">Asignación</th><th class="der">Deducción</th></tr>
+      ${fila('Días laborados', k.dias_trabajados, b(NOMD.config.sueldo_minimo_bs / 30 * k.dias_trabajados))}${fila('Descanso semanal / días pagados no laborados', k.descanso, b(NOMD.config.sueldo_minimo_bs / 30 * k.descanso))}
+      ${fila(`Retención Seguro Social (IVSS ${b(NOMD.config.ivss_pct)} %, ${k.lunes} lunes)`, '', '', b(k.ivss))}${fila(`Régimen Prestacional de Empleo (RPE ${b(NOMD.config.rpe_pct)} %)`, '', '', b(k.rpe))}${fila(`Vivienda y Hábitat (FAOV ${b(NOMD.config.faov_pct)} %)`, '', '', b(k.faov))}
+      <tr class="tot"><td>Neto a pagar de ley</td><td></td><td></td><td class="der">Bs. ${b(k.ley_neto_bs)}</td></tr></table>
+    <h3>2. Cestaticket (no forma parte del salario)</h3><table>${fila(`Cestaticket $${b(NOMD.config.cestaticket_usd)} al mes`, k.dias_pagados, '$' + b(k.ticket_usd), 'Bs. ' + b(k.ticket_bs))}</table>`}
+    <h3>${k.tipo === 'destajo' ? '' : '3. '}Pagos complementarios ($)</h3><table>
+      ${k.tipo === 'destajo' ? '' : `<tr><td>Bono complemento de alimentación</td><td></td><td class="der">${b(k.complemento)}</td></tr>`}
+      ${k.traslado ? `<tr><td>Bono traslado</td><td></td><td class="der">${b(k.traslado)}</td></tr>` : ''}
+      ${k.pago_extra ? `<tr><td>Horas extras (${fmtCant(k.horas_extra)} h × $${b(k.tarifa_extra)})</td><td></td><td class="der">${b(k.pago_extra)}</td></tr>` : ''}
+      ${k.bono_fijo ? `<tr><td>Complemento fijo</td><td></td><td class="der">${b(k.bono_fijo)}</td></tr>` : ''}${conceptos(d.otros)}
+      ${(d.descuentos || []).length || k.desc_retardo ? `<tr><td colspan="3"><b>Descuentos</b></td></tr>${conceptos(d.descuentos, '−')}${k.desc_retardo ? `<tr><td>Retardos (${d.retardo_min} min)</td><td></td><td class="der">−${b(k.desc_retardo)}</td></tr>` : ''}` : ''}
+      ${k.faltas ? `<tr><td colspan="3" class="nota">Ausencias: ${k.faltas} día(s) no pagados</td></tr>` : ''}
+      <tr class="tot"><td>Total complementarios</td><td></td><td class="der">$${b(k.complementarios_usd)}</td></tr></table>
+    <p class="grande">TOTAL A RECIBIR: $${b(k.total_usd)} (Bs. ${b(k.total_bs)})</p>
+    <div class="firma"><span>Recibí conforme: ______________________</span><span>C.I.: ______________</span></div></div>`;
+}
+function nomRelacionHTML(p, lineas) {
+  const b = n => fmt.format(n || 0), T = k => lineas.reduce((a, l) => a + (l.calculo?.[k] || 0), 0);
+  return `<h2>Relación de nómina · ${NOM_GRUPO_CORTO[p.grupo]} · ${fechaLarga(p.desde)} al ${fechaLarga(p.hasta)}</h2><p>Fecha de pago ${fechaLarga(p.fecha_pago)} · Tasa BCV ${b(p.tasa)}</p>
+    <table class="rel"><thead><tr><th>Centro</th><th>Trabajador</th><th>C.I.</th><th class="der">Días</th><th class="der">H. extra</th><th class="der">Neto ley Bs</th><th class="der">Cestaticket Bs</th><th class="der">Cuenta jurídica Bs</th>
+      <th class="der">Complemento $</th><th class="der">Traslado $</th><th class="der">H. extra $</th><th class="der">Otros $</th><th class="der">Desc. $</th><th class="der">Cuenta personal $</th><th class="der">Total $</th></tr></thead><tbody>
+    ${lineas.map(l => { const k = l.calculo; return `<tr><td>${esc(l.t.centro || '')}</td><td>${esc(nomNombre(l.t))}</td><td>${esc(l.t.cedula)}</td><td class="der">${k.dias_pagados ?? k.dias_trabajados}</td><td class="der">${fmtCant(k.horas_extra || 0)}</td>
+      <td class="der">${b(k.ley_neto_bs)}</td><td class="der">${b(k.ticket_bs)}</td><td class="der">${b(k.juridica_bs)}</td><td class="der">${b(k.complemento || k.pago_destajo)}</td><td class="der">${b(k.traslado)}</td>
+      <td class="der">${b(k.pago_extra)}</td><td class="der">${b((k.otros || 0) + (k.bono_fijo || 0))}</td><td class="der">${b(k.descuentos)}</td><td class="der">${b(k.complementarios_usd)}</td><td class="der"><b>${b(k.total_usd)}</b></td></tr>`; }).join('')}
+    <tr class="tot"><td colspan="5">TOTALES</td><td class="der">${b(T('ley_neto_bs'))}</td><td class="der">${b(T('ticket_bs'))}</td><td class="der">${b(T('juridica_bs'))}</td><td class="der">${b(T('complemento') + T('pago_destajo'))}</td><td class="der">${b(T('traslado'))}</td>
+      <td class="der">${b(T('pago_extra'))}</td><td class="der">${b(T('otros') + T('bono_fijo'))}</td><td class="der">${b(T('descuentos'))}</td><td class="der">${b(T('complementarios_usd'))}</td><td class="der">${b(T('total_usd'))}</td></tr></tbody></table>
+    <p>Cuenta personal en Bs: ${b(T('complementarios_usd') * p.tasa)} · Total en Bs: ${b(T('total_bs'))}</p>`;
+}
+
+// ---- Trabajadores ----
+function pintarNomTrabajadores(c) {
+  const centros = [...new Set(NOMD.trabajadores.map(t => t.centro).filter(Boolean))].sort();
+  const q = NOM.q.toLowerCase();
+  const ts = NOMD.trabajadores.filter(t => (!NOM.grupo || t.grupo === NOM.grupo) && (!NOM.centro || t.centro === NOM.centro) && (!NOM.soloActivos || t.activo)
+    && (!q || (nomNombre(t) + ' ' + t.cedula).toLowerCase().includes(q)));
+  c.innerHTML = `<div class="adm-barra"><select id="nt-g" class="sel corto"><option value="">Todos los grupos</option>${Object.entries(NOM_GRUPO_CORTO).map(([k, n]) => `<option value="${k}" ${NOM.grupo === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <select id="nt-c" class="sel corto"><option value="">Todos los centros</option>${centros.map(x => `<option ${NOM.centro === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>
+      <label class="interruptor" style="margin:0"><input type="checkbox" id="nt-act" ${NOM.soloActivos ? 'checked' : ''}><span>Solo activos</span></label>
+      <input id="nt-q" class="txt" placeholder="Buscar nombre o cédula" value="${esc(NOM.q)}" style="max-width:220px"><span class="espacio"></span><button class="btn btn-primario" id="nt-nuevo">+ Trabajador</button></div>
+    <table class="tabla-simple num"><thead><tr><th>Trabajador</th><th>C.I.</th><th>Grupo</th><th>Centro</th><th>Cargo</th><th>Ingreso</th><th class="der">Paquete mes $</th><th class="der">Hora extra $</th><th class="der">Traslado $</th><th>Horario (L a D)</th><th></th></tr></thead><tbody>
+    ${ts.map(t => `<tr class="${t.activo ? '' : 'apagado'}"><td>${esc(nomNombre(t))}${t.nota ? ` <span title="${esc(t.nota)}">⚠️</span>` : ''}</td><td>${esc(t.cedula)}</td><td>${NOM_GRUPO_CORTO[t.grupo]}</td><td>${esc(t.centro || '')}</td><td>${esc(t.cargo || '')}${t.tipo === 'destajo' ? ' (destajo)' : ''}</td>
+      <td>${t.fecha_ingreso ? fechaCorta(t.fecha_ingreso) : '—'}</td><td class="der">${usd(t.paquete_mensual_usd)}</td><td class="der">${usd(t.tarifa_extra_usd)}</td><td class="der">${usd(t.bono_traslado_usd)}</td>
+      <td>${(t.horario || []).map(h => fmtCant(Number(h))).join(' · ')}</td><td class="acciones"><button class="link" data-te="${t.id}">Editar</button></td></tr>`).join('') || '<tr><td colspan="11" class="vacio">No hay trabajadores con ese filtro.</td></tr>'}</tbody></table>`;
+  c.querySelector('#nt-g').onchange = e => { NOM.grupo = e.target.value; pintarNomina(); };
+  c.querySelector('#nt-c').onchange = e => { NOM.centro = e.target.value; pintarNomina(); };
+  c.querySelector('#nt-act').onchange = e => { NOM.soloActivos = e.target.checked; pintarNomina(); };
+  c.querySelector('#nt-q').onchange = e => { NOM.q = e.target.value; pintarNomina(); };
+  c.querySelector('#nt-nuevo').onclick = () => editarTrabajador(null);
+  c.querySelectorAll('[data-te]').forEach(b => b.onclick = () => editarTrabajador(NOMD.trabajadores.find(t => t.id === Number(b.dataset.te))));
+}
+function editarTrabajador(t) {
+  const v = (k, d = '') => esc(t?.[k] ?? d), hor = t?.horario || [8, 8, 8, 8, 8, 0, 0];
+  const r = abrirModal(`<form id="f-nt"><div class="modal-cab"><h3 class="titulo">${t ? 'Editar trabajador' : 'Nuevo trabajador'}</h3>${t?.nota ? `<p>⚠️ ${esc(t.nota)}</p>` : ''}</div><div class="modal-cuerpo">
+    <div id="nt-error" class="mensaje-error oculto"></div>
+    <div class="dos-campos"><label class="campo"><span>Nombres *</span><input id="t-nom" class="txt" value="${v('nombres')}"></label><label class="campo"><span>Apellidos</span><input id="t-ape" class="txt" value="${v('apellidos')}"></label></div>
+    <div class="dos-campos"><label class="campo"><span>Cédula *</span><input id="t-ced" class="txt num" inputmode="numeric" value="${v('cedula')}"></label><label class="campo"><span>RIF</span><input id="t-rif" class="txt" value="${v('rif')}"></label></div>
+    <div class="dos-campos"><label class="campo"><span>Grupo de nómina *</span><select id="t-grupo" class="sel">${Object.entries(NOM_GRUPOS).map(([k, n]) => `<option value="${k}" ${t?.grupo === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="campo"><span>Centro de trabajo</span><input id="t-centro" class="txt" list="nt-centros" value="${v('centro')}"><datalist id="nt-centros">${[...new Set(NOMD.trabajadores.map(x => x.centro).filter(Boolean))].map(x => `<option value="${esc(x)}">`).join('')}</datalist></label></div>
+    <div class="dos-campos"><label class="campo"><span>Empresa (razón social)</span><select id="t-ent" class="sel"><option value="">—</option>${NOMD.entidades.map(e => `<option value="${e.id}" ${t?.entidad_id === e.id ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('')}</select></label>
+      <label class="campo"><span>Cargo</span><input id="t-cargo" class="txt" value="${v('cargo')}"></label></div>
+    <div class="dos-campos"><label class="campo"><span>Fecha de ingreso</span><input id="t-ing" type="date" class="txt" value="${v('fecha_ingreso')}"></label><label class="campo"><span>Fecha de egreso</span><input id="t-egr" type="date" class="txt" value="${v('fecha_egreso')}"></label></div>
+    <div class="dos-campos"><label class="campo"><span>Tipo</span><select id="t-tipo" class="sel"><option value="fijo">Fijo (sueldo + cestaticket + complemento)</option><option value="destajo" ${t?.tipo === 'destajo' ? 'selected' : ''}>A destajo (se paga por hora)</option></select></label>
+      <label class="campo"><span>Paquete mensual en $ (todo junto)</span><input id="t-paq" class="txt num" inputmode="decimal" value="${t ? fmt.format(t.paquete_mensual_usd) : '240,00'}"></label></div>
+    <div class="dos-campos"><label class="campo"><span>Valor de la hora extra $ (o de cada hora si es a destajo)</span><input id="t-tar" class="txt num" inputmode="decimal" value="${t ? fmt.format(t.tarifa_extra_usd) : '1,00'}"></label>
+      <label class="campo"><span>Bono traslado por nómina $</span><input id="t-tras" class="txt num" inputmode="decimal" value="${t ? fmt.format(t.bono_traslado_usd) : '0,00'}"></label></div>
+    <div class="dos-campos"><label class="campo"><span>Complemento fijo por nómina $</span><input id="t-fijo" class="txt num" inputmode="decimal" value="${t ? fmt.format(t.bono_fijo_usd) : '0,00'}"></label>
+      <label class="campo"><span>Teléfono</span><input id="t-tel" class="txt" inputmode="tel" value="${v('telefono')}"></label></div>
+    <div class="campo"><span>Horario: horas que trabaja cada día (0 = libre)</span><div class="nt-horario">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((dn, i) => `<label><small>${dn}</small><input class="txt num t-h" inputmode="decimal" value="${fmtCant(Number(hor[i] || 0))}"></label>`).join('')}</div></div>
+    <label class="campo"><span>Nota</span><input id="t-nota" class="txt" value="${v('nota')}"></label>
+    <label class="interruptor"><input type="checkbox" id="t-act" ${!t || t.activo ? 'checked' : ''}><span>Activo (entra en las nóminas)</span></label></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="t-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 760);
+  r.querySelector('#t-x').onclick = cerrarModal;
+  r.querySelector('#f-nt').onsubmit = async e => { e.preventDefault();
+    const err = m => { r.querySelector('#nt-error').textContent = m; r.querySelector('#nt-error').classList.remove('oculto'); };
+    const g = id => r.querySelector(id).value;
+    const p = { id: t?.id || null, nombres: limpiar(g('#t-nom')), apellidos: limpiar(g('#t-ape')), cedula: soloDigitos(g('#t-ced')), rif: limpiar(g('#t-rif')), grupo: g('#t-grupo'),
+      centro: limpiar(g('#t-centro')), entidad_id: Number(g('#t-ent')) || null, cargo: limpiar(g('#t-cargo')), fecha_ingreso: g('#t-ing') || null, fecha_egreso: g('#t-egr') || null,
+      tipo: g('#t-tipo'), paquete_mensual_usd: r2(leerNum(g('#t-paq'))), tarifa_extra_usd: r2(leerNum(g('#t-tar'))), bono_traslado_usd: r2(leerNum(g('#t-tras'))),
+      bono_fijo_usd: r2(leerNum(g('#t-fijo'))), telefono: soloDigitos(g('#t-tel')), horario: [...r.querySelectorAll('.t-h')].map(x => leerNum(x.value) || 0),
+      nota: limpiar(g('#t-nota')) || null, activo: r.querySelector('#t-act').checked };
+    if (p.nombres.length < 2) return err('Escribe el nombre'); if (p.cedula.length < 6) return err('Escribe la cédula');
+    if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => { await rpc('pos_nom_trabajador_guardar', { p }); cerrarModal(); toast('Trabajador guardado'); nomRefrescar(); }, err);
+    if (DX.nom.trabajadores.some(x => x.cedula === p.cedula && x.id !== p.id)) return err('Ya hay un trabajador con esa cédula');
+    if (t) Object.assign(DX.nom.trabajadores.find(x => x.id === t.id), p); else DX.nom.trabajadores.push({ ...p, id: nid() });
+    guardarDemo(); cerrarModal(); toast('Trabajador guardado'); pintarNomina(); };
+}
+
+// ---- Ajustes ----
+function pintarNomAjustes(c) {
+  const k = NOMD.config, v = n => fmt.format(Number(k[n]));
+  c.innerHTML = `<form id="f-na" class="form-caja ancho"><h4>Valores de ley y reglas</h4><div id="na-error" class="mensaje-error oculto"></div>
+      <div class="rec-grid"><label class="campo"><span>Sueldo mínimo mensual (Bs.)</span><input id="a-sm" class="txt num" value="${v('sueldo_minimo_bs')}"></label>
+        <label class="campo"><span>Cestaticket mensual ($)</span><input id="a-ct" class="txt num" value="${v('cestaticket_usd')}"></label>
+        <label class="campo"><span>Horas a la semana (lo demás es extra)</span><input id="a-hs" class="txt num" value="${v('horas_semana')}"></label></div>
+      <div class="rec-grid"><label class="campo"><span>IVSS %</span><input id="a-iv" class="txt num" value="${v('ivss_pct')}"></label><label class="campo"><span>RPE %</span><input id="a-rp" class="txt num" value="${v('rpe_pct')}"></label>
+        <label class="campo"><span>FAOV %</span><input id="a-fa" class="txt num" value="${v('faov_pct')}"></label></div>
+      <label class="interruptor"><input type="checkbox" id="a-ret" ${k.descontar_retardos ? 'checked' : ''}><span>Descontar los retardos (los minutos se descuentan al valor de la hora normal)</span></label>
+      <p class="ayuda">IVSS y RPE se calculan sobre el sueldo mensual × 12 ÷ 52 por cada lunes del período; FAOV sobre el sueldo del período. Los cambios aplican a las nóminas abiertas cuando se vuelven a abrir.</p>
+      <button class="btn btn-primario">Guardar ajustes</button></form>
+    <section class="graf"><h4>Empresas (razón social y RIF que salen en los recibos)</h4><table class="tabla-simple"><thead><tr><th>Razón social</th><th>RIF</th><th>Dirección</th><th></th></tr></thead><tbody>
+      ${NOMD.entidades.map(e => `<tr><td>${esc(e.nombre)}</td><td>${esc(e.rif || '—')}</td><td>${esc(e.direccion || '')}</td><td><button class="link" data-ee="${e.id}">Editar</button></td></tr>`).join('')}</tbody></table>
+      <button class="link" id="na-ent">+ Empresa</button></section>`;
+  c.querySelector('#f-na').onsubmit = async e => { e.preventDefault();
+    const p = { sueldo_minimo_bs: leerNum($('a-sm').value), cestaticket_usd: leerNum($('a-ct').value), horas_semana: leerNum($('a-hs').value), ivss_pct: leerNum($('a-iv').value),
+      rpe_pct: leerNum($('a-rp').value), faov_pct: leerNum($('a-fa').value), descontar_retardos: $('a-ret').checked };
+    if (DEMO) { Object.assign(DX.nom.config, p); guardarDemo(); toast('Ajustes guardados'); return pintarNomina(); }
+    try { await rpc('pos_nom_config_guardar', { p }); toast('Ajustes guardados'); nomRefrescar(); } catch (x) { toast(x.message, true); } };
+  const editarEnt = en => { const r = abrirModal(`<form id="f-ne"><div class="modal-cab"><h3 class="titulo">Empresa</h3></div><div class="modal-cuerpo">
+      <label class="campo"><span>Razón social *</span><input id="e-n" class="txt" value="${esc(en?.nombre || '')}"></label><label class="campo"><span>RIF</span><input id="e-r" class="txt" value="${esc(en?.rif || '')}"></label>
+      <label class="campo"><span>Dirección</span><input id="e-d" class="txt" value="${esc(en?.direccion || '')}"></label></div>
+      <div class="modal-pie"><button type="button" class="btn btn-sec" id="e-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 560);
+    r.querySelector('#e-x').onclick = cerrarModal;
+    r.querySelector('#f-ne').onsubmit = async e => { e.preventDefault();
+      const p = { id: en?.id || null, nombre: limpiar(r.querySelector('#e-n').value), rif: limpiar(r.querySelector('#e-r').value), direccion: limpiar(r.querySelector('#e-d').value) };
+      if (!p.nombre) return;
+      if (DEMO) { if (en) Object.assign(DX.nom.entidades.find(x => x.id === en.id), p); else DX.nom.entidades.push({ ...p, id: nid() }); guardarDemo(); cerrarModal(); return pintarNomina(); }
+      try { await rpc('pos_nom_entidad_guardar', { p }); cerrarModal(); nomRefrescar(); } catch (x) { toast(x.message, true); } }; };
+  c.querySelectorAll('[data-ee]').forEach(b => b.onclick = () => editarEnt(NOMD.entidades.find(x => x.id === Number(b.dataset.ee))));
+  c.querySelector('#na-ent').onclick = () => editarEnt(null);
+}
+function pintarAdmNomina() { NOM.raiz = 'admin'; pintarNomina(); }
+
 // Registro de dispositivos del dueño: dónde se ha dado el código de la app autenticadora (solo lo ve el dueño)
 function pintarAdmDispositivos() {
   const cont = $('adm-contenido');
@@ -2385,6 +2799,7 @@ async function cargarClientesReal() {
 }
 // Qué hay que cargar antes de pintar cada pestaña (solo versión real)
 const CARGA = {
+  nomina: async () => { NOM.raiz = 'admin'; await cargarNominaReal(); },
   panel: () => cargarVentasReal(sumarDias(hoyVE(), -62), hoyVE()),
   inventario: async () => { await cargarInventarioReal(); await Promise.all([cargarPedidosReal(), cargarProveedoresReal()]); },
   gastos: () => { const m = (GAS.mes || mesVE()) + '-01', fin = sumarDias(sumarDias(m, 32).slice(0, 7) + '-01', -1);
@@ -2649,7 +3064,7 @@ function sembrarHistoriaReal() {
 function usuarioDemo() { return DX.usuarios.find(u => u.id === DX.usuarioActual && u.activo) || DX.usuarios.find(u => u.rol === 'dueno'); }
 function perfilDemo() { const u = usuarioDemo(); return { nombre: u.nombre + ' ' + u.apellido, rol: u.rol }; }
 function tiendasDemo() { const u = usuarioDemo(); return DEMO_DATA.tiendas.filter(t => u.rol === 'dueno' || u.tiendas.includes(t.id)); }
-const ROLES = { dueno: 'Dueño', encargada: 'Encargada', cajera: 'Cajero' };
+const ROLES = { dueno: 'Dueño', encargada: 'Encargada', cajera: 'Cajero', nomina: 'Administrativa (nómina)' };
 function pintarPildoraDemo() {
   if (!DEMO) return;
   let p = $('pildora-demo');
@@ -3870,7 +4285,7 @@ function pintarAdmUsuarios() {
       <div class="dos-campos"><label class="campo"><span>Nombre *</span><input id="us-nombre" class="txt" value="${esc(u?.nombre || '')}"></label><label class="campo"><span>Apellido *</span><input id="us-apellido" class="txt" value="${esc(u?.apellido || '')}"></label></div>
       <label class="campo"><span>Usuario para entrar *</span><input id="us-usuario" class="txt" value="${esc(u?.usuario || '')}" placeholder="Ej. ana.sambil" ${u ? 'disabled' : ''}></label>
       <label class="campo"><span>${u ? 'Nueva contraseña (déjala vacía para no cambiarla)' : 'Contraseña * (mínimo 6)'}</span><input id="us-clave" class="txt" type="password" autocomplete="new-password"></label>
-      <label class="campo"><span>Rol *</span><select id="us-rol" class="sel"><option value="cajera" ${u?.rol === 'cajera' ? 'selected' : ''}>Cajero: vende, abre y cierra su caja</option><option value="encargada" ${u?.rol === 'encargada' ? 'selected' : ''}>Encargada: además recibe mercancía, cuenta inventario y registra mermas</option></select></label>
+      <label class="campo"><span>Rol *</span><select id="us-rol" class="sel"><option value="cajera" ${u?.rol === 'cajera' ? 'selected' : ''}>Cajero: vende, abre y cierra su caja</option><option value="encargada" ${u?.rol === 'encargada' ? 'selected' : ''}>Encargada: además recibe mercancía, cuenta inventario y registra mermas</option><option value="nomina" ${u?.rol === 'nomina' ? 'selected' : ''}>Administrativa: solo ve la nómina (no necesita tienda)</option></select></label>
       <div class="campo"><span>Tiendas *</span><div class="opciones">${(DEMO ? DEMO_DATA.tiendas : S.tiendas).map(t => `<label class="op"><input type="checkbox" class="us-t" value="${t.id}" ${u?.tiendas.includes(t.id) || (!u && t.id === S.tienda.id) ? 'checked' : ''}> ${esc(t.nombre)}</label>`).join('')}</div></div>
       ${u ? `<label class="interruptor"><input type="checkbox" id="us-activo" ${u.activo ? 'checked' : ''}><span>Activo</span></label>` : ''}</div>
       <div class="modal-pie"><button type="button" class="btn btn-sec" id="us-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 560);
@@ -3885,7 +4300,7 @@ function pintarAdmUsuarios() {
       if (!u && !/^[a-z0-9._-]{3,30}$/.test(usuario)) return err('El usuario solo puede tener letras, números y punto (3 a 30)');
       if (!u && DX.usuarios.some(x => x.usuario === usuario)) return err('Ese usuario ya existe');
       if ((!u || clave) && clave.length < 6) return err('La contraseña debe tener al menos 6 caracteres');
-      if (!tiendas.length) return err('Elige al menos una tienda');
+      if (!tiendas.length && r.querySelector('#us-rol').value !== 'nomina') return err('Elige al menos una tienda');
       if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
         await rpc('pos_admin_guardar_usuario', { p_clave: A.clave, p: { id: u?.id || null, nombre, apellido, usuario, clave: clave || null,
           rol: r.querySelector('#us-rol').value, tiendas, activo: u ? r.querySelector('#us-activo').checked : true } });
@@ -4164,6 +4579,7 @@ async function despuesDeEntrar() {
     return errorLogin('Tu usuario no tiene acceso al sistema de tiendas. Pídele al dueño que te dé acceso.');
   }
   $('nombre-usuario').textContent = S.perfil.nombre;
+  if (S.perfil.rol === 'nomina') return abrirVistaNomina();   // la administrativa solo ve la nómina
   S.tiendas = await api.tiendas();
   if (!S.tiendas.length) return errorLogin('Tu usuario no tiene tiendas asignadas.');
   const sel = $('selector-tienda');
@@ -4218,6 +4634,7 @@ $('form-login').onsubmit = async e => {
   btn.disabled = false;
 };
 
+$('nom-salir').onclick = async () => { await api.salir(); location.reload(); };
 $('btn-salir').onclick = async () => {
   if (S.carrito.length && !confirm('Hay una venta sin cobrar. ¿Salir de todas formas?')) return;
   await api.salir(); location.reload();
