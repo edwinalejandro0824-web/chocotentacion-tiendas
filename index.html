@@ -3339,7 +3339,7 @@ async function cargarUsuariosReal() {
 async function cargarClientesReal() {
   // Solo clientes con al menos una compra pagada (los que no tienen fecha de última visita dañaban la pestaña)
   REAL.clientes = (await rpc('pos_admin_clientes', { p_clave: A.clave })).filter(c => c.ultima).map(c => ({ ...c, total: num(c.total), compras: num(c.compras),
-    primera: c.ultima, tiendas: new Set() }));
+    primera: c.primera || c.ultima, por_tienda: (c.por_tienda || []).map(t => ({ ...t, compras: num(t.compras), total: num(t.total) })) }));
 }
 // Qué hay que cargar antes de pintar cada pestaña (solo versión real)
 const CARGA = {
@@ -5048,20 +5048,29 @@ function pintarFacturasProv() {
 }
 
 /* ---------- CLIENTES ---------- */
-const CLI = { filtro: 'todos', zona: '', q: '' };
+const CLI = { filtro: 'todos', zona: '', q: '', tienda: null };
 function listaClientes() {
   if (!DEMO) return REAL.clientes;
   const m = new Map();
   DEMO_VENTAS.filter(v => v.estado !== 'anulada').forEach(v => {
-    const c = m.get(v.cliente_cedula) || { cedula: v.cliente_cedula, nombre: v.cliente_nombre, compras: 0, total: 0, primera: v.fecha, ultima: v.fecha, zona: v.cliente_zona, telefono: v.cliente_telefono, tiendas: new Set() };
-    c.compras++; c.total += v.total_usd; if (v.fecha < c.primera) c.primera = v.fecha; if (v.fecha > c.ultima) c.ultima = v.fecha; c.tiendas.add(v.tienda_id);
+    const c = m.get(v.cliente_cedula) || { cedula: v.cliente_cedula, nombre: v.cliente_nombre, compras: 0, total: 0, primera: v.fecha, ultima: v.fecha, zona: v.cliente_zona, telefono: v.cliente_telefono, pt: new Map() };
+    c.compras++; c.total += v.total_usd; if (v.fecha < c.primera) c.primera = v.fecha; if (v.fecha > c.ultima) c.ultima = v.fecha;
+    const t = c.pt.get(v.tienda_id) || { tienda_id: v.tienda_id, compras: 0, total: 0, primera: v.fecha, ultima: v.fecha };
+    t.compras++; t.total += v.total_usd; if (v.fecha < t.primera) t.primera = v.fecha; if (v.fecha > t.ultima) t.ultima = v.fecha; c.pt.set(v.tienda_id, t);
     m.set(v.cliente_cedula, c);
   });
+  m.forEach(c => { c.por_tienda = [...c.pt.values()].sort((a, b) => b.compras - a.compras); delete c.pt; });
   m.forEach(c => { const d = DEMO_CLIENTES.get(c.cedula); if (d) Object.assign(c, { nombre: d.nombre, telefono: d.telefono, zona: d.zona }); });
   return [...m.values()];
 }
 function pintarAdmClientes() {
-  const cont = $('adm-contenido'), hoy = hoyVE(), todos = listaClientes();
+  const cont = $('adm-contenido'), hoy = hoyVE(), base = listaClientes();
+  // Filtro por tienda (21/11/2026): con una tienda escogida, las compras, el total y las fechas son SOLO de esa tienda
+  const idsT = [...new Set([...(DEMO ? DEMO_DATA.tiendas : S.tiendas || []).map(t => t.id), ...base.flatMap(c => (c.por_tienda || []).map(t => t.tienda_id))])].sort((a, b) => a - b);
+  if (CLI.tienda === null) CLI.tienda = S.perfil.rol === 'encargada' ? S.tienda.id : 0;
+  const todos = !CLI.tienda ? base : base.map(c => { const t = (c.por_tienda || []).find(x => x.tienda_id === CLI.tienda);
+    return t ? { ...c, compras: t.compras, total: t.total, primera: t.primera, ultima: t.ultima } : null; }).filter(Boolean);
+  const chipsT = c => (c.por_tienda || []).map(t => `<span class="badge ${t.tienda_id === CLI.tienda ? 'ok' : ''}" title="${t.compras} compras · ${usd(t.total)}">${esc(tiendaNombre(t.tienda_id))} ${t.compras}</span>`).join(' ');
   const zonas = [...new Set(todos.map(c => c.zona).filter(Boolean))].sort();
   const dias = c => diasEntre(diaVE(c.ultima), hoy) - 1;
   const filtros = { todos: c => true, mejores: c => true, frecuentes: c => c.compras >= 3, perdidos: c => c.compras >= 2 && dias(c) > 14, nuevos: c => diasEntre(diaVE(c.primera), hoy) <= 7 };
@@ -5075,16 +5084,19 @@ function pintarAdmClientes() {
       <div class="kpi"><span>Dejaron de venir</span><b class="num">${todos.filter(filtros.perdidos).length}</b><i>compraban y no vienen hace 2 semanas</i></div>
       <div class="kpi"><span>Nuevos esta semana</span><b class="num">${todos.filter(filtros.nuevos).length}</b><i>primera compra en 7 días</i></div></div>
     <div class="adm-barra"><nav class="sub-tabs" style="margin:0">${[['todos', 'Todos'], ['mejores', 'Los 20 mejores'], ['frecuentes', 'Frecuentes'], ['perdidos', 'Dejaron de venir'], ['nuevos', 'Nuevos']].map(([k, n]) => `<button class="sub-tab ${CLI.filtro === k ? 'activa' : ''}" data-f="${k}">${n}</button>`).join('')}</nav>
-      <span class="espacio"></span><select id="cl-zona" class="sel corto"><option value="">Todas las zonas</option>${zonas.map(z => `<option ${CLI.zona === z ? 'selected' : ''}>${esc(z)}</option>`).join('')}</select>
+      <span class="espacio"></span><select id="cl-tienda" class="sel corto"><option value="0">Todas las tiendas</option>${idsT.map(t => `<option value="${t}" ${CLI.tienda === t ? 'selected' : ''}>${esc(tiendaNombre(t))}</option>`).join('')}</select><select id="cl-zona" class="sel corto"><option value="">Todas las zonas</option>${zonas.map(z => `<option ${CLI.zona === z ? 'selected' : ''}>${esc(z)}</option>`).join('')}</select>
       <input id="cl-q" class="txt corto" placeholder="Buscar…" value="${esc(CLI.q)}"><button class="btn btn-sec" id="cl-copiar">Copiar teléfonos (${lista.length})</button></div>
-    <table class="tabla-simple num"><thead><tr><th>Cliente</th><th>Cédula</th><th>Teléfono</th><th>Zona</th><th class="der">Compras</th><th class="der">Total</th><th>Última visita</th></tr></thead><tbody>
-      ${lista.slice(0, 150).map(c => `<tr><td>${esc(c.nombre)}${c.compras >= 3 ? ' ⭐' : ''}</td><td>${esc(c.cedula)}</td><td>${esc(c.telefono || '')}</td><td>${esc(c.zona || '')}</td><td class="der">${c.compras}</td><td class="der">${usd(c.total)}</td><td>${dias(c) === 0 ? 'hoy' : 'hace ' + dias(c) + ' días'}</td></tr>`).join('') || '<tr><td colspan="7" class="vacio">Ningún cliente con este filtro.</td></tr>'}
+    <table class="tabla-simple num"><thead><tr><th>Cliente</th><th>Cédula</th><th>Teléfono</th><th>Zona</th><th>Tiendas donde compró</th><th class="der">Compras</th><th class="der">Total</th><th>Última visita</th></tr></thead><tbody>
+      ${lista.slice(0, 150).map(c => `<tr><td>${esc(c.nombre)}${c.compras >= 3 ? ' ⭐' : ''}</td><td>${esc(c.cedula)}</td><td>${esc(c.telefono || '')}</td><td>${esc(c.zona || '')}</td><td>${chipsT(c)}</td><td class="der">${c.compras}</td><td class="der">${usd(c.total)}</td><td>${dias(c) === 0 ? 'hoy' : 'hace ' + dias(c) + ' días'}</td></tr>`).join('') || '<tr><td colspan="7" class="vacio">Ningún cliente con este filtro.</td></tr>'}
     </tbody></table>${lista.length > 150 ? `<p class="ayuda">Se muestran 150 de ${lista.length}.</p>` : ''}
-    <section class="graf"><h4>¿De dónde vienen los clientes?</h4>${barrasH(porZona, { fmtV: n => String(n), etiqueta: 150, ancho: anchoGraf() })}</section>`;
+    ${idsT.length > 1 ? `<section class="graf"><h4>Clientes por tienda</h4>${barrasH(idsT.map(t => { const n = base.filter(c => (c.por_tienda || []).some(x => x.tienda_id === t)).length; return { label: tiendaNombre(t), valor: n, extra: n + ' clientes' }; }), { fmtV: n => String(n), etiqueta: 150, ancho: anchoGraf() })}
+      <p class="ayuda">${base.filter(c => (c.por_tienda || []).length > 1).length} clientes han comprado en más de una tienda.</p></section>` : ''}
+    <section class="graf"><h4>¿De dónde vienen los clientes?${CLI.tienda ? ' · ' + esc(tiendaNombre(CLI.tienda)) : ''}</h4>${barrasH(porZona, { fmtV: n => String(n), etiqueta: 150, ancho: anchoGraf() })}</section>`;
   cont.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { CLI.filtro = b.dataset.f; pintarAdmClientes(); });
   $('cl-zona').onchange = e => { CLI.zona = e.target.value; pintarAdmClientes(); };
+  $('cl-tienda').onchange = e => { CLI.tienda = Number(e.target.value); pintarAdmClientes(); };
   $('cl-q').onchange = e => { CLI.q = e.target.value.trim(); pintarAdmClientes(); };
-  $('cl-copiar').onclick = () => copiarTexto(tsv(['Nombre', 'Teléfono', 'Zona', 'Compras', 'Total $'], lista.map(c => [c.nombre, c.telefono, c.zona, c.compras, numXls(c.total)])));
+  $('cl-copiar').onclick = () => copiarTexto(tsv(['Nombre', 'Teléfono', 'Zona', 'Tiendas', 'Compras', 'Total $'], lista.map(c => [c.nombre, c.telefono, c.zona, (c.por_tienda || []).map(t => tiendaNombre(t.tienda_id) + ' ' + t.compras).join(', '), c.compras, numXls(c.total)])));
 }
 
 /* ---------- USUARIOS ---------- */
