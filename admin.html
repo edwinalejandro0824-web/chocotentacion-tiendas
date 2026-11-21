@@ -146,6 +146,11 @@
   .op.sel{background:var(--cacao);color:#fff;border-color:var(--cacao)}
   .op.sel small{color:#F2B705}
   .op:disabled{opacity:.4;cursor:not-allowed}
+  /* 21/11/2026: sin existencia = bloqueado hasta que la encargada lo desbloquee */
+  .prod.agotado{position:relative;opacity:.55;filter:grayscale(.85)} .prod.agotado::after{content:'Sin existencia';position:absolute;top:8px;right:8px;background:#B3261E;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px}
+  .op.agotada{opacity:.6;border-style:dashed;background:#f6efe9} .op.agotada::after{content:'sin existencia';font-size:11px;color:#B3261E;font-weight:700}
+  #modal-raiz2 .fondo{z-index:60}
+  .lista-faltan{margin:8px 0;padding-left:18px} .lista-faltan li{margin:3px 0}
   .op .veces{font-weight:800;color:#F2B705}
   .op .quitar{margin-left:2px;width:20px;height:20px;line-height:18px;text-align:center;border-radius:50%;
     border:1.5px solid rgba(255,255,255,.6);font-weight:800;align-self:center;flex:none}
@@ -565,6 +570,7 @@
 </section>
 
 <div id="modal-raiz"></div>
+<div id="modal-raiz2"></div>
 <div id="impresion"></div>
 
 <script>
@@ -893,7 +899,7 @@ function pintarProductos() {
     const precios = vars.map(v => S.d.precio.get(v.id));
     const min = Math.min(...precios), max = Math.max(...precios);
     const b = document.createElement('button');
-    b.className = 'prod';
+    b.className = 'prod' + (prodBloq(p.id) ? ' agotado' : '');
     const foto = p.foto_url
       ? `<div class="foto" style="background-image:url('${esc(p.foto_url)}')"></div>`
       : `<div class="foto" style="background:${esc(cat?.color || '#7A4A2A')}">${esc(p.nombre.trim()[0])}</div>`;
@@ -905,12 +911,126 @@ function pintarProductos() {
 }
 
 function tocarProducto(p) {
+  if (prodBloq(p.id)) return pedirDesbloqueo('producto', p.id);
   const vars = S.d.varsDe.get(p.id) || [];
   const grupos = S.d.gruposDe.get(p.id) || [];
   // si el producto tiene toppings o siropes (aunque sean solo extras), se abre la ventana para poder agregarlos
   const necesitaElegir = vars.length > 1 || grupos.length > 0;
   if (!necesitaElegir) return agregar({ variante_id: vars[0].id, opciones: [], cantidad: 1 });
   abrirOpciones(p, null);
+}
+
+/* ---------- SIN EXISTENCIA = BLOQUEADO (etapa 18, 21/11/2026, dueño) ----------
+   Un producto o topping/sabor sin existencia de lo que lleva su receta no se vende. La encargada lo
+   desbloquea (una cajera necesita la clave de administrador) y queda así hasta que vuelva a haber existencia. */
+let BLQ = { activo: false, desde: null, faltan: [], des: [], varF: new Map(), opF: new Map(), desP: new Set(), desO: new Set() };
+function indexarBloqueos(d) {
+  BLQ = { activo: !!d.activo, desde: d.desde || null, faltan: d.faltan || [], des: d.desbloqueos || [], varF: new Map(), opF: new Map(),
+    desP: new Set((d.desbloqueos || []).filter(x => x.producto_id).map(x => Number(x.producto_id))),
+    desO: new Set((d.desbloqueos || []).filter(x => x.opcion_id).map(x => Number(x.opcion_id))) };
+  for (const f of BLQ.faltan) { const m = f.tipo === 'variante' ? BLQ.varF : BLQ.opF, k = Number(f.id); if (!m.has(k)) m.set(k, []); m.get(k).push(f); }
+}
+function faltanDemo(t) {
+  const faltan = [], hay = id => stockDe(DX.insumos.find(i => i.id === id) || { stock: {} }, t), ins = id => DX.insumos.find(i => i.id === id) || {};
+  for (const [k, filas] of Object.entries(DX.recetas || {})) {
+    const id = Number(k.slice(1)), tipo = k[0] === 'v' ? 'variante' : 'opcion';
+    if (tipo === 'variante' && !S.d?.variante.has(id)) continue;
+    const suma = new Map(); filas.forEach(r => suma.set(r.insumo_id, (suma.get(r.insumo_id) || 0) + r.cantidad));
+    suma.forEach((q, iid) => { if (hay(iid) < q) faltan.push({ tipo, id, producto_id: tipo === 'variante' ? S.d.variante.get(id).producto_id : null, insumo: ins(iid).nombre, unidad: ins(iid).unidad, hay: hay(iid), necesita: q }); });
+  }
+  return faltan;
+}
+// Al entrar existencia, se quita el desbloqueo de lo que ya se puede hacer otra vez (igual que en el servidor)
+function limpiarDesbloqueosDemo(t) {
+  if (!(DX.desbloqueos || []).some(x => x.tienda_id === t) || !S.d) return;
+  const faltan = faltanDemo(t);
+  DX.desbloqueos = DX.desbloqueos.filter(x => x.tienda_id !== t || faltan.some(f => x.producto_id ? f.tipo === 'variante' && f.producto_id === x.producto_id : f.tipo === 'opcion' && f.id === x.opcion_id));
+}
+function bloqueosDemo(t) { return { activo: true, faltan: faltanDemo(t), desbloqueos: (DX.desbloqueos || []).filter(x => x.tienda_id === t) }; }
+async function cargarBloqueos() {
+  if (!S.tienda) return;
+  try { indexarBloqueos(DEMO ? bloqueosDemo(S.tienda.id) : await rpc('pos_stock_bloqueos', { p_tienda: S.tienda.id })); } catch (e) { /* si falla, el servidor igual cuida la venta */ }
+}
+setInterval(() => { if (!document.hidden && S.tienda && S.d && !document.body.classList.contains('sin-caja') && !$('modal-raiz').innerHTML) cargarBloqueos().then(() => pintarProductos()); }, 2 * 60 * 1000);
+const varBloq = id => { const v = S.d.variante.get(id); return BLQ.activo && BLQ.varF.has(id) && !(v && BLQ.desP.has(v.producto_id)); };
+const opBloq = id => BLQ.activo && BLQ.opF.has(id) && !BLQ.desO.has(id);
+const prodBloq = pid => { const vs = S.d.varsDe.get(pid) || []; return vs.length > 0 && vs.every(v => varBloq(v.id)); };
+const cantFalta = (n, u) => `${fmt.format(r2(Math.max(Number(n), 0)))} ${u || ''}`.trim();
+const lineaFalta = f => `<li><b>${esc(f.insumo)}</b>: ${Number(f.hay) <= 0 ? 'no hay' : 'hay ' + cantFalta(f.hay, f.unidad)} · hace falta ${cantFalta(f.necesita, f.unidad)}</li>`;
+const sinClaveYo = () => S.perfil?.rol === 'dueno' || puede('sin_clave');
+// Ventana para desbloquear (se abre ENCIMA de la de opciones)
+function pedirDesbloqueo(tipo, id, despues, varId) {
+  const nombre = tipo === 'producto' ? S.d.producto.get(id)?.nombre : S.d.opcion.get(id)?.nombre;
+  const vars = tipo === 'producto' ? (S.d.varsDe.get(id) || []) : [];
+  let faltan = tipo === 'producto' ? (varId ? BLQ.varF.get(varId) : vars.flatMap(v => BLQ.varF.get(v.id) || [])) : (BLQ.opF.get(id) || []);
+  faltan = [...new Map((faltan || []).map(f => [f.insumo, f])).values()];
+  const raiz = $('modal-raiz2');
+  raiz.innerHTML = `<div class="fondo"><div class="modal" style="width:min(480px,100%)">
+    <div class="modal-cab"><h3 class="titulo">🚫 ${esc(nombre || '')}: sin existencia</h3>
+      <p>No se puede vender porque en el inventario de ${esc(S.tienda.nombre)} falta:</p></div>
+    <div class="modal-cuerpo"><ul class="lista-faltan">${faltan.map(lineaFalta).join('') || '<li>Lo que lleva su receta</li>'}</ul>
+      <p class="ayuda">Si sí lo tienen en la tienda, cárguenlo en Inventario (Recibir mercancía o Conteo físico). Para venderlo ya, la encargada lo desbloquea: queda desbloqueado hasta que vuelva a haber existencia.</p>
+      ${sinClaveYo() ? '' : '<label class="campo"><span>Clave de administrador (la escribe la encargada)</span><input type="password" id="db-clave" autocomplete="off"></label>'}
+      <label class="campo"><span>Motivo (opcional)</span><input id="db-motivo" placeholder="Ej.: llegó la mercancía y no la han cargado"></label>
+      <div id="db-error" class="mensaje-error oculto"></div></div>
+    <div class="modal-pie"><button class="btn btn-sec" id="db-no">Cerrar</button><span class="espacio"></span><button class="btn btn-primario" id="db-si">🔓 Desbloquear</button></div></div></div>`;
+  const cerrar = () => { raiz.innerHTML = ''; };
+  $('db-no').onclick = cerrar;
+  raiz.querySelector('.fondo').onclick = e => { if (e.target.classList.contains('fondo')) cerrar(); };
+  ($('db-clave') || $('db-motivo')).focus();
+  $('db-si').onclick = async () => {
+    const btn = $('db-si'); btn.disabled = true; $('db-error').classList.add('oculto');
+    try {
+      const motivo = limpiar($('db-motivo').value);
+      if (DEMO) {
+        if (!sinClaveYo() && $('db-clave').value !== '123456') throw new Error('Clave de administrador incorrecta');
+        DX.desbloqueos = DX.desbloqueos || [];
+        DX.desbloqueos.push({ id: nid(), tienda_id: S.tienda.id, producto_id: tipo === 'producto' ? id : null, opcion_id: tipo === 'opcion' ? id : null, nombre, motivo, por: S.perfil.nombre, en: new Date().toISOString() });
+        guardarDemo(); await cargarBloqueos();
+      } else indexarBloqueos(await rpc('pos_stock_desbloquear', { p_tienda: S.tienda.id, p_producto: tipo === 'producto' ? id : null, p_opcion: tipo === 'opcion' ? id : null, p_clave: $('db-clave')?.value || null, p_motivo: motivo || null }));
+      cerrar(); pintarProductos(); toast(`${nombre} desbloqueado`);
+      if (despues) despues();
+    } catch (e) { $('db-error').textContent = e.message; $('db-error').classList.remove('oculto'); btn.disabled = false; }
+  };
+}
+// Antes de cobrar: que todo lo del carrito tenga existencia (sumando todo lo que lleva)
+async function revisarCarritoStock() {
+  if (!S.carrito.length) return [];
+  if (DEMO) {
+    await cargarBloqueos(); if (!BLQ.activo) return [];
+    const uso = new Map(), add = (iid, q, src) => { if (!uso.has(iid)) uso.set(iid, { q: 0, src: [] }); const u = uso.get(iid); u.q += q; u.src.push(src); };
+    for (const l of S.carrito) {
+      const v = S.d.variante.get(l.variante_id);
+      (DX.recetas['v' + l.variante_id] || []).forEach(r => add(r.insumo_id, r.cantidad * l.cantidad, ['producto', v.producto_id]));
+      l.opciones.forEach(o => (DX.recetas['o' + o] || []).forEach(r => add(r.insumo_id, r.cantidad * l.cantidad, ['opcion', o])));
+    }
+    const res = [];
+    uso.forEach((u, iid) => { const i = DX.insumos.find(x => x.id === iid) || {}, hay = stockDe(i.stock ? i : { stock: {} }, S.tienda.id);
+      if (hay >= u.q) return;
+      for (const [tipo, id] of new Map(u.src.map(s => [s.join(':'), s])).values()) {
+        if (tipo === 'producto' ? BLQ.desP.has(id) : BLQ.desO.has(id)) continue;
+        res.push({ tipo, id, nombre: tipo === 'producto' ? S.d.producto.get(id)?.nombre : S.d.opcion.get(id)?.nombre, insumo: i.nombre, unidad: i.unidad, hay, necesita: r2(u.q) }); } });
+    return res;
+  }
+  try {
+    const items = S.carrito.map(l => ({ variante_id: l.variante_id, cantidad: l.cantidad, opciones: l.opciones.map(id => ({ opcion_id: id })) }));
+    return await rpc('pos_stock_revisar', { p_tienda: S.tienda.id, p_items: items }) || [];
+  } catch (e) { return []; }   // si no se pudo revisar, el servidor lo vuelve a revisar al guardar
+}
+function mostrarFaltaStock(lista) {
+  const porFuente = new Map();
+  lista.forEach(f => { const k = f.tipo + ':' + f.id; if (!porFuente.has(k)) porFuente.set(k, { ...f, faltan: [] }); porFuente.get(k).faltan.push(f); });
+  const raiz = $('modal-raiz2');
+  raiz.innerHTML = `<div class="fondo"><div class="modal" style="width:min(520px,100%)">
+    <div class="modal-cab"><h3 class="titulo">🚫 No alcanza la existencia</h3><p>Para cobrar esta venta falta en el inventario de ${esc(S.tienda.nombre)}:</p></div>
+    <div class="modal-cuerpo">${[...porFuente.values()].map(x => `<div class="graf" style="margin-bottom:8px"><b>${esc(x.nombre || '')}</b>
+      <ul class="lista-faltan">${x.faltan.map(lineaFalta).join('')}</ul>
+      <button class="btn btn-sec" data-dt="${x.tipo === 'producto' ? 'producto' : 'opcion'}" data-di="${x.id}">🔓 Desbloquear ${esc(x.nombre || '')}</button></div>`).join('')}
+      <p class="ayuda">Quita o cambia esos productos del ticket, o pide a la encargada que los desbloquee.</p></div>
+    <div class="modal-pie"><span class="espacio"></span><button class="btn btn-primario" id="fs-ok">Entendido</button></div></div></div>`;
+  $('fs-ok').onclick = () => { raiz.innerHTML = ''; };
+  raiz.querySelectorAll('[data-dt]').forEach(b => b.onclick = () => pedirDesbloqueo(b.dataset.dt, Number(b.dataset.di), async () => {
+    const otra = await revisarCarritoStock(); if (otra.length) mostrarFaltaStock(otra); else toast('Listo: ya puedes cobrar'); }));
 }
 
 function claveLinea(l) { return l.variante_id + ':' + [...l.opciones].sort((a, b) => a - b).join(','); }
@@ -1086,9 +1206,10 @@ function abrirOpciones(p, lineaExistente) {
       const g = document.createElement('div'); g.className = 'grupo';
       g.innerHTML = `<h4>${vars.some(v => /\d\s*(oz|ml|l|lt|g|kg)\b/i.test(v.nombre)) ? 'Tamaño' : 'Sabor'}</h4><div class="opciones"></div>`;
       for (const v of vars) {
-        const b = document.createElement('button'); b.className = 'op' + (varSel === v.id ? ' sel' : '');
+        const bq = varBloq(v.id);
+        const b = document.createElement('button'); b.className = 'op' + (varSel === v.id ? ' sel' : '') + (bq ? ' agotada' : '');
         b.innerHTML = `${esc(v.nombre)} <small class="num">${usd(S.d.precio.get(v.id))}</small>`;
-        b.onclick = () => { varSel = v.id; pintar(); };
+        b.onclick = () => { if (bq && varSel !== v.id) return pedirDesbloqueo('producto', p.id, () => pintar(), v.id); varSel = v.id; pintar(); };
         g.querySelector('.opciones').appendChild(b);
       }
       cuerpo.appendChild(g);
@@ -1117,12 +1238,14 @@ function abrirOpciones(p, lineaExistente) {
         const precio = S.d.precioOp.get(o.id) ?? 0;
         const n = veces(o);
         const quitarUna = () => { const i = sel.lastIndexOf(o.id); if (i >= 0) sel.splice(i, 1); };
-        const b = document.createElement('button'); b.className = 'op' + (n ? ' sel' : '');
+        const bqo = opBloq(o.id);
+        const b = document.createElement('button'); b.className = 'op' + (n ? ' sel' : '') + (bqo ? ' agotada' : '');
         b.innerHTML = `${esc(o.nombre)}${n > 1 ? ` <span class="veces num">×${n}</span>` : ''}` +
           `${precio > 0 ? ` <small class="num">+${usd(precio)}</small>` : ''}` +
           `${n && max !== 1 ? '<span class="quitar" title="Quitar uno">−</span>' : ''}`;
         b.disabled = !n && elegidas >= max && max !== 1;
         b.onclick = e => {
+          if (bqo && !n && !e.target.classList.contains('quitar')) return pedirDesbloqueo('opcion', o.id, () => pintar());
           if (e.target.classList.contains('quitar')) quitarUna();   // la bolita quita de a uno
           else if (max === 1) {                                     // "elige uno": se reemplaza
             if (n) sel = sel.filter(x => x !== o.id);
@@ -1298,7 +1421,8 @@ function abrirCobro() {
       if (!DEMO) sb.rpc('pos_cliente_nombres', { p_cedula: cliente.cedula, p_nombres: limpiar(c.nombre), p_apellidos: limpiar(c.apellido) }).then(() => {}, () => {});
       ventaLista(venta);
     } catch (e) {
-      $('c-error').textContent = 'No se guardó la venta: ' + e.message;
+      $('c-error').textContent = 'No se guardó la venta: ' + String(e.message).replace(/\|[PO]:\d+$/, '');
+      if (/Sin existencia/.test(e.message)) cargarBloqueos().then(() => { pintarProductos(); });
       $('c-error').classList.remove('oculto');
       btn.textContent = 'Confirmar e imprimir'; enviando = false; pintarResumen();
     }
@@ -1307,6 +1431,7 @@ function abrirCobro() {
 
 function ventaLista(v) {
   S.carrito = []; limpiarCliente();
+  cargarBloqueos().then(() => pintarProductos());
   pintarTicket();
   S.ventasHoy += Number(v.total_usd);
   pintarMeta();
@@ -3657,6 +3782,7 @@ const costoVenta = v => v.costo_usd != null ? v.costo_usd : v.items.reduce((a, i
 function moverStock(tiendaId, insumoId, cantidad, tipo, nota) {
   const i = DX.insumos.find(x => x.id === insumoId); if (!i) return;
   i.stock[tiendaId] = r2((i.stock[tiendaId] || 0) + cantidad);
+  if (cantidad > 0) setTimeout(() => limpiarDesbloqueosDemo(tiendaId), 0);
   DX.movs.push({ id: nid(), tienda_id: tiendaId, fecha: new Date().toISOString(), tipo, insumo_id: insumoId, cantidad: r2(cantidad), nota: nota || '', usuario: S.perfil?.nombre || '' });
   if (DX.movs.length > 3000) DX.movs.splice(0, DX.movs.length - 3000);
 }
@@ -3909,9 +4035,38 @@ function pintarAdmPanel() {
 
 /* ---------- INVENTARIO ---------- */
 const INV = { sub: 'existencias' };
+// Productos y toppings/sabores que no se pueden vender por falta de existencia, y los desbloqueados
+async function pintarInvBloqueos(ic) {
+  ic.innerHTML = '<p class="vacio">Revisando existencias…</p>';
+  await cargarBloqueos();
+  const prods = new Map(), ops = new Map();
+  for (const [vid, fs] of BLQ.varF) { const v = S.d.variante.get(vid); if (!v) continue;
+    if (!prods.has(v.producto_id)) prods.set(v.producto_id, { vars: new Set(), faltan: new Map() });
+    const x = prods.get(v.producto_id); x.vars.add(v.nombre); fs.forEach(f => x.faltan.set(f.insumo, f)); }
+  for (const [oid, fs] of BLQ.opF) { if (!S.d.opcion.has(oid)) continue; ops.set(oid, new Map(fs.map(f => [f.insumo, f]))); }
+  const fila = (tipo, id, nombre, faltan, extra = '') => { const des = tipo === 'producto' ? BLQ.desP.has(id) : BLQ.desO.has(id);
+    return `<tr><td><b>${esc(nombre)}</b>${extra}</td><td><ul class="lista-faltan" style="margin:0">${[...faltan.values()].map(lineaFalta).join('')}</ul></td>
+      <td>${des ? '<span class="badge abierta">🔓 Desbloqueado</span>' : '<span class="badge mal">Bloqueado</span>'}</td>
+      <td>${des ? '' : `<button class="btn btn-sec" data-bt="${tipo}" data-bi="${id}">🔓 Desbloquear</button>`}</td></tr>`; };
+  const nP = [...prods.keys()].filter(id => S.d.productos.some(p => p.id === id));
+  ic.innerHTML = `<div class="adm-barra"><p>${BLQ.activo ? 'El bloqueo está <b>encendido</b>' : `El bloqueo arranca el <b>${BLQ.desde ? new Date(BLQ.desde).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'short', timeStyle: 'short' }) : '—'}</b>`}: lo que no tenga existencia de su receta no se puede vender.
+      Al desbloquearlo se puede vender hasta que vuelva a haber existencia; cuando carguen la mercancía se quita solo el desbloqueo.</p></div>
+    <section class="graf"><h4>Productos sin existencia (${nP.length})</h4>${nP.length ? `<table class="tabla-simple"><thead><tr><th>Producto</th><th>Lo que falta</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${nP.map(id => { const x = prods.get(id), todos = (S.d.varsDe.get(id) || []).length; return fila('producto', id, S.d.producto.get(id).nombre, x.faltan, todos > 1 ? `<br><small class="ayuda">${esc([...x.vars].join(', '))}</small>` : ''); }).join('')}</tbody></table>` : '<p class="vacio">Todos los productos tienen existencia.</p>'}</section>
+    <section class="graf"><h4>Toppings, sabores y siropes sin existencia (${ops.size})</h4>${ops.size ? `<table class="tabla-simple"><thead><tr><th>Opción</th><th>Lo que falta</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${[...ops].map(([id, f]) => fila('opcion', id, S.d.opcion.get(id).nombre, f)).join('')}</tbody></table>` : '<p class="vacio">Todos tienen existencia.</p>'}</section>
+    <section class="graf"><h4>Desbloqueados (${BLQ.des.length})</h4>${BLQ.des.length ? `<table class="tabla-simple"><thead><tr><th>Qué</th><th>Por</th><th>Cuándo</th><th>Motivo</th><th></th></tr></thead><tbody>
+      ${BLQ.des.map(d => `<tr><td>${esc(d.nombre || '')}</td><td>${esc(d.por || '')}</td><td>${esc(new Date(d.en).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'short', timeStyle: 'short' }))}</td><td>${esc(d.motivo || '')}</td>
+        <td><button class="link rojo" data-rb="${d.id}">Volver a bloquear</button></td></tr>`).join('')}</tbody></table>` : '<p class="vacio">Nada desbloqueado.</p>'}</section>`;
+  ic.querySelectorAll('[data-bt]').forEach(b => b.onclick = () => pedirDesbloqueo(b.dataset.bt, Number(b.dataset.bi), () => pintarInvBloqueos(ic)));
+  ic.querySelectorAll('[data-rb]').forEach(b => b.onclick = () => guardando(b, async () => {
+    if (DEMO) { DX.desbloqueos = (DX.desbloqueos || []).filter(x => x.id !== Number(b.dataset.rb)); guardarDemo(); }
+    else indexarBloqueos(await rpc('pos_stock_rebloquear', { p_tienda: S.tienda.id, p_id: Number(b.dataset.rb) }));
+    toast('Bloqueado otra vez'); pintarInvBloqueos(ic); }));
+}
 function pintarAdmInventario() {
   const cont = $('adm-contenido'), t = S.tienda.id;
-  const subs = [['existencias', 'Existencias'], ['recibir', 'Recibir mercancía'], ['produccion', 'Producción'], ['pedidos', 'Pedidos' + ((DX.pedidos || []).filter(p => (S.perfil.rol === 'dueno' || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length ? ` (${(DX.pedidos || []).filter(p => (S.perfil.rol === 'dueno' || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length})` : '')], ['merma', 'Mermas'], ['conteo', 'Conteo físico'], ['recetas', 'Recetas y costos'], ['movs', 'Movimientos']];
+  const subs = [['existencias', 'Existencias'], ['recibir', 'Recibir mercancía'], ['produccion', 'Producción'], ['pedidos', 'Pedidos' + ((DX.pedidos || []).filter(p => (S.perfil.rol === 'dueno' || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length ? ` (${(DX.pedidos || []).filter(p => (S.perfil.rol === 'dueno' || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length})` : '')], ['merma', 'Mermas'], ['conteo', 'Conteo físico'], ['recetas', 'Recetas y costos'], ['movs', 'Movimientos'], ['bloqueos', '🚫 Sin existencia']];
   const subsOk = subs.filter(([k]) => puede(INV_PERM[k] || 'inventario'));
   if (!subsOk.some(([k]) => k === INV.sub)) INV.sub = subsOk[0]?.[0] || 'existencias';
   cont.innerHTML = `<div class="adm-barra"><p>Inventario de <b>${esc(S.tienda.nombre)}</b>. Cada venta descuenta lo que usa según su receta.${DEMO ? ' Las cantidades y costos de ejemplo hay que cambiarlos por los reales.' : (DX.insumos.length ? '' : ' Todavía no hay insumos: agrégalos con <b>+ Insumo</b> y luego arma las recetas.')}</p></div>
@@ -4113,6 +4268,8 @@ function pintarAdmInventario() {
       }
       if (ped) { const p = (DX.pedidos || []).find(x => x.id === ped.id); if (p) Object.assign(p, { estado: 'recibido', factura_id: facId }); }
       INV.pedido = null; guardarDemo(); pintarChipStock(); toast(`Entrada registrada por ${usd(total)}`); INV.sub = 'existencias'; pintarAdmInventario(); };
+  } else if (INV.sub === 'bloqueos') {
+    pintarInvBloqueos(ic);
   } else if (INV.sub === 'produccion') {
     pintarProduccion(ic, t, optsIns);
   } else if (INV.sub === 'pedidos') {
@@ -5510,6 +5667,7 @@ async function entrarTienda(t) {
     pintarCategorias(); pintarProductos(); pintarTicket(); pintarMeta();
     document.body.classList.remove('sin-caja');
     if (MODO_ADMIN || !esCaja(t.id)) return modoSinCaja(t);
+    await cargarBloqueos(); pintarProductos();
     await revisarCaja();
     pintarChipStock();
   } catch (e) {
@@ -5592,12 +5750,14 @@ $('btn-cobrar').onclick = async () => {
   if (cajaVieja()) { pintarCaja(); return toast('La caja abierta es de ayer: ciérrala antes de vender', true); }
   if (faltantesCliente().length) { ['cli-cedula','cli-nombre','cli-apellido','cli-telefono','cli-zona'].forEach(i => tocados.add(i)); return revisarCobrar(); }
   const b = $('btn-cobrar'); b.disabled = true;
+  const faltaStock = await revisarCarritoStock();
+  if (faltaStock.length) { b.disabled = false; return mostrarFaltaStock(faltaStock); }
   await actualizarTasa();   // se cobra siempre con la tasa vigente
   b.disabled = false; abrirCobro();
 };
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') $('modal-raiz').innerHTML = '';
-  if (e.key === 'F2' && !$('btn-cobrar').disabled && !$('modal-raiz').innerHTML) { e.preventDefault(); abrirCobro(); }
+  if (e.key === 'Escape') { if ($('modal-raiz2').innerHTML) $('modal-raiz2').innerHTML = ''; else $('modal-raiz').innerHTML = ''; }
+  if (e.key === 'F2' && !$('btn-cobrar').disabled && !$('modal-raiz').innerHTML) { e.preventDefault(); $('btn-cobrar').onclick(); }
 });
 
 /* ---------- App instalable (Windows, Android): funciona sin barra del navegador ---------- */
