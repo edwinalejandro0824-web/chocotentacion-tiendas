@@ -1,0 +1,30 @@
+{
+  "name": "ChocoTentación Administración",
+  "short_name": "Choco Admin",
+  "description": "Administración de las tiendas ChocoTentación: inventario, reportes, gastos, clientes, nómina",
+  "lang": "es-VE",
+  "start_url": "./admin.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#2B1610",
+  "theme_color": "#2B1610",
+  "icons": [
+    {
+      "src": "icono-admin-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icono-admin-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icono-admin-512-mascara.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "id": "./admin.html"
+}
