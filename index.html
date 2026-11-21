@@ -202,6 +202,8 @@
   .adm-tabs{display:flex;gap:4px}
   .adm-tab{padding:10px 16px;font-weight:600;color:var(--suave);border-bottom:3px solid transparent}
   .adm-tab.activa{color:var(--texto);border-bottom-color:var(--naranja)}
+  /* 21/11/2026 (dueño): todas las pestañas a la vista, en varias filas si hace falta, sin barra para desplazar */
+  .adm-cab>div:first-child{flex:1;min-width:0} .adm-tabs.adm-tabs{flex-wrap:wrap;overflow:visible;row-gap:0} .adm-tabs .adm-tab{padding:9px 13px} .adm-cab>.espacio{display:none}
   .adm-contenido{flex:1;overflow:auto;padding:16px 24px 40px}
   .adm-barra{display:flex;align-items:center;gap:10px;margin-bottom:8px}
   .adm-barra p{margin:0;color:var(--suave);max-width:640px}
