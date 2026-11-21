@@ -2379,7 +2379,7 @@ function pintarNomina() {
   const soloSolpe = S.perfil?.rol === 'mercadeo';
   if (soloSolpe) NOM.vista = 'solpe';
   if (!NOMD && !soloSolpe) return cont.innerHTML = '<p class="vacio">Cargando…</p>';
-  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${(soloSolpe ? [['solpe', '📝 Solicitudes de pago']] : [['nominas', 'Nóminas'], ['trabajadores', `Trabajadores (${NOMD.trabajadores.filter(t => t.activo).length})`], ['bonos', '🎯 Bonos'], ['postulaciones', '📥 Postulaciones'], ['solpe', '📝 Solicitudes de pago'], ['ajustes', 'Ajustes']])
+  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${(soloSolpe ? [['solpe', '📝 Solicitudes de pago']] : [['nominas', 'Nóminas'], ['trabajadores', `Trabajadores (${NOMD.trabajadores.filter(t => t.activo).length})`], ['bonos', '🎯 Bonos'], ['liquidaciones', '📄 Liquidaciones y constancias'], ['postulaciones', '📥 Postulaciones'], ['solpe', '📝 Solicitudes de pago'], ['ajustes', 'Ajustes']])
     .map(([k, n]) => `<button class="sub-tab ${NOM.vista === k ? 'activa' : ''}" data-nv="${k}">${n}</button>`).join('')}</nav><div id="nom-cont"></div>`;
   cont.querySelectorAll('[data-nv]').forEach(b => b.onclick = () => { NOM.vista = b.dataset.nv; NOM.periodoId = null; NOMP = null; pintarNomina(); });
   const c = $('nom-cont');
@@ -2388,6 +2388,7 @@ function pintarNomina() {
   if (NOM.vista === 'postulaciones') return pintarPostulaciones(c);
   if (NOM.vista === 'bonos') return pintarBonos(c);
   if (NOM.vista === 'solpe') return pintarSolpe(c);
+  if (NOM.vista === 'liquidaciones') return pintarLiquidaciones(c);
   if (NOM.periodoId && NOMP) return pintarNomPeriodo(c);
   pintarNomPeriodos(c);
 }
@@ -2743,6 +2744,190 @@ async function pintarPostulaciones(c) {
     Object.assign(x, { estado: est, nota: nota || x.nota }); toast('Listo'); pintarPostulaciones(c); });
 }
 function pintarAdmNomina() { NOM.raiz = 'admin'; pintarNomina(); }
+
+/* =====================================================================
+   NÓMINA, PARTE 2 (21/11/2026): liquidación, prestaciones (LOTTT art. 142 literales A, B, C y D),
+   vacaciones y bono vacacional (art. 190 y 192), utilidades = bono de diciembre (30 días por año, art. 131-132)
+   y constancia de trabajo. Decisiones del dueño: se puede calcular con el sueldo de LEY (Bs) o con el PAQUETE
+   completo en $ (se escoge en pantalla); utilidades 30 días; vacaciones como la ley; la constancia lleva solo el sueldo de ley.
+   ===================================================================== */
+const LIQ = { tid: null, corte: null, base: 'ley', ticket: false, motivo: 'renuncia', vacPend: 0, anticipos: 0, vista: 'uno', anio: null };
+const LIQ_MOTIVOS = { renuncia: 'Renuncia', despido_justificado: 'Despido justificado', despido_injustificado: 'Despido injustificado (indemnización art. 92)', fin_contrato: 'Fin del contrato' };
+// Años, meses y días completos entre dos fechas (inclusive de inicio)
+function antiguedad(desde, hasta) {
+  const [a1, m1, d1] = desde.split('-').map(Number), [a2, m2, d2] = hasta.split('-').map(Number);
+  let a = a2 - a1, m = m2 - m1, d = d2 - d1;
+  if (d < 0) { m -= 1; d += new Date(Date.UTC(a2, m2 - 1, 0)).getUTCDate(); }
+  if (m < 0) { a -= 1; m += 12; }
+  return { anios: Math.max(a, 0), meses: a < 0 ? 0 : m, dias: a < 0 ? 0 : d, totalMeses: Math.max(a * 12 + m, 0) };
+}
+const textoAnt = x => [x.anios ? `${x.anios} año${x.anios === 1 ? '' : 's'}` : '', x.meses ? `${x.meses} mes${x.meses === 1 ? '' : 'es'}` : '', `${x.dias} día${x.dias === 1 ? '' : 's'}`].filter(Boolean).join(', ');
+// Sueldo mensual según la base elegida: ley (Bs) o paquete en $ (sin cestaticket, salvo que se marque)
+function liqSueldo(t, base, conTicket, cfg = NOMD.config) {
+  if (base === 'ley') return { mensual: Number(cfg.sueldo_minimo_bs || 0), mon: 'Bs' };
+  const paq = Number(t.paquete_mensual_usd || 0), tk = Number(cfg.cestaticket_usd || 0);
+  return { mensual: r2(Math.max(conTicket ? paq : paq - tk, 0)), mon: '$' };
+}
+// Cálculo completo a la fecha de corte
+function calcLiquidacion(t, o) {
+  const cfg = NOMD.config, corte = o.corte, ing = t.fecha_ingreso;
+  if (!ing) return { error: 'Falta la fecha de ingreso del trabajador (Trabajadores → Editar).' };
+  if (ing > corte) return { error: 'La fecha de corte es antes de la fecha de ingreso.' };
+  const S0 = liqSueldo(t, o.base, o.ticket), diario = r2(S0.mensual / 30);
+  const ant = antiguedad(ing, corte), anios = ant.anios;
+  // Vacaciones (art. 190): 15 días hábiles + 1 por año a partir del segundo, máx. 15 adicionales; bono vacacional (art. 192): 15 + 1 por año, máx. 30
+  const diasVac = 15 + Math.min(Math.max(anios - 1, 0), 15), diasBono = Math.min(15 + Math.max(anios - 1, 0), 30);
+  const diasUtil = Number(cfg.utilidades_dias || 30);
+  // Salario integral = diario + alícuota de utilidades + alícuota de bono vacacional
+  const alUtil = r2(diario * diasUtil / 360), alBono = r2(diario * diasBono / 360), integral = r2(diario + alUtil + alBono);
+  // Literal A: 15 días por trimestre; Literal B: después del primer año, 2 días por año acumulativos hasta 30
+  const trimestres = Math.floor(ant.totalMeses / 3), diasA = trimestres * 15;
+  let diasB = 0; for (let k = 2; k <= anios; k++) diasB += Math.min(2 * (k - 1), 30);
+  const garantia = r2((diasA + diasB) * integral);
+  // Literal C: 30 días por año (o fracción mayor de 6 meses) con el último salario integral
+  const aniosC = anios + (ant.meses >= 6 ? 1 : 0), diasC = 30 * aniosC, retro = r2(diasC * integral);
+  const prestaciones = Math.max(garantia, retro);          // Literal D: lo que sea mayor
+  // Fracciones del año en curso
+  const ultAniv = sumarDias(ing.replace(/^\d{4}/, String(Number(ing.slice(0, 4)) + anios)), 0);
+  const mesesAniv = antiguedad(ultAniv, corte).totalMeses;
+  const vacFrac = r2(diasVac * mesesAniv / 12), bonoFrac = r2(diasBono * mesesAniv / 12);
+  const inicioAnio = corte.slice(0, 4) + '-01-01', desdeUtil = ing > inicioAnio ? ing : inicioAnio;
+  const mesesUtil = Math.min(antiguedad(desdeUtil, corte).totalMeses + (corte.slice(5) === '12-31' ? 0 : 0), 12);
+  const utilDias = r2(diasUtil * mesesUtil / 12), utilMonto = r2(utilDias * diario);
+  const vacPend = Number(o.vacPend || 0);
+  const conceptos = [
+    ['Prestaciones sociales (literal ' + (garantia >= retro ? 'A + B, garantía' : 'C, retroactivo') + ', art. 142 lit. D)', '', prestaciones],
+    ['Vacaciones fraccionadas (' + mesesAniv + '/12 de ' + diasVac + ' días)', vacFrac, r2(vacFrac * diario)],
+    ['Bono vacacional fraccionado (' + mesesAniv + '/12 de ' + diasBono + ' días)', bonoFrac, r2(bonoFrac * diario)],
+    ['Utilidades fraccionadas ' + corte.slice(0, 4) + ' (' + mesesUtil + '/12 de ' + diasUtil + ' días)', utilDias, utilMonto]];
+  if (vacPend > 0) conceptos.push(['Vacaciones vencidas no disfrutadas', vacPend, r2(vacPend * diario)]);
+  if (o.motivo === 'despido_injustificado') conceptos.push(['Indemnización por despido injustificado (art. 92: igual a las prestaciones)', '', prestaciones]);
+  const asignaciones = r2(conceptos.reduce((a, c) => a + c[2], 0)), anticipos = Number(o.anticipos || 0);
+  return { S0, diario, integral, alUtil, alBono, ant, anios, diasVac, diasBono, diasUtil, trimestres, diasA, diasB, garantia, aniosC, diasC, retro, prestaciones,
+    mesesAniv, vacFrac, bonoFrac, mesesUtil, utilDias, utilMonto, conceptos, asignaciones, anticipos, neto: r2(asignaciones - anticipos),
+    vacCompletas: { dias: diasVac, bono: diasBono, monto: r2((diasVac + diasBono) * diario) } };
+}
+const liqMon = (S0, n) => S0.mon === 'Bs' ? 'Bs. ' + fmt.format(n) : usd(n);
+
+function pintarLiquidaciones(c) {
+  const cfg = NOMD.config, hoy = hoyVE(); LIQ.corte = LIQ.corte || hoy; LIQ.anio = LIQ.anio || Number(hoy.slice(0, 4));
+  const ts = NOMD.trabajadores.filter(t => t.activo || t.fecha_egreso).sort((a, b) => nomNombre(a).localeCompare(nomNombre(b)));
+  const baseSel = `<label class="campo" style="margin:0"><span>Calcular con</span><select id="lq-base" class="sel corto"><option value="ley" ${LIQ.base === 'ley' ? 'selected' : ''}>Sueldo de ley (Bs. ${fmt.format(cfg.sueldo_minimo_bs)})</option><option value="paquete" ${LIQ.base === 'paquete' ? 'selected' : ''}>Paquete completo en $</option></select></label>
+    ${LIQ.base === 'paquete' ? `<label class="interruptor" style="margin:0"><input type="checkbox" id="lq-tk" ${LIQ.ticket ? 'checked' : ''}><span>Sumar el cestaticket</span></label>` : ''}`;
+  c.innerHTML = `<nav class="sub-tabs" style="margin-bottom:10px">${[['uno', 'Liquidación, vacaciones y constancia'], ['utilidades', '🎄 Bono de diciembre (utilidades) de todos']].map(([k, n]) => `<button class="sub-tab ${LIQ.vista === k ? 'activa' : ''}" data-lv="${k}">${n}</button>`).join('')}</nav><div id="lq-c"></div>`;
+  c.querySelectorAll('[data-lv]').forEach(b => b.onclick = () => { LIQ.vista = b.dataset.lv; pintarLiquidaciones(c); });
+  const k = c.querySelector('#lq-c');
+  const enlazarBase = () => { k.querySelector('#lq-base').onchange = e => { LIQ.base = e.target.value; pintarLiquidaciones(c); };
+    if (k.querySelector('#lq-tk')) k.querySelector('#lq-tk').onchange = e => { LIQ.ticket = e.target.checked; pintarLiquidaciones(c); }; };
+  if (LIQ.vista === 'utilidades') {
+    const corte = LIQ.anio + '-12-31';
+    const filas = NOMD.trabajadores.filter(t => t.activo && t.fecha_ingreso && t.fecha_ingreso <= corte && t.tipo !== 'destajo')
+      .map(t => ({ t, x: calcLiquidacion(t, { corte, base: LIQ.base, ticket: LIQ.ticket }) })).filter(f => !f.x.error)
+      .sort((a, b) => (a.t.centro || '').localeCompare(b.t.centro || '') || nomNombre(a.t).localeCompare(nomNombre(b.t)));
+    const sinFecha = NOMD.trabajadores.filter(t => t.activo && !t.fecha_ingreso);
+    const tot = r2(filas.reduce((a, f) => a + f.x.utilMonto, 0)), S0 = liqSueldo({}, LIQ.base, LIQ.ticket);
+    k.innerHTML = `<div class="adm-barra">${baseSel}<label class="campo" style="margin:0"><span>Año</span><input id="lq-anio" class="txt num" value="${LIQ.anio}" style="max-width:80px"></label>
+        <p>Utilidades = <b>${cfg.utilidades_dias || 30} días de sueldo por año</b>, proporcional a los meses completos trabajados en el año.</p><span class="espacio"></span><button class="btn btn-sec" id="lq-xls">Copiar para Excel</button></div>
+      <table class="tabla-simple num"><thead><tr><th>Trabajador</th><th>Centro</th><th>Ingreso</th><th class="der">Meses</th><th class="der">Días</th><th class="der">Sueldo diario</th><th class="der">Bono de diciembre</th></tr></thead><tbody>
+      ${filas.map(f => `<tr><td>${esc(nomNombre(f.t))}</td><td>${esc(f.t.centro || '')}</td><td>${fechaCorta(f.t.fecha_ingreso)}</td><td class="der">${f.x.mesesUtil}</td><td class="der">${fmtCant(f.x.utilDias)}</td>
+        <td class="der">${liqMon(f.x.S0, f.x.diario)}</td><td class="der"><b>${liqMon(f.x.S0, f.x.utilMonto)}</b></td></tr>`).join('')}
+      <tr class="total"><td colspan="6">Total (${filas.length} trabajadores)</td><td class="der">${liqMon(S0, tot)}</td></tr></tbody></table>
+      ${sinFecha.length ? `<p class="ayuda">⚠️ Sin fecha de ingreso (no se calculan): ${sinFecha.map(t => esc(nomNombre(t))).join(', ')}. Se carga en Trabajadores → Editar.</p>` : ''}
+      <p class="ayuda">Los trabajadores a destajo no salen aquí. ${LIQ.base === 'ley' && NOMD.tasa ? `Con la tasa de hoy (${fmt.format(NOMD.tasa)}) el total es ${usd(tot / NOMD.tasa)}.` : ''}</p>`;
+    enlazarBase();
+    k.querySelector('#lq-anio').onchange = e => { const a = parseInt(e.target.value, 10); if (a > 2000) { LIQ.anio = a; pintarLiquidaciones(c); } };
+    k.querySelector('#lq-xls').onclick = () => copiarTexto(tsv(['Trabajador', 'Cédula', 'Centro', 'Ingreso', 'Meses', 'Días', 'Sueldo diario', 'Bono de diciembre'],
+      filas.map(f => [nomNombre(f.t), f.t.cedula, f.t.centro || '', f.t.fecha_ingreso, f.x.mesesUtil, numXls(f.x.utilDias), numXls(f.x.diario), numXls(f.x.utilMonto)])));
+    return;
+  }
+  LIQ.tid = LIQ.tid || ts[0]?.id;
+  const t = ts.find(x => x.id === LIQ.tid);
+  const x = t ? calcLiquidacion(t, LIQ) : null, M = n => liqMon(x.S0, n);
+  k.innerHTML = `<div class="adm-barra"><label class="campo" style="margin:0"><span>Trabajador</span><select id="lq-t" class="sel">${ts.map(z => `<option value="${z.id}" ${z.id === LIQ.tid ? 'selected' : ''}>${esc(nomNombre(z))}${z.activo ? '' : ' (egresado)'}</option>`).join('')}</select></label>
+      <label class="campo" style="margin:0"><span>Fecha de corte (o de egreso)</span><input id="lq-corte" type="date" class="txt" value="${LIQ.corte}"></label>${baseSel}</div>
+    ${!t ? '<p class="vacio">No hay trabajadores.</p>' : x.error ? `<p class="mensaje-error">${esc(x.error)}</p>` : `
+    <div class="kpis"><div class="kpi"><span>Antigüedad</span><b class="num" style="font-size:20px">${textoAnt(x.ant)}</b><i>desde ${fechaLarga(t.fecha_ingreso)}</i></div>
+      <div class="kpi"><span>Sueldo mensual</span><b class="num">${M(x.S0.mensual)}</b><i>diario ${M(x.diario)}</i></div>
+      <div class="kpi"><span>Salario integral diario</span><b class="num">${M(x.integral)}</b><i>+ utilidades ${M(x.alUtil)} + bono vac. ${M(x.alBono)}</i></div>
+      <div class="kpi"><span>Bono de diciembre ${LIQ.corte.slice(0, 4)}</span><b class="num">${M(x.utilMonto)}</b><i>${fmtCant(x.utilDias)} días (${x.mesesUtil} meses)</i></div></div>
+    <div class="dos-col"><section class="graf"><h4>Vacaciones (cuando le toquen)</h4><table class="tabla-simple num"><tbody>
+        <tr><td>Días de disfrute (15 + 1 por año)</td><td class="der">${x.diasVac} días hábiles</td><td class="der">${M(x.diasVac * x.diario)}</td></tr>
+        <tr><td>Bono vacacional (15 + 1 por año, máx. 30)</td><td class="der">${x.diasBono} días</td><td class="der">${M(x.diasBono * x.diario)}</td></tr>
+        <tr class="total"><td>Total vacaciones</td><td></td><td class="der">${M(x.vacCompletas.monto)}</td></tr></tbody></table>
+        <p class="ayuda">Le corresponden al cumplir cada año de servicio (próximo aniversario: ${fechaLarga(sumarDias(t.fecha_ingreso.replace(/^\d{4}/, String(Number(t.fecha_ingreso.slice(0, 4)) + x.anios + 1)), 0))}).</p>
+        <button class="btn btn-sec" id="lq-vac">Imprimir recibo de vacaciones</button></section>
+      <section class="graf"><h4>Prestaciones sociales (art. 142)</h4><table class="tabla-simple num"><tbody>
+        <tr><td>A. Garantía: 15 días por trimestre (${x.trimestres} trimestres)</td><td class="der">${x.diasA} días</td><td></td></tr>
+        <tr><td>B. Días adicionales: 2 por año después del primero</td><td class="der">${x.diasB} días</td><td></td></tr>
+        <tr><td>A + B × salario integral</td><td class="der">${x.diasA + x.diasB} días</td><td class="der">${M(x.garantia)}</td></tr>
+        <tr><td>C. Retroactivo: 30 días por año (${x.aniosC} año${x.aniosC === 1 ? '' : 's'}) × último integral</td><td class="der">${x.diasC} días</td><td class="der">${M(x.retro)}</td></tr>
+        <tr class="total"><td>D. Le corresponde el mayor</td><td></td><td class="der">${M(x.prestaciones)}</td></tr></tbody></table>
+        <p class="ayuda">Calculado con el sueldo de hoy para todo el tiempo (sin intereses ni anticipos de garantía ya pagados). Si se depositaron trimestres, réstalos en "Anticipos".</p></section></div>
+    <section class="graf"><h4>Liquidación</h4>
+      <div class="adm-barra"><label class="campo" style="margin:0"><span>Motivo</span><select id="lq-mot" class="sel corto">${Object.entries(LIQ_MOTIVOS).map(([k2, n]) => `<option value="${k2}" ${LIQ.motivo === k2 ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="campo" style="margin:0"><span>Días de vacaciones vencidas sin disfrutar</span><input id="lq-vp" class="txt num" value="${LIQ.vacPend || ''}" placeholder="0" style="max-width:90px"></label>
+        <label class="campo" style="margin:0"><span>Anticipos ya pagados (${x.S0.mon})</span><input id="lq-ant" class="txt num" value="${LIQ.anticipos ? fmt.format(LIQ.anticipos) : ''}" placeholder="0,00" style="max-width:110px"></label></div>
+      <table class="tabla-simple num"><thead><tr><th>Concepto</th><th class="der">Días</th><th class="der">Monto</th></tr></thead><tbody>
+        ${x.conceptos.map(([n, d, m]) => `<tr><td>${esc(n)}</td><td class="der">${d === '' ? '' : fmtCant(d)}</td><td class="der">${M(m)}</td></tr>`).join('')}
+        <tr><td>Total asignaciones</td><td></td><td class="der"><b>${M(x.asignaciones)}</b></td></tr>
+        ${x.anticipos ? `<tr><td>Menos anticipos</td><td></td><td class="der">−${M(x.anticipos)}</td></tr>` : ''}
+        <tr class="total"><td>NETO A PAGAR</td><td></td><td class="der">${M(x.neto)}</td></tr></tbody></table>
+      <div class="adm-barra" style="margin-top:8px"><span class="espacio"></span><button class="btn btn-sec" id="lq-cons">📄 Constancia de trabajo</button><button class="btn btn-primario" id="lq-imp">Imprimir liquidación</button></div></section>`}`;
+  enlazarBase();
+  k.querySelector('#lq-t').onchange = e => { LIQ.tid = Number(e.target.value); const z = ts.find(q => q.id === LIQ.tid); if (z?.fecha_egreso) LIQ.corte = z.fecha_egreso; pintarLiquidaciones(c); };
+  k.querySelector('#lq-corte').onchange = e => { if (e.target.value) { LIQ.corte = e.target.value; pintarLiquidaciones(c); } };
+  if (!x || x.error) return;
+  k.querySelector('#lq-mot').onchange = e => { LIQ.motivo = e.target.value; pintarLiquidaciones(c); };
+  k.querySelector('#lq-vp').onchange = e => { LIQ.vacPend = leerNum(e.target.value) || 0; pintarLiquidaciones(c); };
+  k.querySelector('#lq-ant').onchange = e => { LIQ.anticipos = leerNum(e.target.value) || 0; pintarLiquidaciones(c); };
+  const ent = NOMD.entidades.find(e => e.id === t.entidad_id) || {};
+  const cab = titulo => `<div class="cab"><div><h2>${esc(ent.nombre || NEGOCIO_NOMBRE)}</h2>${ent.rif ? `<div>RIF: ${esc(ent.rif)}</div>` : ''}${ent.direccion ? `<div class="nota">${esc(ent.direccion)}</div>` : ''}</div><div class="grande">${titulo}</div></div>
+    <table style="margin-top:6px"><tr><td><b>Trabajador:</b> ${esc(nomNombre(t))}</td><td><b>C.I.:</b> V-${esc(t.cedula || '')}</td><td><b>Cargo:</b> ${esc(t.cargo || '')}</td></tr>
+    <tr><td><b>Ingreso:</b> ${fechaLarga(t.fecha_ingreso)}</td><td><b>Corte:</b> ${fechaLarga(LIQ.corte)}</td><td><b>Antigüedad:</b> ${textoAnt(x.ant)}</td></tr>
+    <tr><td><b>Sueldo mensual:</b> ${M(x.S0.mensual)}</td><td><b>Diario:</b> ${M(x.diario)}</td><td><b>Integral diario:</b> ${M(x.integral)}</td></tr></table>`;
+  const firmas = `<div class="firma"><div>______________________<br>Por la empresa</div><div>______________________<br>Recibí conforme: ${esc(nomNombre(t))}<br>C.I. V-${esc(t.cedula || '')}</div></div>`;
+  k.querySelector('#lq-imp').onclick = () => nomImprimir([`<div class="recibo">${cab('LIQUIDACIÓN DE PRESTACIONES SOCIALES')}<p><b>Motivo:</b> ${LIQ_MOTIVOS[LIQ.motivo]}</p>
+    <h3>Prestaciones sociales (art. 142 LOTTT)</h3><table><tr><td>A + B: ${x.diasA} + ${x.diasB} días × ${M(x.integral)}</td><td class="der">${M(x.garantia)}</td></tr>
+      <tr><td>C: ${x.diasC} días × ${M(x.integral)}</td><td class="der">${M(x.retro)}</td></tr><tr class="tot"><td>D: el mayor</td><td class="der">${M(x.prestaciones)}</td></tr></table>
+    <h3>Conceptos</h3><table><tr><th>Concepto</th><th class="der">Días</th><th class="der">Monto</th></tr>${x.conceptos.map(([n, d, m]) => `<tr><td>${esc(n)}</td><td class="der">${d === '' ? '' : fmtCant(d)}</td><td class="der">${M(m)}</td></tr>`).join('')}
+      <tr class="tot"><td>Total asignaciones</td><td></td><td class="der">${M(x.asignaciones)}</td></tr>${x.anticipos ? `<tr><td>Menos anticipos</td><td></td><td class="der">−${M(x.anticipos)}</td></tr>` : ''}
+      <tr class="tot"><td>NETO A PAGAR</td><td></td><td class="der">${M(x.neto)}</td></tr></table>${firmas}</div>`], 'Liquidación ' + nomNombre(t));
+  k.querySelector('#lq-vac').onclick = () => nomImprimir([`<div class="recibo">${cab('RECIBO DE VACACIONES')}
+    <table><tr><th>Concepto</th><th class="der">Días</th><th class="der">Monto</th></tr>
+      <tr><td>Vacaciones: días de disfrute (art. 190)</td><td class="der">${x.diasVac}</td><td class="der">${M(x.diasVac * x.diario)}</td></tr>
+      <tr><td>Bono vacacional (art. 192)</td><td class="der">${x.diasBono}</td><td class="der">${M(x.diasBono * x.diario)}</td></tr>
+      <tr class="tot"><td>Total</td><td></td><td class="der">${M(x.vacCompletas.monto)}</td></tr></table>
+    <p>Período de disfrute: del ____/____/______ al ____/____/______ · Reincorporación: ____/____/______</p>${firmas}</div>`], 'Vacaciones ' + nomNombre(t));
+  k.querySelector('#lq-cons').onclick = () => constanciaTrabajo(t, ent);
+}
+
+function constanciaTrabajo(t, ent) {
+  const r = abrirModal(`<form id="f-ct"><div class="modal-cab"><h3 class="titulo">Constancia de trabajo</h3><p>${esc(nomNombre(t))} · lleva el sueldo de ley</p></div><div class="modal-cuerpo">
+    <div class="dos-campos"><label class="campo"><span>Ciudad</span><input id="ct-ciudad" class="txt" value="${esc(localStorage.getItem('pos_ct_ciudad') || 'Maracay')}"></label>
+      <label class="campo"><span>Fecha</span><input id="ct-f" type="date" class="txt" value="${hoyVE()}"></label></div>
+    <label class="campo"><span>Dirigida a</span><input id="ct-a" class="txt" value="A quien pueda interesar"></label>
+    <div class="dos-campos"><label class="campo"><span>Firma (nombre)</span><input id="ct-firma" class="txt" value="${esc(localStorage.getItem('pos_ct_firma') || 'Katherine Pérez')}"></label>
+      <label class="campo"><span>Cargo de quien firma</span><input id="ct-cargo" class="txt" value="${esc(localStorage.getItem('pos_ct_cargo') || 'Gestión de Gente')}"></label></div>
+    ${t.fecha_ingreso ? '' : '<p class="mensaje-error">Falta la fecha de ingreso del trabajador.</p>'}</div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="ct-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Imprimir constancia</button></div></form>`, 560);
+  r.querySelector('#ct-x').onclick = cerrarModal;
+  r.querySelector('#f-ct').onsubmit = e => { e.preventDefault();
+    const g = s => r.querySelector(s).value.trim(), f = g('#ct-f') || hoyVE();
+    try { localStorage.setItem('pos_ct_ciudad', g('#ct-ciudad')); localStorage.setItem('pos_ct_firma', g('#ct-firma')); localStorage.setItem('pos_ct_cargo', g('#ct-cargo')); } catch { }
+    const fd = new Date(f + 'T12:00:00Z'), mesTxt = fd.toLocaleDateString('es-VE', { month: 'long', timeZone: 'UTC' }), dia = fd.getUTCDate();
+    const sueldo = Number(NOMD.config.sueldo_minimo_bs || 0), activo = t.activo && !t.fecha_egreso;
+    nomImprimir([`<div style="padding:30mm 22mm;font:14px/1.7 Georgia,serif">
+      <div style="text-align:center"><h2 style="font-size:18px">${esc(ent.nombre || NEGOCIO_NOMBRE)}</h2>${ent.rif ? `<div>RIF: ${esc(ent.rif)}</div>` : ''}${ent.direccion ? `<div style="font-size:12px">${esc(ent.direccion)}</div>` : ''}</div>
+      <p style="text-align:right;margin-top:20mm">${esc(g('#ct-ciudad'))}, ${fechaLarga(f)}</p>
+      <p><b>${esc(g('#ct-a'))}</b></p>
+      <h3 style="text-align:center;letter-spacing:2px;margin:12mm 0;border:none;font-size:16px">CONSTANCIA DE TRABAJO</h3>
+      <p style="text-align:justify">Por medio de la presente hacemos constar que el(la) ciudadano(a) <b>${esc(nomNombre(t).toUpperCase())}</b>, titular de la cédula de identidad
+        N° <b>V-${esc(t.cedula || '')}</b>, ${activo ? 'presta' : 'prestó'} sus servicios en esta empresa desde el <b>${t.fecha_ingreso ? fechaLarga(t.fecha_ingreso) : '___'}</b>${activo ? ' hasta la presente fecha' : t.fecha_egreso ? ` hasta el <b>${fechaLarga(t.fecha_egreso)}</b>` : ''},
+        desempeñando el cargo de <b>${esc((t.cargo || '').toUpperCase())}</b>, ${activo ? 'devengando' : 'con'} un salario mensual de <b>Bs. ${fmt.format(sueldo)}</b>.</p>
+      <p style="text-align:justify">Constancia que se expide a petición de la parte interesada en ${esc(g('#ct-ciudad'))}, a los ${dia} días del mes de ${mesTxt} de ${fd.getUTCFullYear()}.</p>
+      <div style="margin-top:35mm;text-align:center">______________________________<br><b>${esc(g('#ct-firma'))}</b><br>${esc(g('#ct-cargo'))}</div></div>`], 'Constancia ' + nomNombre(t));
+    cerrarModal(); };
+}
 
 /* =====================================================================
    EVALUACIÓN DIARIA Y BONOS (etapa 12): el líder evalúa cada día; el dueño y
