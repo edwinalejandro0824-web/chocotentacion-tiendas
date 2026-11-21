@@ -377,7 +377,7 @@
   .prov-vistas{margin-bottom:14px}
   .plan-dia.urgente{border-color:#F2B8B5;background:#FFF8F7}
   .plan-dia h4{margin:0 0 6px}
-  tr.apagado{opacity:.55}
+  tr.apagado{opacity:.55} a.btn{text-decoration:none}
   .tabla-simple tr.sep td{background:#F7EFE6;padding-top:8px} .texto-error{color:var(--error)}
   .ev-act{display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px dashed var(--linea);font-size:15px;cursor:pointer} .ev-act span{flex:1} .ev-act input{width:20px;height:20px}
   @media (max-width:700px){.rec-cab{display:none}.fila-rec{grid-template-columns:1fr 1fr;border-bottom:1px solid var(--linea);padding-bottom:6px}.fila-rec .mv-ins{grid-column:1/-1}}
@@ -538,8 +538,8 @@
           <button class="adm-tab" data-tab="opciones">Toppings y sabores</button>
           <button class="adm-tab" data-tab="inventario" data-rol="dueno encargada" data-mod="1">Inventario</button>
           <button class="adm-tab" data-tab="cierres" data-rol="dueno encargada">Cierres de caja</button>
-          <button class="adm-tab" data-tab="gastos" data-rol="dueno encargada" data-mod="1">Gastos</button>
-          <button class="adm-tab" data-tab="proveedores" data-rol="dueno encargada" data-mod="1">Proveedores</button>
+          <button class="adm-tab" data-tab="proveedores" data-rol="dueno encargada" data-mod="1">Gastos y pagos</button>
+          <button class="adm-tab" data-tab="solpe" data-rol="dueno encargada" data-mod="1">📝 Solicitudes de pago</button>
           <button class="adm-tab" data-tab="clientes" data-rol="dueno encargada" data-mod="1">Clientes</button>
           <button class="adm-tab" data-tab="reportes" data-rol="dueno encargada" data-mod="1">Reportes</button>
           <button class="adm-tab" data-tab="evaluacion" data-rol="dueno encargada" data-mod="1">⭐ Evaluación</button>
@@ -1994,7 +1994,7 @@ async function recargarVenta() {
 /* --- pantalla --- */
 function pintarAdmin() {
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('activa', b.dataset.tab === A.tab));
-  const vistas = { nomina: pintarAdmNomina, evaluacion: pintarAdmEvaluacion, panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
+  const vistas = { nomina: pintarAdmNomina, evaluacion: pintarAdmEvaluacion, solpe: pintarAdmSolpe, panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
     cierres: pintarAdmCierres, gastos: pintarAdmGastos, proveedores: pintarAdmProveedores, clientes: pintarAdmClientes,
     reportes: pintarAdmReportes, usuarios: pintarAdmUsuarios, clave: pintarAdmClave, dispositivos: pintarAdmDispositivos };
   const f = vistas[A.tab] || pintarAdmProductos;
@@ -2369,14 +2369,17 @@ async function abrirVistaNomina() {
   NOM.raiz = 'vista';
   mostrar('vista-nomina');
   $('nom-usuario').textContent = S.perfil?.nombre || '';
+  if (S.perfil?.rol === 'mercadeo') { document.querySelector('#vista-nomina .marca small').textContent = 'Solicitudes de pago'; return pintarNomina(); }
   try { await cargarNominaReal(); } catch (e) { $('nom-raiz').innerHTML = `<p class="mensaje-error">${esc(e.message)}</p>`; return; }
   pintarNomina();
 }
 function pintarNomina() {
   if (DEMO) nomDatosDemo();
   const cont = NOM.raiz === 'vista' ? $('nom-raiz') : $('adm-contenido');
-  if (!NOMD) return cont.innerHTML = '<p class="vacio">Cargando…</p>';
-  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${[['nominas', 'Nóminas'], ['trabajadores', `Trabajadores (${NOMD.trabajadores.filter(t => t.activo).length})`], ['bonos', '🎯 Bonos'], ['postulaciones', '📥 Postulaciones'], ['ajustes', 'Ajustes']]
+  const soloSolpe = S.perfil?.rol === 'mercadeo';
+  if (soloSolpe) NOM.vista = 'solpe';
+  if (!NOMD && !soloSolpe) return cont.innerHTML = '<p class="vacio">Cargando…</p>';
+  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${(soloSolpe ? [['solpe', '📝 Solicitudes de pago']] : [['nominas', 'Nóminas'], ['trabajadores', `Trabajadores (${NOMD.trabajadores.filter(t => t.activo).length})`], ['bonos', '🎯 Bonos'], ['postulaciones', '📥 Postulaciones'], ['solpe', '📝 Solicitudes de pago'], ['ajustes', 'Ajustes']])
     .map(([k, n]) => `<button class="sub-tab ${NOM.vista === k ? 'activa' : ''}" data-nv="${k}">${n}</button>`).join('')}</nav><div id="nom-cont"></div>`;
   cont.querySelectorAll('[data-nv]').forEach(b => b.onclick = () => { NOM.vista = b.dataset.nv; NOM.periodoId = null; NOMP = null; pintarNomina(); });
   const c = $('nom-cont');
@@ -2384,6 +2387,7 @@ function pintarNomina() {
   if (NOM.vista === 'ajustes') return pintarNomAjustes(c);
   if (NOM.vista === 'postulaciones') return pintarPostulaciones(c);
   if (NOM.vista === 'bonos') return pintarBonos(c);
+  if (NOM.vista === 'solpe') return pintarSolpe(c);
   if (NOM.periodoId && NOMP) return pintarNomPeriodo(c);
   pintarNomPeriodos(c);
 }
@@ -3128,7 +3132,7 @@ async function cargarVentasReal(desde, hasta, forzar = false) {
 async function cargarInventarioReal() {
   const d = await rpc('pos_inv_datos', { p_clave: A.clave, p_tienda: S.tienda.id, p_movs: 2000 });
   DX.insumos = d.insumos.map(i => ({ id: i.id, nombre: i.nombre, unidad: i.unidad, costo_usd: num(i.costo_usd), minimo: num(i.minimo),
-    activo: i.activo, clase_costo: i.clase_costo, etapa: i.etapa, stock: { [S.tienda.id]: num(i.cantidad) } }));
+    activo: i.activo, clase_costo: i.clase_costo, etapa: i.etapa, proveedor_id: i.proveedor_id ?? null, stock: { [S.tienda.id]: num(i.cantidad) } }));
   DX.produccion = {}; Object.entries(d.produccion || {}).forEach(([k, ls]) => { DX.produccion[k] = ls.map(l => ({ insumo_id: l.insumo_id, cantidad: num(l.cantidad) })); });
   DX.recetas = {};
   Object.entries(d.recetas || {}).forEach(([k, filas]) => { DX.recetas[k] = filas.map(r => ({ insumo_id: r.insumo_id, cantidad: num(r.cantidad) })); });
@@ -3155,7 +3159,9 @@ const CARGA = {
   inventario: async () => { await cargarInventarioReal(); await Promise.all([cargarPedidosReal(), cargarProveedoresReal()]); },
   gastos: () => { const m = (GAS.mes || mesVE()) + '-01', fin = sumarDias(sumarDias(m, 32).slice(0, 7) + '-01', -1);
     return cargarVentasReal(sumarDias(m, -1).slice(0, 8) + '01', fin < hoyVE() ? fin : hoyVE()); },
-  proveedores: async () => { await cargarProveedoresReal(); if (PROV.vista === 'gastos') await cargarCxpReal(); if (PROV.vista === 'plan') await cargarPlanReal(); },
+  proveedores: async () => { const m = (GAS.mes || mesVE()) + '-01', fin = sumarDias(sumarDias(m, 32).slice(0, 7) + '-01', -1);
+    await Promise.all([cargarProveedoresReal(), cargarCxpReal(), cargarPresupuestoReal(), cargarVentasReal(m, fin < hoyVE() ? fin : hoyVE())]);
+    if (PROV.vista === 'plan') await cargarPlanReal(); },
   clientes: () => cargarClientesReal(),
   reportes: async () => { if (REP.tipo === 'general' && REP.rango !== 'otro') [REP.desde, REP.hasta] = rangoReporte(REP.rango);
     REP.desde = REP.desde || hoyVE().slice(0, 8) + '01'; REP.hasta = REP.hasta || hoyVE();
@@ -3415,7 +3421,7 @@ function sembrarHistoriaReal() {
 function usuarioDemo() { return DX.usuarios.find(u => u.id === DX.usuarioActual && u.activo) || DX.usuarios.find(u => u.rol === 'dueno'); }
 function perfilDemo() { const u = usuarioDemo(); return { nombre: u.nombre + ' ' + u.apellido, rol: u.rol }; }
 function tiendasDemo() { const u = usuarioDemo(); return DEMO_DATA.tiendas.filter(t => u.rol === 'dueno' || u.tiendas.includes(t.id)); }
-const ROLES = { dueno: 'Dueño', encargada: 'Encargada', cajera: 'Cajero', nomina: 'Administrativa (nómina)' };
+const ROLES = { dueno: 'Dueño', encargada: 'Encargada', cajera: 'Cajero', nomina: 'Administrativa (nómina)', mercadeo: 'Mercadeo (solo solicitudes de pago)' };
 function pintarPildoraDemo() {
   if (!DEMO) return;
   let p = $('pildora-demo');
@@ -3734,6 +3740,7 @@ function pintarAdmInventario() {
         <label class="campo"><span>Costo por unidad en dólares *</span><input id="ie-costo" class="txt num" value="${i ? i.costo_usd : ''}" placeholder="Ej. 0,004 por ml"></label>
         <label class="campo"><span>Inventario de</span><select id="ie-etapa" class="sel">${Object.entries(ETAPAS).map(([k, n]) => `<option value="${k}" ${etapaDe(i) === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         <label class="campo"><span>Tipo de costo (para el balance)</span><select id="ie-clase" class="sel"><option value="directo">Material directo (lo que se come o se bebe)</option><option value="desechable" ${claseCosto(i) === 'desechable' ? 'selected' : ''}>Desechable (vasos, envases, servilletas…)</option></select></label>
+        <label class="campo"><span>Proveedor habitual (para armar los pedidos)</span><select id="ie-prov" class="sel"><option value="">— Ninguno —</option>${(DX.proveedores || []).map(p => `<option value="${p.id}" ${i?.proveedor_id === p.id ? 'selected' : ''}>${esc(p.nombre)}${p.condicion === 'contado' ? ' (contado)' : ''}</option>`).join('')}</select></label>
         ${i ? `<label class="interruptor"><input type="checkbox" id="ie-activo" checked><span>En uso</span></label>` : ''}</div>
         <div class="modal-pie"><button type="button" class="btn btn-sec" id="ie-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 480);
       r.querySelector('#ie-x').onclick = cerrarModal;
@@ -3742,9 +3749,9 @@ function pintarAdmInventario() {
         const err = m => { r.querySelector('#ie-error').textContent = m; r.querySelector('#ie-error').classList.remove('oculto'); };
         if (nombre.length < 2) return err('Escribe el nombre'); if (!(min >= 0)) return err('Revisa el mínimo'); if (!(costo >= 0)) return err('Revisa el costo');
         if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
-          await rpc('pos_inv_guardar_insumo', { p_clave: A.clave, p_tienda: t, p: { id: i?.id || null, nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, activo: i ? r.querySelector('#ie-activo').checked : true } });
+          await rpc('pos_inv_guardar_insumo', { p_clave: A.clave, p_tienda: t, p: { id: i?.id || null, nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, activo: i ? r.querySelector('#ie-activo').checked : true } });
           cerrarModal(); toast('Insumo guardado'); refrescarAdmin(); }, err);
-        if (i) Object.assign(i, { nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, activo: r.querySelector('#ie-activo').checked });
+        if (i) Object.assign(i, { nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, activo: r.querySelector('#ie-activo').checked });
         else DX.insumos.push({ id: nid(), nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, stock: {} });
         guardarDemo(); cerrarModal(); toast('Insumo guardado'); pintarAdmInventario(); pintarChipStock(); };
     };
@@ -3796,6 +3803,10 @@ function pintarAdmInventario() {
       $('rc-rif-ver').value = p?.rif || (o === 'central' ? 'No aplica' : '');
       $('rc-nuevo').classList.toggle('oculto', o !== 'nuevo');
       $('rc-fac').classList.toggle('oculto', o === 'central');
+      if (p?.condicion) { $('rc-pago').value = p.condicion;
+        if (p.condicion === 'credito' && p.dias_credito) { if (![...$('rc-dias').options].some(x => Number(x.value) === p.dias_credito)) $('rc-dias').add(new Option(p.dias_credito + ' días', p.dias_credito));
+          $('rc-dias').value = String(p.dias_credito); }
+        setTimeout(() => $('rc-pago').onchange && $('rc-pago').onchange()); }
     };
     const pintarPago = () => {
       const contado = $('rc-pago').value === 'contado';
@@ -4189,7 +4200,128 @@ async function cargarPedidosReal() {
   DX.pedidos = (await rpc('pos_pedidos_lista', { p_clave: A.clave, p_tienda: S.tienda.id }))
     .map(p => ({ ...p, items: p.items.map(i => ({ ...i, cantidad: num(i.cantidad) })) }));
 }
+// ---- Pedidos de mercancía (etapa 15): la tienda anota en una LISTA lo que necesita; el dueño ve el consolidado por proveedor ----
+const PDV = { vista: null, cant: {}, q: '', bajo: false, dias: null, nota: '' };
+const provDe = id => (DX.proveedores || []).find(p => p.id === id);
+const telWa = t => { const d = soloDigitos(t || ''); return !d ? '' : d.startsWith('58') ? d : '58' + d.replace(/^0/, ''); };
+function pedidosDemoProv() {   // demo: cada insumo con un proveedor de ejemplo
+  if (!DEMO || DX._provAsignado) return;
+  const ps = DX.proveedores; if (!ps.length) return;
+  if (!ps.some(p => p.condicion === 'contado')) ps[ps.length - 1].condicion = 'contado';
+  DX.insumos.forEach((i, k) => { if (i.proveedor_id === undefined) i.proveedor_id = ps[k % ps.length].id; });
+  (DX.pedidos || []).forEach(p => p.items.forEach(it => { it.proveedor_id = DX.insumos.find(i => i.id === it.insumo_id)?.proveedor_id ?? null; }));
+  DX._provAsignado = true; guardarDemo();
+}
 function pintarPedidos(ic, t, optsIns) {
+  pedidosDemoProv();
+  const dueno = S.perfil.rol === 'dueno';
+  if (!PDV.vista) PDV.vista = dueno ? 'consolidado' : 'hacer';
+  const abiertos = (DX.pedidos || []).filter(p => (dueno || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length;
+  ic.innerHTML = `<nav class="sub-tabs" style="margin-bottom:10px">${[['hacer', '📝 Hacer pedido'], ['lista', `Pedidos${abiertos ? ` (${abiertos})` : ''}`], ...(dueno ? [['consolidado', '📦 Consolidado de las tiendas']] : [])]
+    .map(([k, n]) => `<button class="sub-tab ${PDV.vista === k ? 'activa' : ''}" data-pdv="${k}">${n}</button>`).join('')}</nav><div id="pd-cont"></div>`;
+  ic.querySelectorAll('[data-pdv]').forEach(b => b.onclick = () => { PDV.vista = b.dataset.pdv; pintarPedidos(ic, t, optsIns); });
+  const c = ic.querySelector('#pd-cont');
+  if (PDV.vista === 'hacer') return pintarHacerPedido(c, t, ic, optsIns);
+  if (PDV.vista === 'consolidado' && dueno) return pintarConsolidado(c, ic, t, optsIns);
+  pintarPedidosLista(c, t);
+}
+
+function pintarHacerPedido(c, t, ic, optsIns) {
+  const hoy = hoyVE();
+  const ins = DX.insumos.filter(i => i.activo !== false && etapaDe(i) === 'materia_prima').sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const q = PDV.q.toLowerCase();
+  const vis = ins.filter(i => (!q || i.nombre.toLowerCase().includes(q) || (provDe(i.proveedor_id)?.nombre || '').toLowerCase().includes(q)) && (!PDV.bajo || stockDe(i, t) <= i.minimo));
+  const n = () => Object.values(PDV.cant).filter(v => v > 0).length;
+  c.innerHTML = `<div class="adm-barra"><p>Anota <b>cuánto necesitas</b> de cada cosa para ${esc(S.tienda.nombre)}. Lo que dejes en blanco no se pide. El dueño junta los pedidos de todas las tiendas y compra por proveedor.</p></div>
+    <div class="adm-barra"><input id="pd-q" class="txt" placeholder="Buscar insumo o proveedor…" value="${esc(PDV.q)}" style="max-width:320px">
+      <label class="interruptor" style="margin:0"><input type="checkbox" id="pd-bajo" ${PDV.bajo ? 'checked' : ''}><span>Solo lo que está por agotarse</span></label></div>
+    <table class="tabla-simple num"><thead><tr><th>Insumo</th><th>Proveedor</th><th class="der">Hay</th><th class="der">Mínimo</th><th class="der">Pedir</th></tr></thead><tbody>
+    ${vis.map(i => { const s = stockDe(i, t), bajo = s <= i.minimo, p = provDe(i.proveedor_id);
+      return `<tr><td>${esc(i.nombre)}</td><td>${p ? esc(p.nombre) : '<span class="ayuda">—</span>'}</td>
+        <td class="der ${s <= 0 ? 'rojo' : ''}">${fmtCant(Math.max(s, 0))} ${esc(i.unidad)}</td><td class="der">${bajo && i.minimo ? `<span class="badge abierta">${fmtCant(i.minimo)}</span>` : fmtCant(i.minimo)}</td>
+        <td class="der"><input class="txt num pd-c" data-i="${i.id}" inputmode="decimal" value="${PDV.cant[i.id] ? fmtCant(PDV.cant[i.id]) : ''}" placeholder="${esc(i.unidad)}" style="max-width:110px"></td></tr>`; }).join('')
+      || '<tr><td colspan="5" class="vacio">No hay insumos con ese filtro.</td></tr>'}</tbody></table>
+    <section class="graf"><div class="campo"><span>¿En cuántos días tiene que llegar? *</span><div class="pd-dias">${[2, 4, 5, 7, 15].map(d => `<button type="button" class="sub-tab ${PDV.dias === d ? 'activa' : ''}" data-d="${d}">${d} días</button>`).join('')}
+        <input id="pd-otro" class="txt num" inputmode="numeric" placeholder="Otro" style="width:80px" value="${PDV.dias && ![2, 4, 5, 7, 15].includes(PDV.dias) ? PDV.dias : ''}"></div>
+        <p class="ayuda">${PDV.dias ? `Tiene que llegar a más tardar el ${fechaLarga(sumarDias(hoy, PDV.dias))}.` : ''}</p></div>
+      <label class="campo"><span>Nota (opcional)</span><input id="pd-nota" class="txt" value="${esc(PDV.nota)}" placeholder="Ej. que el sirope sea de la marca de siempre"></label>
+      <div id="pd-error" class="mensaje-error oculto"></div>
+      <button class="btn btn-primario" id="pd-enviar">Enviar pedido (<span id="pd-n">${n()}</span> productos)</button></section>`;
+  const redibujar = () => { const pos = c.querySelector('#pd-q').selectionStart; pintarHacerPedido(c, t, ic, optsIns); const qq = c.querySelector('#pd-q'); qq.focus(); qq.setSelectionRange(pos, pos); };
+  c.querySelector('#pd-q').oninput = e => { PDV.q = e.target.value; redibujar(); };
+  c.querySelector('#pd-bajo').onchange = e => { PDV.bajo = e.target.checked; pintarHacerPedido(c, t, ic, optsIns); };
+  c.querySelectorAll('.pd-c').forEach(x => x.oninput = () => { const v = leerNum(x.value); if (v > 0) PDV.cant[x.dataset.i] = v; else delete PDV.cant[x.dataset.i]; c.querySelector('#pd-n').textContent = n(); });
+  c.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { PDV.dias = Number(b.dataset.d); pintarHacerPedido(c, t, ic, optsIns); });
+  c.querySelector('#pd-otro').onchange = e => { const v = parseInt(soloDigitos(e.target.value), 10); PDV.dias = v > 0 ? v : null; pintarHacerPedido(c, t, ic, optsIns); };
+  c.querySelector('#pd-nota').oninput = e => PDV.nota = e.target.value;
+  c.querySelector('#pd-enviar').onclick = () => {
+    const err = m => { c.querySelector('#pd-error').textContent = m; c.querySelector('#pd-error').classList.remove('oculto'); };
+    const items = Object.entries(PDV.cant).filter(([, v]) => v > 0).map(([k, v]) => ({ insumo_id: Number(k), cantidad: v }));
+    if (!items.length) return err('Anota la cantidad de al menos un insumo');
+    if (!PDV.dias || PDV.dias > 60) return err('Elige en cuántos días tiene que llegar');
+    const nota = limpiar(PDV.nota), dias = PDV.dias;
+    const listo = msg => { PDV.cant = {}; PDV.nota = ''; PDV.dias = null; PDV.vista = 'lista'; toast(msg); };
+    if (!DEMO) return guardando(c.querySelector('#pd-enviar'), async () => {
+      const id = await rpc('pos_pedido_crear', { p_clave: A.clave, p_tienda: t, p: { dias, nota: nota || null, items } });
+      listo(`Pedido N° ${id} enviado`); refrescarAdmin(); }, err);
+    DX.pedidos = DX.pedidos || [];
+    const u = DX.usuarios.find(x => x.id === DX.usuarioActual);
+    DX.pedidos.unshift({ id: nid(), tienda_id: t, tienda: S.tienda.nombre, solicitante: u ? (u.nombre + ' ' + (u.apellido || '')).trim() : 'Encargada',
+      creado_en: new Date().toISOString(), para_fecha: sumarDias(hoyVE(), dias), nota, estado: 'pendiente', respuesta: null, factura_id: null,
+      items: items.map(x => { const i = DX.insumos.find(z => z.id === x.insumo_id); return { ...x, nombre: i.nombre, unidad: i.unidad, proveedor_id: i.proveedor_id ?? null }; }) });
+    guardarDemo(); listo('Pedido enviado'); pintarAdmInventario();
+  };
+}
+
+function pintarConsolidado(c, ic, t, optsIns) {
+  const incluye = PDV.conCamino ? ['pendiente', 'aprobado', 'en_camino'] : ['pendiente', 'aprobado'];
+  const peds = (DX.pedidos || []).filter(p => incluye.includes(p.estado));
+  const tiendas = [...new Map(peds.map(p => [p.tienda_id, p.tienda || tiendaNombre(p.tienda_id)])).entries()];
+  const grupos = new Map();   // proveedor_id → Map(insumo_id → {nombre, unidad, total, por:{tienda:cant}})
+  peds.forEach(p => p.items.forEach(it => { const pid = it.proveedor_id ?? DX.insumos.find(i => i.id === it.insumo_id)?.proveedor_id ?? 0;
+    if (!grupos.has(pid)) grupos.set(pid, new Map()); const g = grupos.get(pid);
+    const x = g.get(it.insumo_id) || { nombre: it.nombre, unidad: it.unidad, total: 0, por: {} };
+    x.total += Number(it.cantidad); x.por[p.tienda_id] = (x.por[p.tienda_id] || 0) + Number(it.cantidad); g.set(it.insumo_id, x); }));
+  const sep = x => tiendas.filter(([id]) => x.por[id]).map(([id, n]) => `${n} ${fmtCant(x.por[id])}`).join(' · ');
+  const tabla = g => `<table class="tabla-simple num"><thead><tr><th>Insumo</th><th class="der">Total</th>${tiendas.map(([, n]) => `<th class="der">${esc(n)}</th>`).join('')}</tr></thead><tbody>
+    ${[...g.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(x => `<tr><td>${esc(x.nombre)}</td><td class="der"><b>${fmtCant(x.total)} ${esc(x.unidad)}</b></td>
+      ${tiendas.map(([id]) => `<td class="der">${x.por[id] ? fmtCant(x.por[id]) : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  const ids = [...grupos.keys()], credito = ids.filter(id => id && provDe(id)?.condicion !== 'contado'), contado = ids.filter(id => id && provDe(id)?.condicion === 'contado');
+  const msgProv = id => { const p = provDe(id), g = grupos.get(id);
+    return `Buenos días${p?.nombre ? ', ' + p.nombre : ''}. Le escribimos de ${NEGOCIO_NOMBRE} para hacerle un pedido:\n` +
+      [...g.values()].map(x => `• ${x.nombre}: ${fmtCant(x.total)} ${x.unidad}`).join('\n') + `\n\nPor favor confírmenos disponibilidad, precio y cuándo lo pueden entregar. ¡Gracias!`; };
+  const textoMoto = () => `*Compra de contado · ${NEGOCIO_NOMBRE}* (${fechaLarga(hoyVE())})\n` + contado.map(id => { const p = provDe(id);
+    return `\n*${p.nombre}*${p.telefono ? ' · ' + p.telefono : ''}\n` + [...grupos.get(id).values()].map(x => `• ${x.nombre}: ${fmtCant(x.total)} ${x.unidad}  →  ${sep(x)}`).join('\n'); }).join('\n')
+    + `\n\nAl llegar, separar por tienda como dice cada renglón.`;
+  c.innerHTML = `<div class="adm-barra"><p>Todo lo que piden las tiendas, junto y separado por proveedor. <b>Crédito:</b> se le escribe al proveedor. <b>Contado:</b> la lista va al autorizado que compra y paga en el momento; luego se separa por tienda.</p>
+      <span class="espacio"></span><label class="interruptor" style="margin:0"><input type="checkbox" id="cs-camino" ${PDV.conCamino ? 'checked' : ''}><span>Incluir los que ya van en camino</span></label></div>
+    <p class="ayuda">${peds.length} pedidos de ${tiendas.length} tiendas: ${tiendas.map(([id, n]) => `${esc(n)} (${peds.filter(p => p.tienda_id === id).map(p => 'N° ' + p.id).join(', ')})`).join(' · ') || '—'}</p>
+    ${peds.length ? '' : '<p class="vacio">No hay pedidos por comprar.</p>'}
+    ${credito.length ? `<h4>💳 A crédito: se le pide al proveedor</h4>${credito.map(id => { const p = provDe(id);
+      return `<section class="graf"><div class="adm-barra"><h4 style="margin:0">${esc(p.nombre)}</h4>${condProv(p)}<span class="ayuda">${esc(p.telefono || 'sin teléfono')}</span><span class="espacio"></span>
+        <button class="btn btn-sec" data-cp="${id}">Copiar mensaje</button>${telWa(p.telefono) ? `<a class="btn btn-primario" target="_blank" href="https://wa.me/${telWa(p.telefono)}?text=${encodeURIComponent(msgProv(id))}">WhatsApp al proveedor</a>` : ''}</div>${tabla(grupos.get(id))}</section>`; }).join('')}` : ''}
+    ${contado.length ? `<h4>💵 De contado: lista para el autorizado</h4><section class="graf"><div class="adm-barra"><span class="espacio"></span><button class="btn btn-sec" id="cs-moto-imp">Imprimir</button><button class="btn btn-primario" id="cs-moto">Copiar lista para WhatsApp</button></div>
+      ${contado.map(id => `<h4 style="margin:10px 0 4px">${esc(provDe(id).nombre)} <span class="ayuda">${esc(provDe(id).telefono || '')}</span></h4>${tabla(grupos.get(id))}`).join('')}</section>` : ''}
+    ${grupos.has(0) ? `<h4>⚠️ Sin proveedor asignado</h4><section class="graf"><p class="ayuda">Asígnales su proveedor en Existencias → Editar insumo (o se asigna solo la primera vez que se reciben con factura).</p>${tabla(grupos.get(0))}</section>` : ''}
+    ${peds.some(p => p.estado !== 'en_camino') ? `<div class="adm-barra"><span class="espacio"></span><button class="btn btn-primario" id="cs-camino-todo">Aprobar todos y marcar en camino</button></div>` : ''}`;
+  c.querySelector('#cs-camino').onchange = e => { PDV.conCamino = e.target.checked; pintarConsolidado(c, ic, t, optsIns); };
+  c.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => copiarTexto(msgProv(Number(b.dataset.cp))));
+  if (c.querySelector('#cs-moto')) { c.querySelector('#cs-moto').onclick = () => copiarTexto(textoMoto());
+    c.querySelector('#cs-moto-imp').onclick = () => { const w = window.open('', '_blank'); if (!w) return toast('Permite las ventanas emergentes para imprimir', true);
+      w.document.write(`<html><head><title>Compra de contado</title><style>body{font-family:system-ui,sans-serif;padding:20px}table{border-collapse:collapse;width:100%;margin-bottom:14px}td,th{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f4ece4}</style></head><body>
+        <h2>Compra de contado · ${esc(NEGOCIO_NOMBRE)}</h2><p>${fechaLarga(hoyVE())}</p>${contado.map(id => `<h3>${esc(provDe(id).nombre)} ${esc(provDe(id).telefono || '')}</h3>${tabla(grupos.get(id))}`).join('')}
+        <p>Al llegar, separar por tienda.</p></body></html>`); w.document.close(); w.focus(); w.print(); }; }
+  const bt = c.querySelector('#cs-camino-todo');
+  if (bt) bt.onclick = () => { if (!confirm(`¿Aprobar y marcar en camino ${peds.filter(p => p.estado !== 'en_camino').length} pedidos?`)) return;
+    guardando(bt, async () => {
+      for (const p of peds.filter(x => x.estado !== 'en_camino')) {
+        if (DEMO) p.estado = 'en_camino';
+        else { if (p.estado === 'pendiente') await rpc('pos_pedido_estado', { p_clave: A.clave, p_id: p.id, p_estado: 'aprobado', p_respuesta: null });
+          await rpc('pos_pedido_estado', { p_clave: A.clave, p_id: p.id, p_estado: 'en_camino', p_respuesta: null }); } }
+      if (DEMO) { guardarDemo(); pintarAdmInventario(); } else refrescarAdmin(); toast('Pedidos en camino'); }); };
+}
+
+function pintarPedidosLista(ic, t) {
   const dueno = S.perfil.rol === 'dueno', hoy = hoyVE();
   const lista = (DX.pedidos || []).filter(p => dueno || p.tienda_id === t);
   const abiertos = lista.filter(p => ['pendiente', 'aprobado', 'en_camino'].includes(p.estado));
@@ -4197,7 +4329,7 @@ function pintarPedidos(ic, t, optsIns) {
     return `${fechaLarga(p.para_fecha)} <i class="ayuda">${!['pendiente', 'aprobado', 'en_camino'].includes(p.estado) ? '' : d < 0 ? `(atrasado ${-d} día${d === -1 ? '' : 's'})` : d === 0 ? '(hoy)' : d === 1 ? '(mañana)' : `(faltan ${d} días)`}</i>`; };
   ic.innerHTML = `<div class="adm-barra"><p>${dueno ? 'Aquí llegan los pedidos de todas tus tiendas. Apruébalos y márcalos <b>En camino</b>; cuando llegue la mercancía, la tienda toca <b>Recibir</b> y copia la factura.'
       : 'Pide aquí lo que necesita la tienda y para cuándo. El dueño lo aprueba; cuando llegue, toca <b>Recibir</b> y copia la factura.'}</p>
-      <span class="espacio"></span><button class="btn btn-primario" id="pd-nuevo">+ Solicitar pedido</button></div>
+</div>
     <div class="pedidos">${lista.map(p => { const [en, cl] = ESTADO_PEDIDO[p.estado] || [p.estado, ''];
       const abierto = ['pendiente', 'aprobado', 'en_camino'].includes(p.estado);
       return `<article class="pedido ${abierto ? '' : 'cerrado'}"><header><b>Pedido N° ${p.id}</b>${dueno ? ` · ${esc(p.tienda || '')}` : ''}<span class="espacio"></span><span class="badge ${cl}">${en}</span></header>
@@ -4221,42 +4353,6 @@ function pintarPedidos(ic, t, optsIns) {
   ic.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => { INV.pedido = lista.find(p => p.id === Number(b.dataset.rec)); INV.sub = 'recibir'; pintarAdmInventario(); });
   ic.querySelectorAll('[data-wa]').forEach(b => b.onclick = () => { const p = lista.find(x => x.id === Number(b.dataset.wa));
     copiarTexto(`*Pedido N° ${p.id} · ${p.tienda || S.tienda.nombre}*\nPara el ${fechaLarga(p.para_fecha)}\n` + p.items.map(i => `• ${i.nombre}: ${fmtCant(i.cantidad)} ${i.unidad}`).join('\n') + (p.nota ? `\nNota: ${p.nota}` : '')); });
-  $('pd-nuevo').onclick = () => {
-    const r = abrirModal(`<form id="f-pd"><div class="modal-cab"><h3 class="titulo">Solicitar pedido · ${esc(S.tienda.nombre)}</h3></div><div class="modal-cuerpo">
-      <div id="pd-error" class="mensaje-error oculto"></div>
-      <div id="pd-filas"></div><button type="button" class="link" id="pd-mas">+ otro insumo</button>
-      <div class="campo"><span>¿En cuántos días tiene que llegar? *</span><div class="pd-dias">${[2, 4, 5, 7, 15].map(d => `<button type="button" class="sub-tab" data-d="${d}">${d} días</button>`).join('')}
-        <input id="pd-otro" class="txt num" inputmode="numeric" placeholder="Otro" style="width:80px"></div><p class="ayuda" id="pd-fecha"></p></div>
-      <label class="campo"><span>Nota (opcional)</span><input id="pd-nota" class="txt" placeholder="Ej. que el sirope sea de la marca de siempre"></label></div>
-      <div class="modal-pie"><button type="button" class="btn btn-sec" id="pd-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Enviar pedido</button></div></form>`, 620);
-    let dias = null;
-    const pintarDias = () => { r.querySelectorAll('[data-d]').forEach(b => b.classList.toggle('activa', Number(b.dataset.d) === dias));
-      r.querySelector('#pd-fecha').textContent = dias ? `Tiene que llegar a más tardar el ${fechaLarga(sumarDias(hoy, dias))}.` : ''; };
-    r.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { dias = Number(b.dataset.d); r.querySelector('#pd-otro').value = ''; pintarDias(); });
-    r.querySelector('#pd-otro').oninput = e => { const n = parseInt(soloDigitos(e.target.value), 10); dias = n > 0 ? n : null; pintarDias(); };
-    const fila = () => { const d = document.createElement('div'); d.className = 'dos-campos fila-pd';
-      d.innerHTML = `<select class="sel pd-ins">${optsIns}</select><div style="display:flex;gap:6px"><input class="txt num pd-cant" inputmode="decimal" placeholder="Cantidad"><button type="button" class="quitar" title="Quitar">✕</button></div>`;
-      r.querySelector('#pd-filas').appendChild(d);
-      const ph = () => { const i = DX.insumos.find(x => x.id === Number(d.querySelector('.pd-ins').value)); d.querySelector('.pd-cant').placeholder = i ? `Cantidad en ${i.unidad} (hay ${fmtCant(Math.max(stockDe(i, t), 0))})` : 'Cantidad'; };
-      d.querySelector('.pd-ins').onchange = ph; ph();
-      d.querySelector('.quitar').onclick = () => { if (r.querySelectorAll('.fila-pd').length > 1) d.remove(); }; };
-    fila(); r.querySelector('#pd-mas').onclick = fila; r.querySelector('#pd-x').onclick = cerrarModal;
-    r.querySelector('#f-pd').onsubmit = e => { e.preventDefault();
-      const err = m => { r.querySelector('#pd-error').textContent = m; r.querySelector('#pd-error').classList.remove('oculto'); };
-      const items = [...r.querySelectorAll('.fila-pd')].map(d => ({ insumo_id: Number(d.querySelector('.pd-ins').value), cantidad: leerNum(d.querySelector('.pd-cant').value) }));
-      if (items.some(x => !(x.cantidad > 0))) return err('Escribe la cantidad de cada insumo');
-      if (!dias || dias > 60) return err('Elige en cuántos días tiene que llegar');
-      const nota = limpiar(r.querySelector('#pd-nota').value);
-      if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
-        const id = await rpc('pos_pedido_crear', { p_clave: A.clave, p_tienda: t, p: { dias, nota: nota || null, items } });
-        cerrarModal(); toast(`Pedido N° ${id} enviado`); refrescarAdmin(); }, err);
-      DX.pedidos = DX.pedidos || [];
-      const u = DX.usuarios.find(x => x.id === DX.usuarioActual);
-      DX.pedidos.unshift({ id: nid(), tienda_id: t, tienda: S.tienda.nombre, solicitante: u ? (u.nombre + ' ' + (u.apellido || '')).trim() : 'Encargada',
-        creado_en: new Date().toISOString(), para_fecha: sumarDias(hoy, dias), nota, estado: 'pendiente', respuesta: null, factura_id: null,
-        items: items.map(x => { const i = DX.insumos.find(z => z.id === x.insumo_id); return { ...x, nombre: i.nombre, unidad: i.unidad }; }) });
-      guardarDemo(); cerrarModal(); toast('Pedido enviado'); pintarAdmInventario(); };
-  };
 }
 
 /* ---------- GASTOS POR PAGAR y PLAN DE PAGOS (etapa 7) ---------- */
@@ -4319,9 +4415,9 @@ function pintarGastosPorPagar(cont) {
       <div class="kpi"><span>Vencido</span><b class="num ${venc.length ? 'rojo' : ''}">${usd(suma(venc))}</b><i>${venc.length} cuentas</i></div>
       <div class="kpi"><span>Vence en 7 días</span><b class="num">${usd(suma(pronto))}</b><i>${pronto.length} cuentas</i></div>
       <div class="kpi"><span>Pagado este mes</span><b class="num">${usd(pagMes)}</b><i>según el balance</i></div></div>
-    <div class="adm-barra"><h4 style="margin:0">Gastos por pagar de ${esc(S.tienda.nombre)}</h4>
+    <div class="adm-barra"><h4 style="margin:0">Otros por pagar de ${esc(S.tienda.nombre)} <span class="ayuda">(solicitudes aprobadas, bonos y gastos de una sola vez)</span></h4>
       <nav class="sub-tabs">${[['abiertas', 'Por pagar'], ['pagadas', 'Pagadas'], ['todas', 'Todas']].map(([k, n]) => `<button class="sub-tab ${PROV.filtroG === k ? 'activa' : ''}" data-gf="${k}">${n}</button>`).join('')}</nav>
-      <span class="espacio"></span><button class="btn btn-sec" id="cx-fijos">Gastos fijos del mes (${(DX.cxpFijos || []).filter(f => f.tienda_id === t && f.activo !== false).length})</button>
+      <span class="espacio"></span>${(DX.cxpFijos || []).some(f => f.tienda_id === t) ? `<button class="btn btn-sec" id="cx-fijos">Gastos fijos (${(DX.cxpFijos || []).filter(f => f.tienda_id === t && f.activo !== false).length})</button>` : ''}
       <button class="btn btn-primario" id="cx-nueva">+ Cuenta por pagar</button></div>
     <p class="ayuda">Cuando la contadora carga el pago en el balance con <b>esta tienda y el mismo tipo de gasto</b>, la cuenta se marca pagada sola (se revisa cada 30 minutos). Los gastos fijos se crean solos cada mes.${!DEMO && DX.cxpSinc ? ` Última revisión del balance: ${new Date(DX.cxpSinc).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'short', timeStyle: 'short' })}.` : ''}</p>
     ${ORDEN_SECC.filter(s => porSecc[s]).map(s => `<section class="graf"><h4>${SECCIONES_BAL[s]} <span class="ayuda">· ${usd(suma(porSecc[s]))} por pagar</span></h4>
@@ -4329,10 +4425,10 @@ function pintarGastosPorPagar(cont) {
       ${porSecc[s].map(c => `<tr><td>${fechaCorta(c.vence)}</td><td>${esc(c.concepto)}${c.fijo_id ? ' <span class="ayuda">(fijo)</span>' : ''}</td><td>${esc(tipoBal(c.tipo_gasto_id)?.nombre || '')}</td>
         <td>${esc(c.beneficiario || '')}</td><td class="der">${usd(c.monto_usd)}</td><td class="der">${c.pagado_usd ? usd(c.pagado_usd) : '—'}</td><td>${estadoCxp(c, hoy)}</td>
         <td class="acciones"><button class="link" data-cx="${c.id}">Ver</button></td></tr>`).join('')}</tbody></table></section>`).join('')
-      || `<p class="vacio">${PROV.filtroG === 'pagadas' ? 'Todavía no hay cuentas pagadas.' : 'No hay cuentas por pagar. Agrega los gastos fijos del mes (alquiler, condominio, nómina…) y se crean solos cada mes.'}</p>`}`;
+      || `<p class="vacio">${PROV.filtroG === 'pagadas' ? 'Todavía no hay cuentas pagadas.' : 'No hay nada pendiente aquí. Los gastos fijos se planifican con el presupuesto del balance; aquí llegan las solicitudes de pago aprobadas y los bonos.'}</p>`}`;
   cont.querySelectorAll('[data-gf]').forEach(b => b.onclick = () => { PROV.filtroG = b.dataset.gf; pintarAdmProveedores(); });
   $('cx-nueva').onclick = () => editarCxp(null);
-  $('cx-fijos').onclick = () => verFijos();
+  if ($('cx-fijos')) $('cx-fijos').onclick = () => verFijos();
   cont.querySelectorAll('[data-cx]').forEach(b => b.onclick = () => verCxp(todas.find(c => c.id === Number(b.dataset.cx))));
 }
 function editarCxp(c) {
@@ -4440,7 +4536,13 @@ function planDemo(hasta) {
     const tb = tipoBal(c.tipo_gasto_id);
     return { tipo: 'gasto', id: c.id, tienda_id: c.tienda_id, tienda: tienda(c.tienda_id), vence: c.vence, concepto: c.concepto, beneficiario: c.beneficiario || '',
       clase: tb?.nombre || '', seccion: tb?.seccion || 'sin_clasificar', monto: c.monto_usd, saldo: saldoCxp(c) }; });
-  return [...f, ...g].sort((a, b) => a.vence.localeCompare(b.vence) || a.tienda.localeCompare(b.tienda));
+  const pr = [];
+  for (const td of DEMO_DATA.tiendas.filter(x => verTodas || x.id === S.tienda.id))
+    for (let m = mesVE(); m <= hasta.slice(0, 7); m = sumarDias(finDeMes(m), 1).slice(0, 7))
+      presupuestoDemo(m, td.id).filas.filter(x => x.seccion !== 'costo_ventas' && presFalta(x) > 0.009 && (x.fecha_tope || finDeMes(m)) <= hasta).forEach(x =>
+        pr.push({ tipo: 'presupuesto', id: null, tienda_id: td.id, tienda: td.nombre, vence: x.fecha_tope || finDeMes(m), concepto: `${x.linea[0] + x.linea.slice(1).toLowerCase()} (${m.slice(5)}/${m.slice(0, 4)})`,
+          beneficiario: x.nota || '', clase: 'Presupuesto del balance', seccion: x.seccion, monto: x.presupuesto, saldo: presFalta(x) }));
+  return [...f, ...g, ...pr].sort((a, b) => a.vence.localeCompare(b.vence) || a.tienda.localeCompare(b.tienda));
 }
 const prioridadPago = (x, hoy) => x.vence < hoy ? ['Urgente: vencido', 'mal', 0] : x.vence <= sumarDias(hoy, 3) ? ['Alta', 'abierta', 1] : ['Normal', '', 2];
 function datosPlan() {
@@ -4502,16 +4604,201 @@ function pintarPlanPagos(cont) {
   $('pl-imp').onclick = () => { const w = window.open('', '_blank'); if (!w) return toast('Permite las ventanas emergentes para imprimir', true); w.document.write(htmlPlanImprimir(d)); w.document.close(); };
 }
 
-const PROV = { filtro: 'porpagar', vista: 'facturas', filtroG: 'abiertas', rango: 'semana', hasta: null, planTienda: null };
+const PROV = { filtro: 'porpagar', vista: 'presupuesto', filtroG: 'abiertas', rango: 'semana', hasta: null, planTienda: null };
+/* ---------- GASTOS Y PAGOS (etapa 13): una sola pestaña con el resumen del mes, el presupuesto que viene del
+   balance, el plan de pagos, las facturas de proveedores y lo demás por pagar (solicitudes aprobadas, bonos) ---------- */
+let PRES = null;
+async function cargarPresupuestoReal() {
+  const d = await rpc('pos_presupuesto_datos', { p_clave: A.clave, p_tienda: S.tienda.id, p_mes: (GAS.mes || mesVE()) + '-01' });
+  PRES = { ...d, tienda_id: S.tienda.id, filas: d.filas.map(f => ({ ...f, presupuesto: num(f.presupuesto), pagado: num(f.pagado), pagos: (f.pagos || []).map(p => ({ ...p, usd: num(p.usd) })) })) };
+}
+function presupuestoDemo(mes, t = S.tienda.id) {
+  DX.presDemo = DX.presDemo || {};
+  const k = t + '|' + mes;
+  if (!DX.presDemo[k]) {
+    const pasado = mes < mesVE(), hoyDia = Number(hoyVE().slice(8));
+    const L = (linea, seccion, m, dia, frac) => { const pag = pasado || dia < hoyDia ? r2(m * frac) : 0;
+      return { linea, seccion, presupuesto: m, fecha_tope: mes + '-' + String(dia).padStart(2, '0'), nota: null, pagado: pag,
+        pagos: pag ? [{ fecha: mes + '-' + String(Math.max(1, dia - 1)).padStart(2, '0'), usd: pag, proveedor: 'Pago de ejemplo', tipo: linea }] : [] }; };
+    DX.presDemo[k] = [L('ARRENDAMIENTO', 'gasto_fijo_variable', 800, 5, 1), L('NOMINAS', 'gasto_fijo_variable', 1400, 15, 0.5), L('CONDOMINIO', 'gasto_fijo_variable', 250, 10, 1),
+      L('SERVICIOS', 'gasto_fijo_variable', 120, 20, 1), L('PUBLICIDAD', 'gasto_fijo_variable', 150, 25, 0), L('IMPUESTOS', 'impuesto', 90, 28, 0)];
+    guardarDemo();
+  }
+  return { mes: mes + '-01', tienda_id: t, filas: DX.presDemo[k] };
+}
+const presActual = () => DEMO ? presupuestoDemo(GAS.mes || mesVE()) : (PRES && PRES.tienda_id === S.tienda.id ? PRES : { filas: [] });
+const presFalta = f => r2(Math.max(f.presupuesto - f.pagado, 0));
+function estadoPres(f, hoy = hoyVE()) {
+  if (!f.presupuesto && f.pagado) return '<span class="badge abierta">Pagado sin presupuesto</span>';
+  if (f.pagado >= f.presupuesto * 0.98) return f.pagado > f.presupuesto * 1.02 ? `<span class="badge mal">Se pasó ${usd(f.pagado - f.presupuesto)}</span>` : '<span class="badge ok">Pagado</span>';
+  const tope = f.fecha_tope || finDeMes((GAS.mes || mesVE()));
+  if (tope < hoy) return `<span class="badge mal">Vencido · falta ${usd(presFalta(f))}</span>`;
+  const d = diasEntre(hoy, tope) - 1;
+  return d <= 7 ? `<span class="badge abierta">${d === 0 ? 'Vence hoy' : d === 1 ? 'Vence mañana' : `Vence en ${d} días`}</span>` : `<span class="badge">${f.pagado ? 'Abonado' : 'Por pagar'}</span>`;
+}
+const condProv = p => p?.condicion === 'contado' ? '<span class="badge">Contado</span>' : p?.dias_credito ? `<span class="badge abierta">Crédito ${p.dias_credito} días</span>` : '<span class="badge abierta">Crédito</span>';
+
+function resumenMesGastos() {
+  const t = S.tienda.id, mes = GAS.mes || mesVE(), desde = mes + '-01', finMes = finDeMes(mes), hasta = finMes < hoyVE() ? finMes : hoyVE();
+  const vs = ventasEn(desde, hasta, t), base = r2(vs.reduce((a, v) => a + v.base_usd, 0)), costo = r2(vs.reduce((a, v) => a + costoVenta(v), 0));
+  const sal = DX.salidas.filter(s => s.tienda_id === t && diaVE(s.fecha).slice(0, 7) === mes);
+  const salUsd = r2(sal.reduce((a, s) => a + (s.moneda === 'USD' ? s.monto : s.monto / (S.tasa?.tasa || 1)), 0));
+  const filas = presActual().filas.filter(f => f.seccion !== 'costo_ventas');
+  const pres = r2(filas.reduce((a, f) => a + f.presupuesto, 0)), pagado = r2(filas.reduce((a, f) => a + f.pagado, 0));
+  const otros = r2((DX.cxp || []).filter(c => c.tienda_id === t && (c.estado === 'pendiente' || c.estado === 'abonada') && c.vence.slice(0, 7) === mes).reduce((a, c) => a + saldoCxp(c), 0));
+  const viejos = filas.length ? 0 : r2(DX.gastos.filter(g => g.tienda_id === t && g.mes === mes).reduce((a, g) => a + g.monto_usd, 0));   // los gastos cargados a mano antes solo cuentan si no hay presupuesto
+  const gastosMes = r2(filas.reduce((a, f) => a + Math.max(f.presupuesto, f.pagado), 0) + otros + viejos);
+  const diasMes = Number(finMes.slice(8)), diasVan = hasta < desde ? 0 : Number(hasta.slice(8));
+  const gastosHasta = hasta < finMes ? r2(gastosMes * diasVan / diasMes) : gastosMes;
+  return { base, costo, vs, salUsd, sal, pres, pagado, otros, gastosMes, gastosHasta, completo: hasta >= finMes, util: r2(base - costo - gastosHasta - salUsd) };
+}
+
 function pintarAdmProveedores() {
-  const raiz = $('adm-contenido');
-  raiz.innerHTML = `<nav class="sub-tabs prov-vistas">${[['facturas', 'Facturas de proveedores'], ['gastos', 'Gastos por pagar'], ['plan', '📅 Plan de pagos']]
-    .map(([k, n]) => `<button class="sub-tab ${PROV.vista === k ? 'activa' : ''}" data-pv="${k}">${n}</button>`).join('')}</nav><div id="prov-cont"></div>`;
+  GAS.mes = GAS.mes || mesVE();
+  const raiz = $('adm-contenido'), R = resumenMesGastos(), hoy = hoyVE();
+  const abiertasCxp = (DX.cxp || []).filter(c => c.tienda_id === S.tienda.id && (c.estado === 'pendiente' || c.estado === 'abonada'));
+  const vencido = r2(DX.facturas.filter(f => f.tienda_id === S.tienda.id && f.vence < hoy).reduce((a, f) => a + Math.max(saldoFactura(f), 0), 0)
+    + abiertasCxp.filter(c => c.vence < hoy).reduce((a, c) => a + saldoCxp(c), 0)
+    + presActual().filas.filter(f => f.seccion !== 'costo_ventas' && (f.fecha_tope || finDeMes(GAS.mes)) < hoy).reduce((a, f) => a + presFalta(f), 0));
+  raiz.innerHTML = `<div class="adm-barra"><h3 style="margin:0">Gastos y pagos de ${esc(S.tienda.nombre)}</h3><span class="espacio"></span>
+      <label class="campo" style="margin:0"><span>Mes</span><input type="month" id="gp-mes" class="sel corto" value="${GAS.mes}" max="${sumarDias(finDeMes(mesVE()), 1).slice(0, 7)}"></label></div>
+    <div class="kpis"><div class="kpi"><span>Ventas sin IVA</span><b class="num">${usd(R.base)}</b><i>${R.vs.length} ventas</i></div>
+      <div class="kpi"><span>Costo de lo vendido</span><b class="num">${usd(R.costo)}</b><i>según las recetas</i></div>
+      <div class="kpi"><span>Gastos del mes</span><b class="num">${usd(R.gastosMes)}</b><i>presupuesto ${usd(R.pres)} · pagado ${usd(R.pagado)}${R.otros ? ` · otros ${usd(R.otros)}` : ''}</i></div>
+      <div class="kpi"><span>Salidas de caja</span><b class="num">${usd(R.salUsd)}</b><i>${R.sal.length} salidas</i></div>
+      <div class="kpi"><span>Utilidad ${R.completo ? 'del mes' : 'hasta hoy'}</span><b class="num ${R.util < 0 ? 'rojo' : 'verde'}">${usd(R.util)}</b><i>${R.completo ? 'mes completo' : `con la parte de los gastos que va del mes (${usd(R.gastosHasta)})`}</i></div>
+      <div class="kpi"><span>Vencido sin pagar</span><b class="num ${vencido > 0 ? 'rojo' : ''}">${usd(vencido)}</b><i>facturas, presupuesto y otros</i></div></div>
+    <nav class="sub-tabs prov-vistas">${[['presupuesto', '📋 Presupuesto del mes'], ['plan', '📅 Plan de pagos'], ['facturas', '🧾 Facturas de proveedores'], ['gastos', `Otros por pagar${abiertasCxp.length ? ` (${abiertasCxp.length})` : ''}`]]
+      .map(([k, n]) => `<button class="sub-tab ${PROV.vista === k ? 'activa' : ''}" data-pv="${k}">${n}</button>`).join('')}</nav><div id="prov-cont"></div>`;
+  $('gp-mes').onchange = e => { GAS.mes = e.target.value || mesVE(); DEMO ? pintarAdmProveedores() : refrescarAdmin(); };
   raiz.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => { PROV.vista = b.dataset.pv; DEMO ? pintarAdmProveedores() : refrescarAdmin(); });
   if (PROV.vista === 'gastos') return pintarGastosPorPagar($('prov-cont'));
   if (PROV.vista === 'plan') return pintarPlanPagos($('prov-cont'));
+  if (PROV.vista === 'presupuesto') return pintarPresupuesto($('prov-cont'));
   pintarFacturasProv();
 }
+
+function pintarPresupuesto(cont) {
+  const P = presActual(), hoy = hoyVE(), mes = GAS.mes || mesVE();
+  const filas = P.filas.slice().sort((a, b) => ORDEN_SECC.indexOf(a.seccion) - ORDEN_SECC.indexOf(b.seccion) || (a.fecha_tope || '9').localeCompare(b.fecha_tope || '9') || a.linea.localeCompare(b.linea));
+  const tot = k => r2(filas.filter(f => f.seccion !== 'costo_ventas').reduce((a, f) => a + (k === 'falta' ? presFalta(f) : f[k]), 0));
+  cont.innerHTML = `<p class="ayuda">El <b>presupuesto</b> y la <b>fecha tope</b> de cada línea se llenan en el <b>balance → Presupuestos</b>; lo <b>pagado</b> es lo que la contadora ya cargó en el balance para esta tienda.
+      Aquí solo se ve y se compara, y lo que falta pasa solo al Plan de pagos. Se actualiza cada 30 minutos.${!DEMO && P.sincronizado ? ` Última revisión: ${new Date(P.sincronizado).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'short', timeStyle: 'short' })}.` : ''}</p>
+    ${filas.length ? `<table class="tabla-simple num"><thead><tr><th>Línea de gasto</th><th>Sección</th><th class="der">Presupuesto</th><th>Fecha tope</th><th class="der">Pagado</th><th class="der">Falta</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${filas.map((f, i) => `<tr class="${f.seccion === 'costo_ventas' ? 'apagado' : ''}"><td>${esc(f.linea)}${f.nota ? `<br><span class="ayuda">${esc(f.nota)}</span>` : ''}</td><td>${SECCIONES_BAL[f.seccion] || ''}</td>
+        <td class="der">${f.presupuesto ? usd(f.presupuesto) : '—'}</td><td>${f.fecha_tope ? fechaCorta(f.fecha_tope) : '—'}</td><td class="der">${f.pagado ? usd(f.pagado) : '—'}</td>
+        <td class="der">${presFalta(f) ? `<b>${usd(presFalta(f))}</b>` : '—'}</td><td>${f.seccion === 'costo_ventas' ? '<span class="ayuda">va por facturas</span>' : estadoPres(f, hoy)}</td>
+        <td>${(f.pagos || []).length ? `<button class="link" data-pp="${i}">Pagos</button>` : ''}</td></tr>`).join('')}
+      <tr class="total"><td colspan="2">Total (sin mercancía)</td><td class="der">${usd(tot('presupuesto'))}</td><td></td><td class="der">${usd(tot('pagado'))}</td><td class="der">${usd(tot('falta'))}</td><td colspan="2"></td></tr></tbody></table>
+      <p class="ayuda">La mercancía (materia prima y desechables) no se planifica aquí: va por las facturas de proveedores.</p>`
+      : `<p class="vacio">Todavía no hay presupuesto de ${nombreMes(mes)} para ${esc(S.tienda.nombre)} en el balance. Llénalo en el balance → Presupuestos (monto y fecha tope de cada línea) y en máximo 30 minutos aparece aquí.</p>`}`;
+  cont.querySelectorAll('[data-pp]').forEach(b => b.onclick = () => { const f = filas[Number(b.dataset.pp)];
+    const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">${esc(f.linea)}</h3><p>${esc(S.tienda.nombre)} · ${nombreMes(mes)}</p></div><div class="modal-cuerpo">
+      <table class="tabla-simple num"><thead><tr><th>Fecha</th><th>Tipo</th><th>A quién</th><th class="der">Monto</th></tr></thead><tbody>
+      ${f.pagos.map(p => `<tr><td>${fechaCorta(p.fecha)}</td><td>${esc(p.tipo || '')}</td><td>${esc(p.proveedor || '')} ${esc(p.referencia || '')}</td><td class="der">${usd(p.usd)}</td></tr>`).join('')}</tbody></table>
+      <p class="num">Presupuesto ${usd(f.presupuesto)} · pagado <b>${usd(f.pagado)}</b> · falta ${usd(presFalta(f))}</p></div>
+      <div class="modal-pie"><span class="espacio"></span><button class="btn btn-primario" id="pp-x">Cerrar</button></div>`, 620);
+    r.querySelector('#pp-x').onclick = cerrarModal; });
+}
+
+function editarProveedor(p) {
+  const r = abrirModal(`<form id="f-pv"><div class="modal-cab"><h3 class="titulo">${p ? 'Editar proveedor' : 'Nuevo proveedor'}</h3></div><div class="modal-cuerpo"><div id="pv-error" class="mensaje-error oculto"></div>
+    <label class="campo"><span>Nombre *</span><input id="pv-nombre" class="txt" value="${esc(p?.nombre || '')}"></label>
+    <div class="dos-campos"><label class="campo"><span>RIF</span><input id="pv-rif" class="txt" placeholder="J-12345678-9" value="${esc(p?.rif || '')}"></label>
+      <label class="campo"><span>Teléfono (WhatsApp)</span><input id="pv-tel" class="txt" inputmode="tel" value="${esc(p?.telefono || '')}"></label></div>
+    <label class="campo"><span>Qué vende</span><input id="pv-vende" class="txt" value="${esc(p?.vende || '')}"></label>
+    <div class="dos-campos"><label class="campo"><span>¿Cómo se le paga? *</span><select id="pv-cond" class="sel"><option value="credito" ${p?.condicion !== 'contado' ? 'selected' : ''}>A crédito (se le pide y se paga después)</option><option value="contado" ${p?.condicion === 'contado' ? 'selected' : ''}>De contado (se compra y se paga en el momento)</option></select></label>
+      <label class="campo" id="pv-dias-c"><span>Días de crédito</span><input id="pv-dias" class="txt num" inputmode="numeric" value="${p?.dias_credito ?? ''}" placeholder="Ej. 15"></label></div>
+    <p class="ayuda">Al recibir mercancía de este proveedor, la forma de pago y los días salen solos.</p></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="pv-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 520);
+  const dias = () => r.querySelector('#pv-dias-c').classList.toggle('oculto', r.querySelector('#pv-cond').value === 'contado');
+  r.querySelector('#pv-cond').onchange = dias; dias();
+  r.querySelector('#pv-x').onclick = cerrarModal;
+  r.querySelector('#f-pv').onsubmit = e => { e.preventDefault();
+    const err = m => { r.querySelector('#pv-error').textContent = m; r.querySelector('#pv-error').classList.remove('oculto'); };
+    const cond = r.querySelector('#pv-cond').value, d = parseInt(soloDigitos(r.querySelector('#pv-dias').value), 10);
+    const q = { id: p?.id || null, nombre: limpiar(r.querySelector('#pv-nombre').value), rif: limpiar(r.querySelector('#pv-rif').value), telefono: soloDigitos(r.querySelector('#pv-tel').value),
+      vende: limpiar(r.querySelector('#pv-vende').value), condicion: cond, dias_credito: cond === 'credito' && d > 0 ? d : null };
+    if (q.nombre.length < 2) return err('Escribe el nombre');
+    if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => { await rpc('pos_admin_guardar_proveedor', { p_clave: A.clave, p: q }); cerrarModal(); toast('Proveedor guardado'); refrescarAdmin(); }, err);
+    if (p) Object.assign(p, q); else DX.proveedores.push({ ...q, id: nid(), activo: true });
+    guardarDemo(); cerrarModal(); toast('Proveedor guardado'); pintarAdmProveedores(); };
+}
+
+/* ---------- SOLICITUDES DE PAGO / SOLPE (etapa 14): encargada, Gestión de Gente y Mercadeo piden; el dueño aprueba
+   y pasa a cuenta por pagar (sale en el Plan de pagos) ---------- */
+const SOL = { filtro: 'pendiente', datos: null };
+const SOL_EST = { pendiente: ['Esperando aprobación', 'abierta'], aprobada: ['Aprobada', 'ok'], rechazada: ['Rechazada', 'mal'], cancelada: ['Cancelada', ''] };
+function solpeDemo() {
+  DX.solpe = DX.solpe || [{ id: nid(), tienda_id: DEMO_DATA.tiendas[0].id, solicitante_nombre: 'María González', area: 'Tienda', descripcion: 'Reparar la nevera exhibidora',
+    beneficiario: 'Técnico Refrigeración JR', monto_usd: 80, fecha_tope: sumarDias(hoyVE(), 4), tipo_gasto_id: null, estado: 'pendiente', creado_en: new Date().toISOString() }];
+  const rol = S.perfil.rol;
+  return { rol, tipos: balTipos(), tiendas: DEMO_DATA.tiendas.filter(t => rol !== 'encargada' || (S.tiendas || []).some(x => x.id === t.id) || t.id === S.tienda?.id),
+    solicitudes: DX.solpe.map(s => ({ ...s, tienda: DEMO_DATA.tiendas.find(t => t.id === s.tienda_id)?.nombre, tipo: tipoBal(s.tipo_gasto_id)?.nombre,
+      cxp_estado: (DX.cxp || []).find(c => c.id === s.cxp_id)?.estado })).sort((a, b) => (b.estado === 'pendiente') - (a.estado === 'pendiente') || a.fecha_tope.localeCompare(b.fecha_tope)) };
+}
+async function pintarSolpe(c) {
+  c.innerHTML = '<p class="vacio">Cargando…</p>';
+  try { SOL.datos = DEMO ? solpeDemo() : await rpc('pos_solpe_lista'); } catch (e) { return c.innerHTML = `<p class="mensaje-error">${esc(e.message)}</p>`; }
+  const D = SOL.datos, dueno = D.rol === 'dueno', hoy = hoyVE();
+  D.solicitudes.forEach(s => s.monto_usd = Number(s.monto_usd));
+  const lista = D.solicitudes.filter(s => SOL.filtro === 'todas' || s.estado === SOL.filtro);
+  const pend = D.solicitudes.filter(s => s.estado === 'pendiente');
+  const tiposOpt = sel => { const g = {}; D.tipos.forEach(t => (g[t.seccion] = g[t.seccion] || []).push(t));
+    return ORDEN_SECC.filter(s => g[s]).map(s => `<optgroup label="${SECCIONES_BAL[s]}">${g[s].map(t => `<option value="${t.id}" ${t.id === sel ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</optgroup>`).join(''); };
+  c.innerHTML = `<div class="adm-barra"><p>Para pagos <b>fuera de lo normal</b> (fuera de los gastos fijos y de la mercancía): se pide aquí con el monto y la fecha tope; ${dueno ? 'tú los apruebas y pasan solos al Plan de pagos.' : 'el dueño la aprueba y pasa al Plan de pagos.'}</p>
+      <span class="espacio"></span><button class="btn btn-primario" id="sp-nueva">+ Nueva solicitud</button></div>
+    <nav class="sub-tabs" style="margin-bottom:10px">${[['pendiente', `Por aprobar (${pend.length})`], ['aprobada', 'Aprobadas'], ['rechazada', 'Rechazadas'], ['todas', 'Todas']]
+      .map(([k, n]) => `<button class="sub-tab ${SOL.filtro === k ? 'activa' : ''}" data-sf="${k}">${n}</button>`).join('')}</nav>
+    <div class="pedidos">${lista.map(s => `<article class="pedido"><header><b>N° ${s.id}</b><span class="badge ${SOL_EST[s.estado][1]}">${SOL_EST[s.estado][0]}</span>
+        ${s.estado === 'aprobada' && s.cxp_estado ? `<span class="badge ${s.cxp_estado === 'pagada' ? 'ok' : ''}">${s.cxp_estado === 'pagada' ? 'Pagada' : 'En el plan de pagos'}</span>` : ''}<span class="espacio"></span><b class="num">${usd(s.monto_usd)}</b></header>
+      <p style="margin:6px 0"><b>${esc(s.descripcion)}</b>${s.beneficiario ? ` · a ${esc(s.beneficiario)}` : ''}</p>
+      <p class="ayuda">${esc(s.tienda || '')} · pidió ${esc(s.solicitante_nombre || '')} (${esc(s.area)}) · tope <b class="${s.estado === 'pendiente' && s.fecha_tope <= sumarDias(hoy, 2) ? 'rojo' : ''}">${fechaCorta(s.fecha_tope)}</b>${s.tipo ? ` · ${esc(s.tipo)}` : ''}</p>
+      ${s.nota_dueno ? `<p class="ayuda">Nota del dueño: ${esc(s.nota_dueno)}</p>` : ''}
+      ${s.estado === 'pendiente' ? `<footer>${dueno ? `<select class="sel corto sp-tipo" data-s="${s.id}"><option value="">Tipo de gasto…</option>${tiposOpt(s.tipo_gasto_id)}</select>
+          <button class="btn btn-sec" data-rech="${s.id}">Rechazar</button><button class="btn btn-primario" data-apr="${s.id}">Aprobar</button>` : `<button class="link" data-can="${s.id}">Cancelar mi solicitud</button>`}</footer>` : ''}</article>`).join('')
+      || `<p class="vacio">${SOL.filtro === 'pendiente' ? 'No hay solicitudes por aprobar.' : 'No hay solicitudes aquí.'}</p>`}</div>`;
+  const rec = () => pintarSolpe(c);
+  c.querySelectorAll('[data-sf]').forEach(b => b.onclick = () => { SOL.filtro = b.dataset.sf; rec(); });
+  c.querySelector('#sp-nueva').onclick = () => {
+    const ts = D.tiendas, r = abrirModal(`<form id="f-sp"><div class="modal-cab"><h3 class="titulo">Nueva solicitud de pago</h3><p>Algo que hay que pagar fuera de lo normal. El dueño la aprueba.</p></div><div class="modal-cuerpo">
+      <div id="sp-error" class="mensaje-error oculto"></div>
+      <label class="campo"><span>Tienda *</span><select id="sp-t" class="sel">${ts.map(t => `<option value="${t.id}" ${t.id === S.tienda?.id ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></label>
+      <label class="campo"><span>¿Qué hay que pagar? *</span><input id="sp-desc" class="txt" placeholder="Ej. Reparación de la nevera, pendón para la promo…"></label>
+      <div class="dos-campos"><label class="campo"><span>A quién</span><input id="sp-ben" class="txt" placeholder="Ej. Técnico, imprenta…"></label>
+        <label class="campo"><span>Monto en dólares *</span><input id="sp-monto" class="txt num" inputmode="decimal" placeholder="0,00"></label></div>
+      <div class="dos-campos"><label class="campo"><span>Fecha tope para pagar *</span><input id="sp-f" type="date" class="txt" min="${hoyVE()}" value="${sumarDias(hoyVE(), 3)}"></label>
+        <label class="campo"><span>Tipo de gasto (si lo sabes)</span><select id="sp-tipo" class="sel"><option value="">No sé</option>${tiposOpt(null)}</select></label></div></div>
+      <div class="modal-pie"><button type="button" class="btn btn-sec" id="sp-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Enviar solicitud</button></div></form>`, 600);
+    r.querySelector('#sp-x').onclick = cerrarModal;
+    r.querySelector('#f-sp').onsubmit = e => { e.preventDefault();
+      const err = m => { r.querySelector('#sp-error').textContent = m; r.querySelector('#sp-error').classList.remove('oculto'); };
+      const p = { tienda_id: Number(r.querySelector('#sp-t').value), descripcion: limpiar(r.querySelector('#sp-desc').value), beneficiario: limpiar(r.querySelector('#sp-ben').value),
+        monto_usd: r2(leerNum(r.querySelector('#sp-monto').value)), fecha_tope: r.querySelector('#sp-f').value, tipo_gasto_id: r.querySelector('#sp-tipo').value || null };
+      if (p.descripcion.length < 3) return err('Escribe qué hay que pagar'); if (!(p.monto_usd > 0)) return err('Escribe el monto'); if (!p.fecha_tope) return err('Escribe la fecha tope');
+      guardando(r.querySelector('.btn-primario'), async () => {
+        if (DEMO) DX.solpe.push({ ...p, id: nid(), solicitante_nombre: `${S.perfil.nombre || ''}`.trim(), area: { encargada: 'Tienda', nomina: 'Gestión de Gente', mercadeo: 'Mercadeo' }[S.perfil.rol] || 'Dueño', estado: 'pendiente', creado_en: new Date().toISOString() }), guardarDemo();
+        else await rpc('pos_solpe_crear', { p });
+        cerrarModal(); toast('Solicitud enviada al dueño'); SOL.filtro = 'pendiente'; rec(); }, err); };
+  };
+  c.querySelectorAll('[data-apr],[data-rech]').forEach(b => b.onclick = () => {
+    const id = Number(b.dataset.apr || b.dataset.rech), apr = !!b.dataset.apr, tipo = c.querySelector(`.sp-tipo[data-s="${id}"]`)?.value || null;
+    if (apr && !tipo) return toast('Elige el tipo de gasto (como está en el balance) antes de aprobar', true);
+    const nota = apr ? '' : prompt('¿Por qué la rechazas? (opcional)') ?? null; if (nota === null) return;
+    guardando(b, async () => {
+      if (DEMO) { const s = DX.solpe.find(x => x.id === id);
+        if (apr) { const cx = { id: nid(), tienda_id: s.tienda_id, tipo_gasto_id: tipo, concepto: `SOLPE ${s.id}: ${s.descripcion}`, beneficiario: s.beneficiario, monto_usd: s.monto_usd, vence: s.fecha_tope,
+            periodo: 'SOLPE-' + s.id, pagado_usd: 0, estado: 'pendiente', pagos: [], nota: `Pidió ${s.solicitante_nombre} (${s.area})` };
+          DX.cxp = DX.cxp || []; DX.cxp.push(cx); Object.assign(s, { estado: 'aprobada', tipo_gasto_id: tipo, cxp_id: cx.id }); }
+        else Object.assign(s, { estado: 'rechazada', nota_dueno: nota }); guardarDemo(); }
+      else await rpc('pos_solpe_resolver', { p_id: id, p_accion: apr ? 'aprobar' : 'rechazar', p_tipo: tipo, p_nota: nota || null });
+      toast(apr ? 'Aprobada: ya está en el plan de pagos' : 'Rechazada'); rec(); });
+  });
+  c.querySelectorAll('[data-can]').forEach(b => b.onclick = () => { if (!confirm('¿Cancelar esta solicitud?')) return;
+    guardando(b, async () => { if (DEMO) { DX.solpe.find(x => x.id === Number(b.dataset.can)).estado = 'cancelada'; guardarDemo(); } else await rpc('pos_solpe_cancelar', { p_id: Number(b.dataset.can) }); rec(); }); });
+}
+function pintarAdmSolpe() { pintarSolpe($('adm-contenido')); }
+
 function pintarFacturasProv() {
   const cont = $('prov-cont'), hoy = hoyVE(), t = S.tienda.id;
   const todas = DX.facturas.filter(f => f.tienda_id === t).sort((a, b) => (saldoFactura(b) > 0.009) - (saldoFactura(a) > 0.009) || a.vence.localeCompare(b.vence) || b.emitida.localeCompare(a.emitida));
@@ -4531,25 +4818,13 @@ function pintarFacturasProv() {
     <table class="tabla-simple num"><thead><tr><th>Proveedor</th><th>N°</th><th>Emitida</th><th>Vence</th><th class="der">Monto</th><th class="der">Saldo</th><th>Estado</th><th></th></tr></thead><tbody>
     ${fs.map(f => `<tr><td>${esc(prov(f.proveedor_id)?.nombre || '')}</td><td>${esc(f.numero)}${f.foto_path || f.foto_data ? ' 📷' : ''}</td><td>${fechaCorta(f.emitida)}</td><td>${fechaCorta(f.vence)}</td><td class="der">${usd(f.monto_usd)}</td><td class="der">${usd(saldoFactura(f))}</td><td>${estadoFactura(f, hoy).html}</td>
       <td class="acciones"><button class="link" data-ver="${f.id}">Ver</button>${saldoFactura(f) > 0.009 ? ` <button class="link" data-ab="${f.id}">Pagar</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="8" class="vacio">${PROV.filtro === 'pagadas' ? 'No hay facturas pagadas.' : 'No hay facturas por pagar.'}</td></tr>`}</tbody></table>
-    <section class="graf"><h4>Proveedores</h4><table class="tabla-simple"><thead><tr><th>Nombre</th><th>RIF</th><th>Teléfono</th><th>Qué vende</th><th class="der">Facturas</th><th class="der">Le debemos</th></tr></thead><tbody>
-      ${DX.proveedores.map(p => `<tr><td>${esc(p.nombre)}</td><td>${esc(p.rif || '')}</td><td class="num">${esc(p.telefono || '')}</td><td>${esc(p.vende || '')}</td>
-        <td class="der num">${todas.filter(f => f.proveedor_id === p.id).length}</td><td class="der num">${usd(debeProv(p.id))}</td></tr>`).join('')}</tbody></table></section>`;
+    <section class="graf"><h4>Proveedores</h4><table class="tabla-simple"><thead><tr><th>Nombre</th><th>RIF</th><th>Teléfono</th><th>Qué vende</th><th>Pago</th><th class="der">Facturas</th><th class="der">Le debemos</th><th></th></tr></thead><tbody>
+      ${DX.proveedores.map(p => `<tr><td>${esc(p.nombre)}</td><td>${esc(p.rif || '')}</td><td class="num">${esc(p.telefono || '')}</td><td>${esc(p.vende || '')}</td><td>${condProv(p)}</td>
+        <td class="der num">${todas.filter(f => f.proveedor_id === p.id).length}</td><td class="der num">${usd(debeProv(p.id))}</td><td><button class="link" data-pve="${p.id}">Editar</button></td></tr>`).join('')}</tbody></table></section>`;
   cont.querySelectorAll('[data-pf]').forEach(b => b.onclick = () => { PROV.filtro = b.dataset.pf; pintarAdmProveedores(); });
   cont.querySelectorAll('[data-ver]').forEach(b => b.onclick = () => verFactura(DX.facturas.find(x => x.id === Number(b.dataset.ver))));
-  $('pv-nuevo').onclick = () => {
-    const r = abrirModal(`<form id="f-pv"><div class="modal-cab"><h3 class="titulo">Nuevo proveedor</h3></div><div class="modal-cuerpo"><div id="pv-error" class="mensaje-error oculto"></div>
-      <label class="campo"><span>Nombre *</span><input id="pv-nombre" class="txt"></label><div class="dos-campos"><label class="campo"><span>RIF</span><input id="pv-rif" class="txt" placeholder="J-12345678-9"></label>
-      <label class="campo"><span>Teléfono</span><input id="pv-tel" class="txt" inputmode="tel"></label></div><label class="campo"><span>Qué vende</span><input id="pv-vende" class="txt"></label></div>
-      <div class="modal-pie"><button type="button" class="btn btn-sec" id="pv-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 480);
-    r.querySelector('#pv-x').onclick = cerrarModal;
-    r.querySelector('#f-pv').onsubmit = e => { e.preventDefault(); const n = limpiar(r.querySelector('#pv-nombre').value);
-      if (n.length < 2) { r.querySelector('#pv-error').textContent = 'Escribe el nombre'; r.querySelector('#pv-error').classList.remove('oculto'); return; }
-      if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
-        await rpc('pos_admin_guardar_proveedor', { p_clave: A.clave, p: { nombre: n, rif: limpiar(r.querySelector('#pv-rif').value), telefono: soloDigitos(r.querySelector('#pv-tel').value), vende: limpiar(r.querySelector('#pv-vende').value) } });
-        cerrarModal(); toast('Proveedor guardado'); refrescarAdmin(); }, x => { r.querySelector('#pv-error').textContent = x; r.querySelector('#pv-error').classList.remove('oculto'); });
-      DX.proveedores.push({ id: nid(), nombre: n, rif: limpiar(r.querySelector('#pv-rif').value), telefono: soloDigitos(r.querySelector('#pv-tel').value), vende: limpiar(r.querySelector('#pv-vende').value) });
-      guardarDemo(); cerrarModal(); pintarAdmProveedores(); };
-  };
+  $('pv-nuevo').onclick = () => editarProveedor(null);
+  cont.querySelectorAll('[data-pve]').forEach(b => b.onclick = () => editarProveedor(DX.proveedores.find(p => p.id === Number(b.dataset.pve))));
   $('fc-nueva').onclick = () => {
     const r = abrirModal(`<form id="f-fc"><div class="modal-cab"><h3 class="titulo">Nueva factura por pagar</h3></div><div class="modal-cuerpo"><div id="fc-error" class="mensaje-error oculto"></div>
       <label class="campo"><span>Proveedor *</span><select id="fc-prov" class="sel">${DX.proveedores.map(p => `<option value="${p.id}">${esc(p.nombre)}</option>`).join('')}</select></label>
@@ -4636,7 +4911,7 @@ function pintarAdmUsuarios() {
       <div class="dos-campos"><label class="campo"><span>Nombre *</span><input id="us-nombre" class="txt" value="${esc(u?.nombre || '')}"></label><label class="campo"><span>Apellido *</span><input id="us-apellido" class="txt" value="${esc(u?.apellido || '')}"></label></div>
       <label class="campo"><span>Usuario para entrar *</span><input id="us-usuario" class="txt" value="${esc(u?.usuario || '')}" placeholder="Ej. ana.sambil" ${u ? 'disabled' : ''}></label>
       <label class="campo"><span>${u ? 'Nueva contraseña (déjala vacía para no cambiarla)' : 'Contraseña * (mínimo 6)'}</span><input id="us-clave" class="txt" type="password" autocomplete="new-password"></label>
-      <label class="campo"><span>Rol *</span><select id="us-rol" class="sel"><option value="cajera" ${u?.rol === 'cajera' ? 'selected' : ''}>Cajero: vende, abre y cierra su caja</option><option value="encargada" ${u?.rol === 'encargada' ? 'selected' : ''}>Encargada: además recibe mercancía, cuenta inventario y registra mermas</option><option value="nomina" ${u?.rol === 'nomina' ? 'selected' : ''}>Administrativa: solo ve la nómina (no necesita tienda)</option></select></label>
+      <label class="campo"><span>Rol *</span><select id="us-rol" class="sel"><option value="cajera" ${u?.rol === 'cajera' ? 'selected' : ''}>Cajero: vende, abre y cierra su caja</option><option value="encargada" ${u?.rol === 'encargada' ? 'selected' : ''}>Encargada: además recibe mercancía, cuenta inventario y registra mermas</option><option value="nomina" ${u?.rol === 'nomina' ? 'selected' : ''}>Administrativa: solo ve la nómina (no necesita tienda)</option><option value="mercadeo" ${u?.rol === 'mercadeo' ? 'selected' : ''}>Mercadeo: solo hace solicitudes de pago (no necesita tienda)</option></select></label>
       <div class="campo"><span>Tiendas *</span><div class="opciones">${(DEMO ? DEMO_DATA.tiendas : S.tiendas).map(t => `<label class="op"><input type="checkbox" class="us-t" value="${t.id}" ${u?.tiendas.includes(t.id) || (!u && t.id === S.tienda.id) ? 'checked' : ''}> ${esc(t.nombre)}</label>`).join('')}</div></div>
       ${u ? `<label class="interruptor"><input type="checkbox" id="us-activo" ${u.activo ? 'checked' : ''}><span>Activo</span></label>` : ''}</div>
       <div class="modal-pie"><button type="button" class="btn btn-sec" id="us-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 560);
@@ -4651,7 +4926,7 @@ function pintarAdmUsuarios() {
       if (!u && !/^[a-z0-9._-]{3,30}$/.test(usuario)) return err('El usuario solo puede tener letras, números y punto (3 a 30)');
       if (!u && DX.usuarios.some(x => x.usuario === usuario)) return err('Ese usuario ya existe');
       if ((!u || clave) && clave.length < 6) return err('La contraseña debe tener al menos 6 caracteres');
-      if (!tiendas.length && r.querySelector('#us-rol').value !== 'nomina') return err('Elige al menos una tienda');
+      if (!tiendas.length && !['nomina', 'mercadeo'].includes(r.querySelector('#us-rol').value)) return err('Elige al menos una tienda');
       if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
         await rpc('pos_admin_guardar_usuario', { p_clave: A.clave, p: { id: u?.id || null, nombre, apellido, usuario, clave: clave || null,
           rol: r.querySelector('#us-rol').value, tiendas, activo: u ? r.querySelector('#us-activo').checked : true } });
@@ -4930,7 +5205,7 @@ async function despuesDeEntrar() {
     return errorLogin('Tu usuario no tiene acceso al sistema de tiendas. Pídele al dueño que te dé acceso.');
   }
   $('nombre-usuario').textContent = S.perfil.nombre;
-  if (S.perfil.rol === 'nomina') return abrirVistaNomina();   // la administrativa solo ve la nómina
+  if (S.perfil.rol === 'nomina' || S.perfil.rol === 'mercadeo') return abrirVistaNomina();   // la administrativa solo ve la nómina
   S.tiendas = await api.tiendas();
   if (!S.tiendas.length) return errorLogin('Tu usuario no tiene tiendas asignadas.');
   const sel = $('selector-tienda');
