@@ -381,6 +381,7 @@
   .plan-dia h4{margin:0 0 6px}
   tr.apagado{opacity:.55} a.btn{text-decoration:none}
   .tabla-simple tr.sep td{background:#F7EFE6;padding-top:8px} .texto-error{color:var(--error)}
+  .permisos-u{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px 22px;background:#FBF6F0;border-radius:12px;padding:12px 14px} .permisos-u h4{margin:6px 0} .permisos-u .interruptor{display:flex;margin:4px 0} .permisos-u .cambiado span{font-weight:600}
   .ev-act{display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px dashed var(--linea);font-size:15px;cursor:pointer} .ev-act span{flex:1} .ev-act input{width:20px;height:20px}
   @media (max-width:700px){.rec-cab{display:none}.fila-rec{grid-template-columns:1fr 1fr;border-bottom:1px solid var(--linea);padding-bottom:6px}.fila-rec .mv-ins{grid-column:1/-1}}
   .rec-cab{font-size:12px;color:var(--suave);font-weight:600;margin:6px 0 4px}
@@ -535,16 +536,16 @@
       <div>
         <h2 class="titulo">Administrar menú · <span id="adm-tienda"></span></h2>
         <nav class="adm-tabs">
-          <button class="adm-tab" data-tab="panel" data-rol="dueno encargada" data-mod="1">Panel</button>
+          <button class="adm-tab" data-tab="panel" data-rol="dueno encargada cajera" data-mod="1">Panel</button>
           <button class="adm-tab activa" data-tab="productos">Productos</button>
           <button class="adm-tab" data-tab="opciones">Toppings y sabores</button>
           <button class="adm-tab" data-tab="inventario" data-rol="dueno encargada cajera" data-mod="1">Inventario</button>
-          <button class="adm-tab" data-tab="cierres" data-rol="dueno encargada">Cierres de caja</button>
-          <button class="adm-tab" data-tab="proveedores" data-rol="dueno encargada" data-mod="1">Gastos y pagos</button>
-          <button class="adm-tab" data-tab="solpe" data-rol="dueno encargada" data-mod="1">📝 Solicitudes de pago</button>
-          <button class="adm-tab" data-tab="clientes" data-rol="dueno encargada" data-mod="1">Clientes</button>
-          <button class="adm-tab" data-tab="reportes" data-rol="dueno encargada" data-mod="1">Reportes</button>
-          <button class="adm-tab" data-tab="evaluacion" data-rol="dueno encargada" data-mod="1">⭐ Evaluación</button>
+          <button class="adm-tab" data-tab="cierres" data-rol="dueno encargada cajera">Cierres de caja</button>
+          <button class="adm-tab" data-tab="proveedores" data-rol="dueno encargada cajera" data-mod="1">Gastos y pagos</button>
+          <button class="adm-tab" data-tab="solpe" data-rol="dueno encargada cajera" data-mod="1">📝 Solicitudes de pago</button>
+          <button class="adm-tab" data-tab="clientes" data-rol="dueno encargada cajera" data-mod="1">Clientes</button>
+          <button class="adm-tab" data-tab="reportes" data-rol="dueno encargada cajera" data-mod="1">Reportes</button>
+          <button class="adm-tab" data-tab="evaluacion" data-rol="dueno encargada cajera" data-mod="1">⭐ Evaluación</button>
           <button class="adm-tab" data-tab="nomina" data-rol="dueno" data-mod="1">Nómina</button>
           <button class="adm-tab" data-tab="usuarios" data-rol="dueno" data-mod="1">Usuarios</button>
           <button class="adm-tab" data-tab="clave" id="adm-tab-clave" data-rol="dueno">Clave</button>
@@ -1884,7 +1885,8 @@ function demoGuardarOpcion(o) {
 /* --- entrar / salir --- */
 async function abrirAdmin() {
   // El dueño y las encargadas entran con su propia sesión: no se les pide la clave de administrador (18/11/2026)
-  if (!DEMO && (S.perfil.rol === 'dueno' || S.perfil.rol === 'encargada')) { A.clave = ''; return entrarAdmin(); }
+  if (!tieneAdmin()) return toast('Tu usuario no tiene funciones de Administrar. Pídeselas al dueño.', true);
+  if (!DEMO && (S.perfil.rol === 'dueno' || puede('sin_clave'))) { A.clave = ''; return entrarAdmin(); }
   let hay;
   try { hay = await apiAdmin.hayClave(); } catch (e) { return toast('No se pudo verificar: ' + e.message, true); }
   const raiz = $('modal-raiz');
@@ -1947,8 +1949,8 @@ async function entrarAdmin() {
   A.tiendaInicial = S.tienda.id;
   pintarSelectorTiendaAdmin();
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('oculto',
-    !!((b.dataset.mod && !MOD) || (b.dataset.rol && !b.dataset.rol.split(' ').includes(S.perfil.rol)))));
-  A.tab = MOD && (S.perfil.rol === 'dueno' || S.perfil.rol === 'encargada') ? 'panel' : 'productos';
+    !!((b.dataset.mod && !MOD) || (b.dataset.rol && !b.dataset.rol.split(' ').includes(S.perfil.rol)) || (TAB_PERM[b.dataset.tab] && !puede(TAB_PERM[b.dataset.tab])))));
+  A.tab = [...document.querySelectorAll('.adm-tab:not(.oculto)')][0]?.dataset.tab || 'productos';
   await recargarAdmin();
 }
 
@@ -1972,7 +1974,7 @@ async function salirAdmin() {
   A.clave = null; A.d = null;
   $('vista-admin').classList.add('oculto');
   $('vista-venta').classList.remove('oculto');
-  $('btn-admin').classList.remove('oculto');
+  $('btn-admin').classList.toggle('oculto', !tieneAdmin());
   $('selector-tienda').disabled = false;
   // Si cambió de tienda dentro de Administrar, se carga completa (menú, caja, tasa, papel)
   if (A.tiendaInicial && A.tiendaInicial !== S.tienda.id) { S.carrito = []; await entrarTienda(S.tienda); return; }
@@ -3334,7 +3336,8 @@ async function cargarProveedoresReal() {
   DX.facturas = d.facturas.map(f => ({ ...f, monto_usd: num(f.monto_usd), abonos: f.abonos.map(a => ({ ...a, monto_usd: num(a.monto_usd) })) }));
 }
 async function cargarUsuariosReal() {
-  DX.usuarios = (await rpc('pos_admin_usuarios', { p_clave: A.clave })).map(u => ({ ...u, apellido: u.apellido || '' }));
+  const [us, ps] = await Promise.all([rpc('pos_admin_usuarios', { p_clave: A.clave }), rpc('pos_admin_permisos_lista')]);
+  DX.usuarios = us.map(u => ({ ...u, apellido: u.apellido || '', permisos: ps[u.id] && Object.keys(ps[u.id]).length ? ps[u.id] : null }));
 }
 async function cargarClientesReal() {
   // Solo clientes con al menos una compra pagada (los que no tienen fecha de última visita dañaban la pestaña)
@@ -3354,7 +3357,7 @@ const CARGA = {
   clientes: () => cargarClientesReal(),
   reportes: async () => { if (REP.tipo === 'general' && REP.rango !== 'otro') [REP.desde, REP.hasta] = rangoReporte(REP.rango);
     REP.desde = REP.desde || hoyVE().slice(0, 8) + '01'; REP.hasta = REP.hasta || hoyVE();
-    await cargarVentasReal(REP.desde, REP.hasta); if (S.perfil.rol === 'dueno' || S.perfil.rol === 'encargada') await cargarInventarioReal(); },
+    await cargarVentasReal(REP.desde, REP.hasta); try { await cargarInventarioReal(); } catch (e) { } },
   usuarios: () => cargarUsuariosReal(),
   dispositivos: async () => { const { data, error } = await sb.rpc('pos_dispositivos_lista'); if (error) throw new Error(error.message); DX.dispositivos = data; },
 };
@@ -3691,7 +3694,7 @@ async function abrirVentasTurno() {
       ${vs.map(v => `<tr class="${v.estado === 'anulada' ? 'anulada' : ''}"><td class="num">${esc(v.numero)}</td><td class="num">${esc(horaCorta(v.fecha))}</td><td>${esc(v.cliente_nombre || '')}</td>
         <td class="chico">${esc(v.items.map(i => i.cantidad + '× ' + i.producto + (i.variante !== 'Único' ? ' ' + i.variante : '')).join(', '))}</td>
         <td class="der num">${usd(v.total_usd)}</td>
-        <td class="acciones">${v.estado === 'anulada' ? '<span class="badge mal">Anulada</span>' : `<button class="link" data-r="${v.id}">Reimprimir</button><button class="link rojo" data-a="${v.id}">Anular</button>`}</td></tr>`).join('')}
+        <td class="acciones">${v.estado === 'anulada' ? '<span class="badge mal">Anulada</span>' : `<button class="link" data-r="${v.id}">Reimprimir</button>${puede('anular') ? `<button class="link rojo" data-a="${v.id}">Anular</button>` : ''}`}</td></tr>`).join('')}
       </tbody></table>` : '<div class="vacio">Todavía no hay ventas en esta caja.</div>'}</div>
     <div class="modal-pie"><span class="espacio"></span><button class="btn btn-primario" id="vt-ok">Cerrar</button></div>`, 860);
   r.querySelector('#vt-ok').onclick = cerrarModal;
@@ -3706,7 +3709,7 @@ function abrirAnular(v) {
       <label class="campo"><span>Motivo *</span><select id="an-motivo" class="sel"><option value="">Elige el motivo…</option>
         <option>Error al marcar el producto</option><option>El cliente se arrepintió</option><option>Producto en mal estado</option><option>Cobro duplicado</option><option>Otro</option></select></label>
       <label class="campo"><span>Detalle</span><input id="an-detalle" class="txt" placeholder="Explica qué pasó (obligatorio si es Otro)"></label>
-      ${!DEMO && (S.perfil.rol === 'dueno' || S.perfil.rol === 'encargada') ? '' : `<label class="campo"><span>Clave de administrador *</span><input id="an-clave" class="txt" type="password" autocomplete="off" placeholder="${DEMO ? 'En el demo es 123456' : ''}"></label>`}</div>
+      ${!DEMO && (S.perfil.rol === 'dueno' || puede('sin_clave')) ? '' : `<label class="campo"><span>Clave de administrador *</span><input id="an-clave" class="txt" type="password" autocomplete="off" placeholder="${DEMO ? 'En el demo es 123456' : ''}"></label>`}</div>
     <div class="modal-pie"><button type="button" class="btn btn-sec" id="an-cancelar">Volver</button><span class="espacio"></span><button class="btn btn-peligro">Anular venta</button></div></form>`, 520);
   r.querySelector('#an-cancelar').onclick = abrirVentasTurno;
   r.querySelector('#f-anular').onsubmit = async e => {
@@ -3898,8 +3901,10 @@ const INV = { sub: 'existencias' };
 function pintarAdmInventario() {
   const cont = $('adm-contenido'), t = S.tienda.id;
   const subs = [['existencias', 'Existencias'], ['recibir', 'Recibir mercancía'], ['produccion', 'Producción'], ['pedidos', 'Pedidos' + ((DX.pedidos || []).filter(p => (S.perfil.rol === 'dueno' || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length ? ` (${(DX.pedidos || []).filter(p => (S.perfil.rol === 'dueno' || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length})` : '')], ['merma', 'Mermas'], ['conteo', 'Conteo físico'], ['recetas', 'Recetas y costos'], ['movs', 'Movimientos']];
+  const subsOk = subs.filter(([k]) => puede(INV_PERM[k] || 'inventario'));
+  if (!subsOk.some(([k]) => k === INV.sub)) INV.sub = subsOk[0]?.[0] || 'existencias';
   cont.innerHTML = `<div class="adm-barra"><p>Inventario de <b>${esc(S.tienda.nombre)}</b>. Cada venta descuenta lo que usa según su receta.${DEMO ? ' Las cantidades y costos de ejemplo hay que cambiarlos por los reales.' : (DX.insumos.length ? '' : ' Todavía no hay insumos: agrégalos con <b>+ Insumo</b> y luego arma las recetas.')}</p></div>
-    <nav class="sub-tabs">${subs.map(([k, n]) => `<button class="sub-tab ${INV.sub === k ? 'activa' : ''}" data-s="${k}">${n}</button>`).join('')}</nav><div id="inv-cont"></div>`;
+    <nav class="sub-tabs">${subsOk.map(([k, n]) => `<button class="sub-tab ${INV.sub === k ? 'activa' : ''}" data-s="${k}">${n}</button>`).join('')}</nav><div id="inv-cont"></div>`;
   cont.querySelectorAll('.sub-tab').forEach(b => b.onclick = () => { INV.sub = b.dataset.s; if (INV.sub !== 'recibir') INV.pedido = null; pintarAdmInventario(); });
   const ic = $('inv-cont'), activos = DX.insumos.filter(i => i.activo !== false);
   const optsIns = activos.map(i => `<option value="${i.id}">${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('');
@@ -5099,14 +5104,62 @@ function pintarAdmClientes() {
   $('cl-copiar').onclick = () => copiarTexto(tsv(['Nombre', 'Teléfono', 'Zona', 'Tiendas', 'Compras', 'Total $'], lista.map(c => [c.nombre, c.telefono, c.zona, (c.por_tienda || []).map(t => tiendaNombre(t.tienda_id) + ' ' + t.compras).join(', '), c.compras, numXls(c.total)])));
 }
 
+/* ---------- PERMISOS POR USUARIO (etapa 16): el dueño pone o quita cada función a encargadas y cajeros ---------- */
+const PERMISOS = [
+  ['Caja', [['anular', 'Anular ventas']]],
+  ['Administrar', [['sin_clave', 'Entrar a Administrar SIN la clave de administrador'], ['panel', 'Panel (ventas y números de la tienda)'], ['productos', 'Productos y precios'],
+    ['opciones', 'Toppings y sabores'], ['cierres', 'Cierres de caja'], ['gastos', 'Gastos y pagos (presupuesto, plan de pagos, facturas y proveedores)'],
+    ['solpe', 'Solicitudes de pago'], ['clientes', 'Clientes'], ['reportes', 'Reportes'], ['evaluacion', 'Evaluación del equipo']]],
+  ['Inventario', [['inventario', 'Ver existencias y movimientos'], ['inv_recibir', 'Recibir mercancía'], ['inv_mermas', 'Registrar mermas'], ['inv_conteo', 'Conteo físico'],
+    ['inv_pedidos', 'Hacer pedidos'], ['inv_produccion', 'Producción (galletas)'], ['inv_editar', 'Crear y editar insumos y recetas']]]];
+const PERM_DEF = {
+  encargada: Object.fromEntries(PERMISOS.flatMap(g => g[1]).map(([k]) => [k, true])),
+  cajera: { anular: true, sin_clave: false, panel: false, productos: true, opciones: true, cierres: false, gastos: false, solpe: false, clientes: false, reportes: false,
+    evaluacion: false, inventario: true, inv_recibir: true, inv_mermas: true, inv_conteo: true, inv_pedidos: true, inv_produccion: true, inv_editar: true } };
+const permisosDe = (rol, propios) => ({ ...(PERM_DEF[rol] || {}), ...(propios || {}) });
+function puede(k) {
+  const r = S.perfil?.rol;
+  if (r === 'dueno') return true;
+  if (!PERM_DEF[r]) return false;
+  if (DEMO) { const u = DX.usuarios.find(x => x.id === DX.usuarioActual); return !!permisosDe(r, u?.permisos)[k]; }
+  return !!(S.permisos || PERM_DEF[r])[k];
+}
+const TAB_PERM = { panel: 'panel', productos: 'productos', opciones: 'opciones', inventario: 'inventario', cierres: 'cierres', proveedores: 'gastos',
+  solpe: 'solpe', clientes: 'clientes', reportes: 'reportes', evaluacion: 'evaluacion' };
+const INV_PERM = { existencias: 'inventario', movs: 'inventario', recibir: 'inv_recibir', produccion: 'inv_produccion', pedidos: 'inv_pedidos', merma: 'inv_mermas',
+  conteo: 'inv_conteo', recetas: 'inv_editar' };
+const tieneAdmin = () => S.perfil?.rol === 'dueno' || Object.values(TAB_PERM).some(puede);
+
+// Usuarios: tocar el nombre despliega sus funciones
+function pintarPermisosUsuario(u, cont) {
+  const actual = permisosDe(u.rol, u.permisos), def = PERM_DEF[u.rol];
+  cont.innerHTML = `<div class="permisos-u">${PERMISOS.map(([g, ks]) => `<div><h4>${g}</h4>${ks.map(([k, n]) => `<label class="interruptor ${actual[k] !== def[k] ? 'cambiado' : ''}">
+      <input type="checkbox" data-p="${k}" ${actual[k] ? 'checked' : ''}><span>${n}${actual[k] !== def[k] ? ' <em class="ayuda">(cambiado)</em>' : ''}</span></label>`).join('')}</div>`).join('')}
+    <div class="adm-barra" style="grid-column:1/-1"><button class="btn btn-sec" data-pr="1">Volver a lo normal de ${ROLES[u.rol]}</button><span class="espacio"></span>
+      <button class="btn btn-primario" data-pg="1">Guardar funciones de ${esc(u.nombre)}</button></div></div>
+    <p class="ayuda">Las funciones de vender, abrir y cerrar caja las tienen siempre. ${u.rol === 'cajera' ? 'Si el cajero NO tiene "sin la clave", al entrar a Administrar se le pide la clave de administrador.' : ''}</p>`;
+  const guardar = async (p, b) => guardando(b, async () => {
+    const dif = Object.fromEntries(Object.entries(p).filter(([k, v]) => v !== def[k]));
+    if (DEMO) { u.permisos = Object.keys(dif).length ? dif : null; guardarDemo(); }
+    else { await rpc('pos_admin_guardar_permisos', { p_usuario: u.id, p: dif }); u.permisos = Object.keys(dif).length ? dif : null; }
+    toast(`Funciones de ${u.nombre} guardadas`); pintarPermisosUsuario(u, cont); });
+  cont.querySelector('[data-pg]').onclick = e => guardar(Object.fromEntries([...cont.querySelectorAll('[data-p]')].map(i => [i.dataset.p, i.checked])), e.target);
+  cont.querySelector('[data-pr]').onclick = e => { if (confirm(`¿Dejar a ${u.nombre} con las funciones normales de ${ROLES[u.rol]}?`)) guardar({ ...def }, e.target); };
+}
+
 /* ---------- USUARIOS ---------- */
 function pintarAdmUsuarios() {
   const cont = $('adm-contenido');
   cont.innerHTML = `<div class="adm-barra"><p>Cada persona entra con su usuario y contraseña. Un usuario desactivado ya no puede entrar, pero sus ventas y cierres quedan guardados.</p><span class="espacio"></span><button class="btn btn-primario" id="us-nuevo">+ Usuario</button></div>
     <table class="tabla-simple"><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Tiendas</th><th>Estado</th><th></th></tr></thead><tbody>
-    ${DX.usuarios.map(u => `<tr class="${u.activo ? '' : 'anulada'}"><td>${esc(u.nombre + ' ' + u.apellido)}</td><td class="num">${esc(u.usuario)}</td><td>${ROLES[u.rol]}</td>
+    ${DX.usuarios.map(u => `<tr class="${u.activo ? '' : 'anulada'}"><td>${PERM_DEF[u.rol] ? `<button class="link" data-pu="${esc(u.id)}" title="Ver y cambiar sus funciones">▸ ${esc(u.nombre + ' ' + u.apellido)}</button>${u.permisos ? ' <span class="badge abierta">funciones a la medida</span>' : ''}` : esc(u.nombre + ' ' + u.apellido)}</td><td class="num">${esc(u.usuario)}</td><td>${ROLES[u.rol]}</td>
       <td>${u.rol === 'dueno' ? 'Todas' : esc(u.tiendas.map(tiendaNombre).join(', '))}</td><td>${u.activo ? '<span class="badge ok">Activo</span>' : '<span class="badge">Desactivado</span>'}</td>
-      <td>${u.rol === 'dueno' ? '' : `<button class="link" data-e="${esc(u.id)}">Editar</button>`}</td></tr>`).join('')}</tbody></table>`;
+      <td>${u.rol === 'dueno' ? '' : `<button class="link" data-e="${esc(u.id)}">Editar</button>`}</td></tr>
+      ${PERM_DEF[u.rol] ? `<tr class="oculto" data-pf="${esc(u.id)}"><td colspan="6"><div class="perm-cont"></div></td></tr>` : ''}`).join('')}</tbody></table>
+    <p class="ayuda">Toca el nombre de una encargada o un cajero para ver y cambiar sus funciones.</p>`;
+  cont.querySelectorAll('[data-pu]').forEach(b => b.onclick = () => { const u = DX.usuarios.find(x => String(x.id) === b.dataset.pu), fila = cont.querySelector(`[data-pf="${b.dataset.pu}"]`);
+    const abrir = fila.classList.contains('oculto'); fila.classList.toggle('oculto', !abrir); b.textContent = (abrir ? '▾ ' : '▸ ') + u.nombre + ' ' + u.apellido;
+    if (abrir) pintarPermisosUsuario(u, fila.querySelector('.perm-cont')); });
   const editar = u => {
     const r = abrirModal(`<form id="f-us"><div class="modal-cab"><h3 class="titulo">${u ? 'Editar usuario' : 'Nuevo usuario'}</h3></div><div class="modal-cuerpo"><div id="us-error" class="mensaje-error oculto"></div>
       <div class="dos-campos"><label class="campo"><span>Nombre *</span><input id="us-nombre" class="txt" value="${esc(u?.nombre || '')}"></label><label class="campo"><span>Apellido *</span><input id="us-apellido" class="txt" value="${esc(u?.apellido || '')}"></label></div>
@@ -5407,6 +5460,8 @@ async function despuesDeEntrar() {
   }
   $('nombre-usuario').textContent = S.perfil.nombre;
   if (S.perfil.rol === 'nomina' || S.perfil.rol === 'mercadeo') return abrirVistaNomina();   // la administrativa solo ve la nómina
+  try { S.permisos = DEMO ? null : await rpc('pos_mis_permisos'); } catch (e) { S.permisos = null; }
+  $('btn-admin').classList.toggle('oculto', !tieneAdmin());
   S.tiendas = await api.tiendas();
   if (!S.tiendas.length) return errorLogin('Tu usuario no tiene tiendas asignadas.');
   const sel = $('selector-tienda');
