@@ -538,7 +538,7 @@
           <button class="adm-tab" data-tab="panel" data-rol="dueno encargada" data-mod="1">Panel</button>
           <button class="adm-tab activa" data-tab="productos">Productos</button>
           <button class="adm-tab" data-tab="opciones">Toppings y sabores</button>
-          <button class="adm-tab" data-tab="inventario" data-rol="dueno encargada" data-mod="1">Inventario</button>
+          <button class="adm-tab" data-tab="inventario" data-rol="dueno encargada cajera" data-mod="1">Inventario</button>
           <button class="adm-tab" data-tab="cierres" data-rol="dueno encargada">Cierres de caja</button>
           <button class="adm-tab" data-tab="proveedores" data-rol="dueno encargada" data-mod="1">Gastos y pagos</button>
           <button class="adm-tab" data-tab="solpe" data-rol="dueno encargada" data-mod="1">📝 Solicitudes de pago</button>
@@ -1915,7 +1915,7 @@ async function abrirAdmin() {
   }
   raiz.innerHTML = `<div class="fondo"><form class="modal" style="width:min(420px,100%)" id="f-clave">
     <div class="modal-cab"><h3 class="titulo">Clave de administrador</h3>
-    <p>Para agregar, quitar o cambiar productos y precios.${DEMO ? ' En el demo la clave es <b>123456</b>.' : ''}</p></div>
+    <p>Para entrar al inventario y para agregar, quitar o cambiar productos y precios.${DEMO ? ' En el demo la clave es <b>123456</b>.' : ''}</p></div>
     <div class="modal-cuerpo">
       <div id="k-error" class="mensaje-error oculto"></div>
       <label class="campo"><span>Clave</span><input type="password" id="k-clave" autocomplete="off"></label>
@@ -5100,7 +5100,7 @@ function pintarAdmUsuarios() {
       <div class="dos-campos"><label class="campo"><span>Nombre *</span><input id="us-nombre" class="txt" value="${esc(u?.nombre || '')}"></label><label class="campo"><span>Apellido *</span><input id="us-apellido" class="txt" value="${esc(u?.apellido || '')}"></label></div>
       <label class="campo"><span>Usuario para entrar *</span><input id="us-usuario" class="txt" value="${esc(u?.usuario || '')}" placeholder="Ej. ana.sambil" ${u ? 'disabled' : ''}></label>
       <label class="campo"><span>${u ? 'Nueva contraseña (déjala vacía para no cambiarla)' : 'Contraseña * (mínimo 6)'}</span><input id="us-clave" class="txt" type="password" autocomplete="new-password"></label>
-      <label class="campo"><span>Rol *</span><select id="us-rol" class="sel"><option value="cajera" ${u?.rol === 'cajera' ? 'selected' : ''}>Cajero: vende, abre y cierra su caja</option><option value="encargada" ${u?.rol === 'encargada' ? 'selected' : ''}>Encargada: además recibe mercancía, cuenta inventario y registra mermas</option><option value="nomina" ${u?.rol === 'nomina' ? 'selected' : ''}>Administrativa: solo ve la nómina (no necesita tienda)</option><option value="mercadeo" ${u?.rol === 'mercadeo' ? 'selected' : ''}>Mercadeo: solo hace solicitudes de pago (no necesita tienda)</option></select></label>
+      <label class="campo"><span>Rol *</span><select id="us-rol" class="sel"><option value="cajera" ${u?.rol === 'cajera' ? 'selected' : ''}>Cajero: vende, abre y cierra su caja (con la clave de administrador entra al inventario)</option><option value="encargada" ${u?.rol === 'encargada' ? 'selected' : ''}>Encargada: además recibe mercancía, cuenta inventario y registra mermas</option><option value="nomina" ${u?.rol === 'nomina' ? 'selected' : ''}>Administrativa: solo ve la nómina (no necesita tienda)</option><option value="mercadeo" ${u?.rol === 'mercadeo' ? 'selected' : ''}>Mercadeo: solo hace solicitudes de pago (no necesita tienda)</option></select></label>
       <div class="campo"><span>Tiendas *</span><div class="opciones">${(DEMO ? DEMO_DATA.tiendas : S.tiendas).map(t => `<label class="op"><input type="checkbox" class="us-t" value="${t.id}" ${u?.tiendas.includes(t.id) || (!u && t.id === S.tienda.id) ? 'checked' : ''}> ${esc(t.nombre)}</label>`).join('')}</div></div>
       ${u ? `<label class="interruptor"><input type="checkbox" id="us-activo" ${u.activo ? 'checked' : ''}><span>Activo</span></label>` : ''}</div>
       <div class="modal-pie"><button type="button" class="btn btn-sec" id="us-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 560);
