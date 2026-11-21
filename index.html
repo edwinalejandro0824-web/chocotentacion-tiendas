@@ -382,6 +382,7 @@
   tr.apagado{opacity:.55} a.btn{text-decoration:none}
   .tabla-simple tr.sep td{background:#F7EFE6;padding-top:8px} .texto-error{color:var(--error)}
   .permisos-u{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px 22px;background:#FBF6F0;border-radius:12px;padding:12px 14px} .permisos-u h4{margin:6px 0} .permisos-u .interruptor{display:flex;margin:4px 0} .permisos-u .cambiado span{font-weight:600}
+  body.sin-caja #btn-ventas-turno, body.sin-caja #btn-salida, body.sin-caja #btn-cerrar-caja, body.sin-caja #chip-caja, body.sin-caja #btn-salir-admin, body.sin-caja #categorias, body.sin-caja aside.ticket, body.sin-caja #capa-caja{display:none!important} body.sin-caja .catalogo{grid-column:1/-1}
   .ev-act{display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px dashed var(--linea);font-size:15px;cursor:pointer} .ev-act span{flex:1} .ev-act input{width:20px;height:20px}
   @media (max-width:700px){.rec-cab{display:none}.fila-rec{grid-template-columns:1fr 1fr;border-bottom:1px solid var(--linea);padding-bottom:6px}.fila-rec .mv-ins{grid-column:1/-1}}
   .rec-cab{font-size:12px;color:var(--suave);font-weight:600;margin:6px 0 4px}
@@ -547,6 +548,7 @@
           <button class="adm-tab" data-tab="reportes" data-rol="dueno encargada cajera" data-mod="1">Reportes</button>
           <button class="adm-tab" data-tab="evaluacion" data-rol="dueno encargada cajera" data-mod="1">⭐ Evaluación</button>
           <button class="adm-tab" data-tab="nomina" data-rol="dueno" data-mod="1">Nómina</button>
+          <button class="adm-tab" data-tab="cajas" data-rol="dueno encargada" data-mod="1">🖥️ Cajas</button>
           <button class="adm-tab" data-tab="usuarios" data-rol="dueno" data-mod="1">Usuarios</button>
           <button class="adm-tab" data-tab="clave" id="adm-tab-clave" data-rol="dueno">Clave</button>
           <button class="adm-tab" data-tab="dispositivos" data-rol="dueno" data-mod="1">Dispositivos</button>
@@ -1976,6 +1978,7 @@ async function salirAdmin() {
   $('vista-venta').classList.remove('oculto');
   $('btn-admin').classList.toggle('oculto', !tieneAdmin());
   $('selector-tienda').disabled = false;
+  if (!esCaja(S.tienda.id)) { if (A.tiendaInicial && A.tiendaInicial !== S.tienda.id) return entrarTienda(S.tienda); document.body.classList.add('sin-caja'); return; }
   // Si cambió de tienda dentro de Administrar, se carga completa (menú, caja, tasa, papel)
   if (A.tiendaInicial && A.tiendaInicial !== S.tienda.id) { S.carrito = []; await entrarTienda(S.tienda); return; }
   await recargarVenta();
@@ -2000,7 +2003,7 @@ async function recargarVenta() {
 /* --- pantalla --- */
 function pintarAdmin() {
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('activa', b.dataset.tab === A.tab));
-  const vistas = { nomina: pintarAdmNomina, evaluacion: pintarAdmEvaluacion, solpe: pintarAdmSolpe, panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
+  const vistas = { cajas: pintarAdmCajas, nomina: pintarAdmNomina, evaluacion: pintarAdmEvaluacion, solpe: pintarAdmSolpe, panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
     cierres: pintarAdmCierres, gastos: pintarAdmGastos, proveedores: pintarAdmProveedores, clientes: pintarAdmClientes,
     reportes: pintarAdmReportes, usuarios: pintarAdmUsuarios, clave: pintarAdmClave, dispositivos: pintarAdmDispositivos };
   const f = vistas[A.tab] || pintarAdmProductos;
@@ -5147,6 +5150,56 @@ function pintarPermisosUsuario(u, cont) {
   cont.querySelector('[data-pr]').onclick = e => { if (confirm(`¿Dejar a ${u.nombre} con las funciones normales de ${ROLES[u.rol]}?`)) guardar({ ...def }, e.target); };
 }
 
+/* ---------- CAJA REGISTRADA (etapa 17): solo se vende en la computadora de la caja de cada tienda ---------- */
+let CAJA = null;   // { es: [tiendas donde este equipo es caja], exige: [tiendas que ya tienen caja registrada] }
+async function identificarCaja() {
+  if (DEMO) { CAJA = DX.cajasDemo || { es: [], exige: [] }; return; }
+  try { CAJA = await rpc('pos_caja_identificar', { p_llave: llaveDispositivo() }); } catch (e) { CAJA = null; }
+}
+const esCaja = t => !CAJA || !CAJA.exige.includes(t) || CAJA.es.includes(t);
+// Este equipo no es caja de la tienda: no se vende; se entra directo a Administración
+function modoSinCaja(t) {
+  document.body.classList.add('sin-caja');
+  $('productos').innerHTML = `<div class="vacio" style="grid-column:1/-1;padding:40px 20px;text-align:center">
+    <h3 style="margin:0 0 8px">🖥️ Este equipo no es la caja de ${esc(t.nombre)}</h3>
+    <p>Aquí no se vende ni se abre caja: para facturar usa la computadora de la caja de la tienda.</p>
+    ${tieneAdmin() ? '<button class="btn btn-primario" id="sc-admin" style="margin-top:12px">Ir a Administración</button>' : '<p class="ayuda">Tu usuario no tiene funciones de Administración.</p>'}</div>`;
+  if ($('sc-admin')) $('sc-admin').onclick = abrirAdmin;
+  if (tieneAdmin() && (S.perfil.rol === 'dueno' || puede('sin_clave'))) abrirAdmin();
+}
+async function pintarAdmCajas() {
+  const cont = $('adm-contenido'), t = S.tienda;
+  cont.innerHTML = '<p class="vacio">Cargando…</p>';
+  let lista = [];
+  try { lista = DEMO ? (DX.cajasDemoLista || []).filter(c => c.tienda_id === t.id) : await rpc('pos_cajas_lista', { p_tienda: t.id }); }
+  catch (e) { return cont.innerHTML = `<p class="mensaje-error">${esc(e.message)}</p>`; }
+  const estaEsCaja = CAJA && CAJA.es.includes(t.id);
+  cont.innerHTML = `<div class="adm-barra"><p>Solo se puede <b>vender y abrir caja</b> en las computadoras registradas aquí como caja de <b>${esc(t.nombre)}</b>.
+      En cualquier otro equipo (teléfonos, otras computadoras) se entra directo a Administración. Mientras la tienda no tenga ninguna caja registrada, se puede vender desde cualquier equipo.</p></div>
+    <section class="graf"><h4>Este equipo</h4>
+      ${estaEsCaja ? `<p><span class="badge ok">✓ Este equipo ES caja de ${esc(t.nombre)}</span></p>`
+        : `<p>Este equipo <b>no</b> es caja de ${esc(t.nombre)}. Regístralo <b>solo</b> si es la computadora de la tienda donde se factura (la que tiene la tiquera), y desde el mismo acceso con el que venden ("ChocoTentacion Caja").</p>
+           <div class="adm-barra"><input id="cj-nombre" class="txt" value="Caja ${esc(t.nombre)}" style="max-width:280px"><button class="btn btn-primario" id="cj-reg">Registrar este equipo como caja de ${esc(t.nombre)}</button></div>`}</section>
+    <section class="graf"><h4>Cajas registradas de ${esc(t.nombre)} (${lista.length})</h4>
+      ${lista.length ? `<table class="tabla-simple"><thead><tr><th>Nombre</th><th>Registrada</th><th>Por</th><th></th></tr></thead><tbody>
+        ${lista.map(c => `<tr><td>${esc(c.nombre || 'Caja')}</td><td>${fechaCorta(String(c.creado_en).slice(0, 10))}</td><td>${esc(c.creado_por || '')}</td><td><button class="link rojo" data-cq="${c.id}">Quitar</button></td></tr>`).join('')}</tbody></table>`
+        : '<p class="vacio">Ninguna todavía: por ahora se puede vender desde cualquier equipo.</p>'}</section>`;
+  const reg = $('cj-reg');
+  if (reg) reg.onclick = () => { if (!confirm(`¿Registrar ESTE equipo como caja de ${t.nombre}? Desde ese momento solo se podrá vender en las cajas registradas.`)) return;
+    guardando(reg, async () => {
+      const nombre = limpiar($('cj-nombre').value) || 'Caja';
+      if (DEMO) { DX.cajasDemoLista = DX.cajasDemoLista || []; DX.cajasDemoLista.push({ id: nid(), tienda_id: t.id, nombre, creado_en: new Date().toISOString(), creado_por: S.perfil.nombre });
+        DX.cajasDemo = { es: [...new Set([...(DX.cajasDemo?.es || []), t.id])], exige: [...new Set([...(DX.cajasDemo?.exige || []), t.id])] }; guardarDemo(); }
+      else await rpc('pos_caja_registrar', { p_tienda: t.id, p_llave: llaveDispositivo(), p_nombre: nombre });
+      await identificarCaja(); toast('Listo: este equipo es caja'); pintarAdmCajas(); }); };
+  cont.querySelectorAll('[data-cq]').forEach(b => b.onclick = () => { if (!confirm('¿Quitar esta caja? Ya no se podrá vender en ese equipo.')) return;
+    guardando(b, async () => {
+      if (DEMO) { DX.cajasDemoLista = DX.cajasDemoLista.filter(c => c.id !== Number(b.dataset.cq)); const quedan = DX.cajasDemoLista.some(c => c.tienda_id === t.id);
+        DX.cajasDemo = { es: quedan ? DX.cajasDemo.es : DX.cajasDemo.es.filter(x => x !== t.id), exige: quedan ? DX.cajasDemo.exige : DX.cajasDemo.exige.filter(x => x !== t.id) }; guardarDemo(); }
+      else await rpc('pos_caja_quitar', { p_id: Number(b.dataset.cq) });
+      await identificarCaja(); toast('Caja quitada'); pintarAdmCajas(); }); });
+}
+
 /* ---------- USUARIOS ---------- */
 function pintarAdmUsuarios() {
   const cont = $('adm-contenido');
@@ -5445,6 +5498,8 @@ async function entrarTienda(t) {
     S.cat = S.d.categorias.find(c => S.d.productos.some(p => p.categoria_id === c.id && seVendeAhora(p)))?.id;
     if (DEMO) { sembrarHistoria(); S.ventasHoy = await api.ventasHoy(t.id); }
     pintarCategorias(); pintarProductos(); pintarTicket(); pintarMeta();
+    document.body.classList.remove('sin-caja');
+    if (!esCaja(t.id)) return modoSinCaja(t);
     await revisarCaja();
     pintarChipStock();
   } catch (e) {
@@ -5461,6 +5516,7 @@ async function despuesDeEntrar() {
   $('nombre-usuario').textContent = S.perfil.nombre;
   if (S.perfil.rol === 'nomina' || S.perfil.rol === 'mercadeo') return abrirVistaNomina();   // la administrativa solo ve la nómina
   try { S.permisos = DEMO ? null : await rpc('pos_mis_permisos'); } catch (e) { S.permisos = null; }
+  await identificarCaja();
   $('btn-admin').classList.toggle('oculto', !tieneAdmin());
   S.tiendas = await api.tiendas();
   if (!S.tiendas.length) return errorLogin('Tu usuario no tiene tiendas asignadas.');
