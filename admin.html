@@ -379,7 +379,8 @@
   .con-quitar{display:flex;gap:4px;align-items:center;min-width:0}
   .con-quitar input{flex:1;width:auto;min-width:0}
   .rc-filas{max-width:760px}
-  .rec-cab,.fila-rec{display:grid;grid-template-columns:minmax(0,1.6fr) 130px 150px 150px 32px;gap:8px;align-items:center;max-width:900px}
+  .rec-cab,.fila-rec{display:grid;grid-template-columns:minmax(0,1.6fr) 120px 140px 140px 70px 32px;gap:8px;align-items:center;max-width:960px}
+  .mv-ex-l{display:flex;gap:4px;align-items:center;font-size:13px} .rec-iva{max-width:960px;text-align:right;margin-top:6px}
   .rec-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;max-width:900px;margin-bottom:4px}
   .rec-foto{display:flex;gap:10px;align-items:center;margin:4px 0 8px}
   .aviso-pedido{background:#FFF4D6;border-radius:10px;padding:10px 12px;margin-bottom:8px;font-size:14px}
@@ -465,6 +466,13 @@
     <div id="paso-codigo" class="oculto">
       <p class="ayuda" style="margin:0 0 8px">Es la primera vez que entras como dueño en este equipo. Escribe el código de 6 números de tu app autenticadora: queda registrado y aquí no te lo vuelve a pedir.</p>
       <label class="campo"><span>Código de la app autenticadora</span><input type="text" id="login-codigo" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+    </div>
+    <div id="paso-autorizar" class="oculto">
+      <p class="ayuda" style="margin:0 0 8px">🔒 <b>Este equipo no está autorizado</b> para usar el sistema. Para autorizarlo, escribe la <b>clave de administrador</b>, o pídele al dueño que lo apruebe desde <b>Administrar → Dispositivos</b> y toca "Ya lo aprobaron".</p>
+      <label class="campo"><span>Nombre de este equipo</span><input type="text" id="aut-nombre" placeholder="Ej. Caja Sambil, celular de Karla"></label>
+      <label class="campo"><span>Clave de administrador</span><input type="password" id="aut-clave" autocomplete="off"></label>
+      <button class="btn btn-sec btn-ancho" type="button" id="aut-revisar" style="margin-bottom:8px">Ya lo aprobaron, revisar</button>
+      <button class="link" type="button" id="aut-salir">Salir y entrar con otro usuario</button>
     </div>
     <button class="btn btn-primario btn-ancho" id="btn-login" type="submit">Entrar</button>
     <button class="btn btn-sec btn-ancho oculto boton-instalar" type="button" style="margin-top:10px">⬇ Instalar en este equipo</button>
@@ -678,12 +686,17 @@ const api = {
   },
   // 16/11/2026: el dueño da el código de su app autenticadora UNA SOLA VEZ por dispositivo (etapa 8).
   // Este equipo se recuerda con una llave guardada aquí; el servidor solo guarda su huella.
-  async necesitaCodigo() {
-    if (DEMO) return false;
-    const { data, error } = await sb.rpc('pos_dispositivo_revisar', { p_token: llaveDispositivo(), p_navegador: navigator.userAgent.slice(0, 300) });
-    if (error) return false;
+  // 21/11/2026 (etapa 26): los demás usuarios solo entran desde un equipo AUTORIZADO (clave de administrador o aprobado por el dueño)
+  async revisarEquipo() {
+    if (DEMO) return { requiere: false };
+    const { data, error } = await sb.rpc('pos_dispositivo_revisar', { p_token: llaveDispositivo(), p_navegador: nombreDispositivo() });
+    if (error) return { requiere: false };
     if (data.registrar) await this.registrarDispositivo();
-    return !!data.requiere;
+    return { requiere: !!data.requiere, tipo: data.tipo || 'codigo' };
+  },
+  async autorizarEquipo(clave, nombre) {
+    const { error } = await sb.rpc('pos_dispositivo_autorizar', { p_token: llaveDispositivo(), p_clave: clave, p_nombre: nombre || nombreDispositivo() });
+    if (error) throw new Error(error.message);
   },
   async registrarDispositivo() {
     const { error } = await sb.rpc('pos_dispositivo_registrar', { p_token: llaveDispositivo(), p_nombre: nombreDispositivo(), p_navegador: navigator.userAgent.slice(0, 300) });
@@ -978,8 +991,8 @@ function pedirDesbloqueo(tipo, id, despues, varId) {
     <div class="modal-cab"><h3 class="titulo">🚫 ${esc(nombre || '')}: sin stock</h3>
       <p>No se puede vender porque en el inventario de ${esc(S.tienda.nombre)} falta:</p></div>
     <div class="modal-cuerpo"><ul class="lista-faltan">${faltan.map(lineaFalta).join('') || '<li>Lo que lleva su receta</li>'}</ul>
-      <p class="ayuda">Si sí lo tienen en la tienda, cárguenlo en Inventario (Recibir mercancía o Conteo físico). Para venderlo ya, la encargada lo desbloquea: queda desbloqueado hasta que vuelva a haber existencia.</p>
-      ${sinClaveYo() ? '' : '<label class="campo"><span>Clave de administrador (la escribe la encargada)</span><input type="password" id="db-clave" autocomplete="off"></label>'}
+      <p class="ayuda">Si sí lo tienen en la tienda, cárguenlo en Inventario (Recibir mercancía o Conteo físico). Para venderlo ya, la líder lo desbloquea: queda desbloqueado hasta que vuelva a haber existencia.</p>
+      ${sinClaveYo() ? '' : '<label class="campo"><span>Clave de administrador (la escribe la líder)</span><input type="password" id="db-clave" autocomplete="off"></label>'}
       <label class="campo"><span>Motivo (opcional)</span><input id="db-motivo" placeholder="Ej.: llegó la mercancía y no la han cargado"></label>
       <div id="db-error" class="mensaje-error oculto"></div></div>
     <div class="modal-pie"><button class="btn btn-sec" id="db-no">Cerrar</button><span class="espacio"></span><button class="btn btn-primario" id="db-si">🔓 Desbloquear</button></div></div></div>`;
@@ -1035,7 +1048,7 @@ function mostrarFaltaStock(lista) {
     <div class="modal-cuerpo">${[...porFuente.values()].map(x => `<div class="graf" style="margin-bottom:8px"><b>${esc(x.nombre || '')}</b>
       <ul class="lista-faltan">${x.faltan.map(lineaFalta).join('')}</ul>
       <button class="btn btn-sec" data-dt="${x.tipo === 'producto' ? 'producto' : 'opcion'}" data-di="${x.id}">🔓 Desbloquear ${esc(x.nombre || '')}</button></div>`).join('')}
-      <p class="ayuda">Quita o cambia esos productos del ticket, o pide a la encargada que los desbloquee.</p></div>
+      <p class="ayuda">Quita o cambia esos productos del ticket, o pide a la líder que los desbloquee.</p></div>
     <div class="modal-pie"><span class="espacio"></span><button class="btn btn-primario" id="fs-ok">Entendido</button></div></div></div>`;
   $('fs-ok').onclick = () => { raiz.innerHTML = ''; };
   raiz.querySelectorAll('[data-dt]').forEach(b => b.onclick = () => pedirDesbloqueo(b.dataset.dt, Number(b.dataset.di), async () => {
@@ -1803,7 +1816,7 @@ function mostrarDeclaracion(res) {
       ${!r ? `<p style="color:var(--suave);margin:6px 0 14px">Lo que declaraste quedó registrado.</p>
         <div class="declarado num">${res.declarado.map(d => `<div><span>${esc(d.forma)}</span><b>${fmtMon(d.moneda, d.monto)}</b></div>`).join('')}</div>`
       : `<p class="cuadre-final ${malos.length ? 'con-dif' : 'ok'}">${malos.length ? `La caja NO cuadró en ${malos.length} forma${malos.length > 1 ? 's' : ''} de pago: ` + malos.map(m => `<b>${esc(m.forma)} ${textoDif(m.moneda, m.diferencia)}</b>`).join(' · ') : '¡La caja cuadró en todas las formas de pago!'}</p>
-        ${malos.length ? '<p style="color:var(--suave);margin:0 0 8px">Este es el detalle. Avísale a tu encargada. El cierre ya quedó guardado y no se puede cambiar.</p>' : ''}
+        ${malos.length ? '<p style="color:var(--suave);margin:0 0 8px">Este es el detalle. Avísale a tu líder. El cierre ya quedó guardado y no se puede cambiar.</p>' : ''}
         <div style="text-align:left">${htmlArqueo(r)}</div>`}
     </div>
     <div class="modal-pie"><button class="btn btn-sec" id="de-imprimir">Imprimir otra vez</button><span class="espacio"></span>
@@ -2706,7 +2719,11 @@ function editarDescuentos(l, listo) {
 }
 
 // ---- Recibos e impresión ----
+// Logo en constancias, liquidaciones, recibos de pago y de vacaciones (21/11/2026, dueño)
+const LOGO_DOC = 'logo-chocotentacion.png';
 function nomImprimir(partes, titulo, horizontal) {
+  if (LOGO_DOC) { const src = new URL(LOGO_DOC, location.href).href;
+    partes = partes.map(p => p.replace(/^\s*<div([^>]*)>/, m => `${m}<div class="logo-doc"><img src="${src}" alt="${esc(NEGOCIO_NOMBRE)}"></div>`)); }
   const w = window.open('', '_blank'); if (!w) return toast('Permite las ventanas emergentes para imprimir', true);
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>
     @page{size:letter ${horizontal ? 'landscape' : 'portrait'};margin:10mm} body{font:11px Arial,sans-serif;color:#222;margin:0}
@@ -2714,7 +2731,7 @@ function nomImprimir(partes, titulo, horizontal) {
     h2{font-size:14px;margin:0} h3{font-size:12px;margin:8px 0 3px;border-bottom:1px solid #ccc} table{width:100%;border-collapse:collapse} td,th{padding:2px 4px;text-align:left;vertical-align:top}
     th{background:#f1ebe4;font-size:10px} .der{text-align:right} .tot td{font-weight:bold;border-top:1px solid #333} .cab{display:flex;justify-content:space-between;gap:10px}
     .grande{font-size:13px;font-weight:bold} .firma{margin-top:22px;display:flex;justify-content:space-between} .nota{color:#666;font-size:10px}
-    .rel td,.rel th{border-bottom:1px solid #ddd;font-size:10px}</style></head><body>${partes.join('')}<script>window.onload=()=>window.print()<\/script></body></html>`);
+    .rel td,.rel th{border-bottom:1px solid #ddd;font-size:10px} .logo-doc{text-align:center;margin:0 0 6px} .logo-doc img{height:52px}</style></head><body>${partes.join('')}<script>window.onload=()=>window.print()<\/script></body></html>`);
   w.document.close();
 }
 function nomReciboHTML(t, p, d, k) {
@@ -3245,7 +3262,7 @@ async function pintarBonos(c) {
   catch (e) { return k.innerHTML = `<p class="mensaje-error">${esc(e.message)}</p>`; }
   if (BON.vista === 'evaluar') { BON.tienda = BON.tienda || bonTiendas()[0]?.id;
     k.innerHTML = `<div class="adm-barra"><label class="campo" style="margin:0"><span>Tienda</span><select id="bv-t" class="sel corto">${bonTiendas().map(t => `<option value="${t.id}" ${t.id === BON.tienda ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></label>
-      <p class="ayuda">Aquí también evalúas al líder y al gerente (la encargada solo ve a los operadores de su tienda, en Administrar → Evaluación).</p></div><div id="bv-ev"></div>`;
+      <p class="ayuda">Aquí también evalúas al líder y al gerente (la líder solo ve a los operadores de su tienda, en Administrar → Evaluación).</p></div><div id="bv-ev"></div>`;
     k.querySelector('#bv-t').onchange = e => { BON.tienda = Number(e.target.value); pintarEvaluacion($('bv-ev'), BON.tienda); };
     return pintarEvaluacion($('bv-ev'), BON.tienda); }
   if (BON.vista === 'actividades') return pintarBonActividades(k);
@@ -3380,13 +3397,22 @@ function pintarAdmDispositivos() {
   if (DEMO && !DX.dispositivos) DX.dispositivos = [{ id: 1, nombre: nombreDispositivo(), navegador: navigator.userAgent, creado_en: new Date().toISOString(), ultimo_uso: new Date().toISOString(), usos: 1, este: true }];
   const ds = DX.dispositivos || [];
   const f = x => new Date(x).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'medium', timeStyle: 'short' });
-  cont.innerHTML = `<div class="adm-barra"><p>Equipos y celulares donde entraste como dueño con el código de tu app autenticadora. En ellos <b>ya no se pide el código</b>; en uno nuevo se pide una sola vez.
-      Si ves uno que no reconoces, o perdiste un celular, tócale <b>Quitar</b>: la próxima vez que alguien entre desde ahí le pedirá el código. Solo tú ves esta lista.</p></div>
-    <table class="tabla-simple"><thead><tr><th>Dispositivo</th><th>Registrado</th><th>Última vez</th><th class="der">Veces</th><th></th></tr></thead><tbody>
-    ${ds.map(d => `<tr><td><b>${esc(d.nombre || 'Dispositivo')}</b>${d.este ? ' <span class="badge ok">Este equipo</span>' : ''}<br><span class="ayuda">${esc((d.navegador || '').slice(0, 90))}</span></td>
-      <td class="num">${f(d.creado_en)}</td><td class="num">${f(d.ultimo_uso)}</td><td class="der num">${d.usos}</td>
+  const pend = ds.filter(d => d.aprobado === false);
+  cont.innerHTML = `<div class="adm-barra"><p>Equipos y celulares donde se usa el sistema. <b>Nadie puede usarlo en un equipo nuevo</b> hasta que se autorice: con la clave de administrador en ese equipo, o tocando <b>Aprobar</b> aquí.
+      Si ves uno que no reconoces, o se perdió un celular, tócale <b>Quitar</b>: desde ahí ya no se podrá entrar hasta autorizarlo otra vez. Las computadoras registradas como caja se autorizan solas. Solo tú ves esta lista.</p></div>
+    ${pend.length ? `<section class="graf"><h4>🔔 Esperando tu aprobación (${pend.length})</h4><table class="tabla-simple"><tbody>
+      ${pend.map(d => `<tr><td><b>${esc(d.usuario || '')}</b> <span class="ayuda">(${esc(ROLES[d.rol] || d.rol || '')})</span><br>${esc(d.nombre || 'Equipo')}</td><td class="num">${f(d.creado_en)}</td>
+        <td class="acciones"><button class="btn btn-primario" data-da="${d.id}">Aprobar</button> <button class="link" data-dq="${d.id}">Rechazar</button></td></tr>`).join('')}</tbody></table></section>` : ''}
+    <table class="tabla-simple"><thead><tr><th>Dispositivo</th><th>Usuario</th><th>Autorizado por</th><th>Última vez</th><th class="der">Veces</th><th></th></tr></thead><tbody>
+    ${ds.filter(d => d.aprobado !== false).map(d => `<tr><td><b>${esc(d.nombre || 'Dispositivo')}</b>${d.este ? ' <span class="badge ok">Este equipo</span>' : ''}<br><span class="ayuda">${esc((d.navegador || '').slice(0, 90))}</span></td>
+      <td>${esc(d.usuario || 'Tú')}${d.rol ? ` <span class="ayuda">${esc(ROLES[d.rol] || '')}</span>` : ''}</td><td>${esc(d.aprobado_por || (d.mio ? 'Tu código' : '—'))}</td>
+      <td class="num">${f(d.ultimo_uso)}</td><td class="der num">${d.usos}</td>
       <td class="acciones"><button class="link" data-dn="${d.id}">Cambiar nombre</button> <button class="link" data-dq="${d.id}">Quitar</button></td></tr>`).join('')
-      || '<tr><td colspan="5" class="vacio">Todavía no hay dispositivos registrados.</td></tr>'}</tbody></table>`;
+      || '<tr><td colspan="6" class="vacio">Todavía no hay dispositivos registrados.</td></tr>'}</tbody></table>`;
+  cont.querySelectorAll('[data-da]').forEach(b => b.onclick = () => guardando(b, async () => {
+    if (DEMO) { ds.find(x => x.id === Number(b.dataset.da)).aprobado = true; return pintarAdmDispositivos(); }
+    const { error } = await sb.rpc('pos_dispositivo_aprobar', { p_id: Number(b.dataset.da) }); if (error) throw new Error(error.message);
+    toast('Equipo aprobado'); refrescarAdmin(); }));
   cont.querySelectorAll('[data-dn]').forEach(b => b.onclick = async () => {
     const d = ds.find(x => x.id === Number(b.dataset.dn)), n = prompt('Nombre para este dispositivo (ej. "Mi celular", "Laptop casa"):', d.nombre || '');
     if (!n || !n.trim()) return;
@@ -3395,7 +3421,7 @@ function pintarAdmDispositivos() {
     refrescarAdmin(); });
   cont.querySelectorAll('[data-dq]').forEach(b => b.onclick = async () => {
     const d = ds.find(x => x.id === Number(b.dataset.dq));
-    if (!confirm(`¿Quitar "${d.nombre || 'este dispositivo'}"? Desde ahí se volverá a pedir el código de la app autenticadora.${d.este ? ' (Es el equipo que estás usando: tendrás que poner el código otra vez.)' : ''}`)) return;
+    if (!confirm(`¿Quitar "${d.nombre || 'este dispositivo'}"? Desde ahí no se podrá entrar hasta autorizarlo otra vez.${d.este ? ' (Es el equipo que estás usando: tendrás que poner el código otra vez.)' : ''}`)) return;
     if (DEMO) { DX.dispositivos = ds.filter(x => x !== d); return pintarAdmDispositivos(); }
     const { error } = await sb.rpc('pos_dispositivo_quitar', { p_id: d.id }); if (error) return toast(error.message, true);
     toast('Dispositivo quitado'); if (d.este) { await api.salir(); location.reload(); } else refrescarAdmin(); });
@@ -3472,7 +3498,7 @@ async function cargarVentasReal(desde, hasta, forzar = false) {
 async function cargarInventarioReal() {
   const d = await rpc('pos_inv_datos', { p_clave: A.clave, p_tienda: S.tienda.id, p_movs: 2000 });
   DX.insumos = d.insumos.map(i => ({ id: i.id, nombre: i.nombre, unidad: i.unidad, costo_usd: num(i.costo_usd), minimo: num(i.minimo),
-    activo: i.activo, clase_costo: i.clase_costo, etapa: i.etapa, proveedor_id: i.proveedor_id ?? null, stock: { [S.tienda.id]: num(i.cantidad) } }));
+    activo: i.activo, clase_costo: i.clase_costo, etapa: i.etapa, proveedor_id: i.proveedor_id ?? null, iva_exento: !!i.iva_exento, stock: { [S.tienda.id]: num(i.cantidad) } }));
   DX.produccion = {}; Object.entries(d.produccion || {}).forEach(([k, ls]) => { DX.produccion[k] = ls.map(l => ({ insumo_id: l.insumo_id, cantidad: num(l.cantidad) })); });
   DX.recetas = {};
   Object.entries(d.recetas || {}).forEach(([k, filas]) => { DX.recetas[k] = filas.map(r => ({ insumo_id: r.insumo_id, cantidad: num(r.cantidad) })); });
@@ -4099,8 +4125,21 @@ async function pintarHistConteos(t) {
   box.innerHTML = `<h4>Ajustes anteriores</h4>${lista.length ? `<table class="tabla-simple num"><thead><tr><th>Fecha</th><th>Contó</th><th class="der">Insumos</th><th class="der">Ajuste</th><th class="der">Variación</th><th></th></tr></thead><tbody>
     ${lista.map((c, k) => { const z = resumenAjuste(c); return `<tr><td>${esc(new Date(c.fecha).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'short', timeStyle: 'short' }))}</td><td>${esc(c.usuario_nombre || '')}</td>
       <td class="der">${z.ls.length}</td><td class="der ${z.neto < 0 ? 'rojo' : z.neto > 0 ? 'azul' : ''}">${usd(z.neto)}</td><td class="der">${z.pct == null ? '—' : fmt.format(r2(z.pct)) + ' %'}</td>
-      <td><button class="link" data-cpdf="${k}">📄 PDF</button></td></tr>`; }).join('')}</tbody></table>` : '<p class="vacio">Todavía no hay ajustes guardados (se guardan desde hoy).</p>'}`;
+      <td><button class="link" data-cpdf="${k}">📄 PDF</button>${S.perfil.rol === 'dueno' ? ` <button class="link" data-cmov="${k}">Pasar a otra tienda</button> <button class="link rojo" data-canu="${k}">Anular</button>` : ''}</td></tr>`; }).join('')}</tbody></table>` : '<p class="vacio">Todavía no hay ajustes guardados (se guardan desde hoy).</p>'}`;
   box.querySelectorAll('[data-cpdf]').forEach(b => b.onclick = () => pdfAjuste(lista[Number(b.dataset.cpdf)]));
+  box.querySelectorAll('[data-canu]').forEach(b => b.onclick = () => { const c = lista[Number(b.dataset.canu)];
+    if (!confirm('¿Anular este ajuste? Las existencias de cada insumo vuelven a como estaban antes del conteo.')) return;
+    guardando(b, async () => { if (DEMO) { (c.detalle || []).forEach(l => moverStock(t, l.insumo_id, -l.diferencia, 'ajuste', 'Ajuste anulado')); DX.conteos = DX.conteos.filter(x => x !== c); guardarDemo(); }
+      else { await rpc('pos_conteo_anular', { p_id: c.id, p_motivo: 'Anulado por el dueño' }); await cargarInventarioReal(); }
+      toast('Ajuste anulado'); pintarAdmInventario(); }); });
+  box.querySelectorAll('[data-cmov]').forEach(b => b.onclick = async () => { const c = lista[Number(b.dataset.cmov)], ts = (await tiendasEmpresa()).filter(x => x.id !== t);
+    const n = prompt('¿A qué tienda pertenece este conteo? Escribe el número:\n' + ts.map((x, i) => `${i + 1}. ${x.nombre}`).join('\n'));
+    const dest = ts[Number(n) - 1]; if (!dest) return;
+    if (!confirm(`Pasar el conteo a ${dest.nombre}: aquí se deshace el ajuste y en ${dest.nombre} las existencias quedan como lo contado.`)) return;
+    guardando(b, async () => { if (DEMO) { (c.detalle || []).forEach(l => { moverStock(t, l.insumo_id, -l.diferencia, 'ajuste', 'Ajuste pasado a otra tienda');
+        const i = DX.insumos.find(x => x.id === l.insumo_id); if (i) moverStock(dest.id, i.id, l.contado - stockDe(i, dest.id), 'ajuste', 'Conteo físico'); }); c.tienda_id = dest.id; guardarDemo(); }
+      else { await rpc('pos_conteo_mover', { p_id: c.id, p_tienda: dest.id }); await cargarInventarioReal(); }
+      toast('Conteo pasado a ' + dest.nombre); pintarAdmInventario(); }); });
 }
 // Productos y toppings/sabores que no se pueden vender por falta de existencia, y los desbloqueados
 async function pintarInvBloqueos(ic) {
@@ -4167,6 +4206,7 @@ function pintarAdmInventario() {
         <label class="campo"><span>Costo por unidad en dólares *</span><input id="ie-costo" class="txt num" value="${i ? i.costo_usd : ''}" placeholder="Ej. 0,004 por ml"></label>
         <label class="campo"><span>Inventario de</span><select id="ie-etapa" class="sel">${Object.entries(ETAPAS).map(([k, n]) => `<option value="${k}" ${etapaDe(i) === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         <label class="campo"><span>Tipo de costo (para el balance)</span><select id="ie-clase" class="sel"><option value="directo">Material directo (lo que se come o se bebe)</option><option value="desechable" ${claseCosto(i) === 'desechable' ? 'selected' : ''}>Desechable (vasos, envases, servilletas…)</option></select></label>
+        <label class="campo"><span>IVA al comprarlo</span><select id="ie-iva" class="sel"><option value="0">Gravable (paga IVA 16 %)</option><option value="1" ${i?.iva_exento ? 'selected' : ''}>Exento (no paga IVA)</option></select></label>
         <label class="campo"><span>Proveedor habitual (para armar los pedidos)</span><select id="ie-prov" class="sel"><option value="">— Ninguno —</option>${(DX.proveedores || []).map(p => `<option value="${p.id}" ${i?.proveedor_id === p.id ? 'selected' : ''}>${esc(p.nombre)}${p.condicion === 'contado' ? ' (contado)' : ''}</option>`).join('')}</select></label>
         ${i ? `<label class="interruptor"><input type="checkbox" id="ie-activo" checked><span>En uso</span></label>` : ''}</div>
         <div class="modal-pie"><button type="button" class="btn btn-sec" id="ie-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 480);
@@ -4176,10 +4216,10 @@ function pintarAdmInventario() {
         const err = m => { r.querySelector('#ie-error').textContent = m; r.querySelector('#ie-error').classList.remove('oculto'); };
         if (nombre.length < 2) return err('Escribe el nombre'); if (!(min >= 0)) return err('Revisa el mínimo'); if (!(costo >= 0)) return err('Revisa el costo');
         if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
-          await rpc('pos_inv_guardar_insumo', { p_clave: A.clave, p_tienda: t, p: { id: i?.id || null, nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, activo: i ? r.querySelector('#ie-activo').checked : true } });
+          await rpc('pos_inv_guardar_insumo', { p_clave: A.clave, p_tienda: t, p: { id: i?.id || null, nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, iva_exento: r.querySelector('#ie-iva').value === '1', activo: i ? r.querySelector('#ie-activo').checked : true } });
           cerrarModal(); toast('Insumo guardado'); refrescarAdmin(); }, err);
-        if (i) Object.assign(i, { nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, activo: r.querySelector('#ie-activo').checked });
-        else DX.insumos.push({ id: nid(), nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, stock: {} });
+        if (i) Object.assign(i, { nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, iva_exento: r.querySelector('#ie-iva').value === '1', activo: r.querySelector('#ie-activo').checked });
+        else DX.insumos.push({ id: nid(), nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, iva_exento: r.querySelector('#ie-iva').value === '1', stock: {} });
         guardarDemo(); cerrarModal(); toast('Insumo guardado'); pintarAdmInventario(); pintarChipStock(); };
     };
     $('in-nuevo').onclick = () => editar(null);
@@ -4190,7 +4230,7 @@ function pintarAdmInventario() {
   } else if (INV.sub === 'recibir') {
     const ped = INV.pedido && INV.pedido.tienda_id === t ? INV.pedido : null;
     ic.innerHTML = `<form id="f-rec" class="form-caja ancho"><h4>Recibir mercancía (copia la factura tal cual)</h4>
-      <p class="ayuda">Escribe lo que dice la factura: proveedor, RIF, número, y cada insumo con su cantidad, costo por unidad y costo total. Toma una foto de la factura y adjúntala. La factura queda en <b>Proveedores</b> como pagada o por pagar, y el inventario sube solo.</p>
+      <p class="ayuda">Escribe lo que dice la factura: proveedor, RIF, número, y cada insumo con su cantidad y su costo <b>SIN IVA</b> (la base); marca <b>Exento</b> lo que no paga IVA y el sistema suma el IVA de lo gravable. Toma una foto de la factura y adjúntala. La factura queda en <b>Proveedores</b> como pagada o por pagar, y el inventario sube solo.</p>
       ${ped ? `<div class="aviso-pedido">📦 Recibiendo el pedido N° ${ped.id} (${esc(ped.solicitante || '')}). Revisa que las cantidades sean las que llegaron. <button type="button" class="link" id="rc-sin-ped">Quitar el pedido</button></div>` : ''}
       <div id="mv-error" class="mensaje-error oculto"></div>
       <div class="rec-grid">
@@ -4216,8 +4256,9 @@ function pintarAdmInventario() {
         <div class="rec-foto"><label class="btn btn-sec" for="rc-foto">📷 Foto de la factura</label><input id="rc-foto" type="file" accept="image/*,application/pdf" capture="environment" hidden>
           <span id="rc-foto-n" class="ayuda">Sin foto todavía</span></div>
       </div>
-      <div class="rec-cab"><span>Insumo</span><span>Cantidad</span><span>Costo por unidad</span><span>Costo total</span><span></span></div>
+      <div class="rec-cab"><span>Insumo</span><span>Cantidad</span><span>Costo unidad (sin IVA)</span><span>Costo total (sin IVA)</span><span>Exento</span><span></span></div>
       <div id="mv-filas"></div><button type="button" class="link" id="mv-mas">+ otro insumo</button>
+      <div class="rec-iva ayuda" id="rc-iva"></div>
       <div class="rec-total"><span>Total de la factura <i class="ayuda" id="rc-clases"></i></span><b class="num" id="rc-total">$0,00</b></div>
       <label class="campo"><span>Nota (opcional)</span><input id="rc-nota" class="txt" placeholder="Ej. llegó una caja golpeada"></label>
       <button class="btn btn-primario">Registrar factura y entrada</button></form>`;
@@ -4250,14 +4291,18 @@ function pintarAdmInventario() {
       catch (e) { foto = null; $('rc-foto-n').textContent = 'No se pudo leer esa foto. Prueba otra vez.'; }
     };
     if ($('rc-sin-ped')) $('rc-sin-ped').onclick = () => { INV.pedido = null; pintarAdmInventario(); };
+    const TASA_IVA = (S.tienda.iva_porcentaje ?? 16) / 100;
     const recalcular = () => {
-      let tot = 0, dir = 0, des = 0;
+      let tot = 0, dir = 0, des = 0, grav = 0, exe = 0;
       ic.querySelectorAll('.fila-rec').forEach(d => {
         const id = Number(d.querySelector('.mv-ins').value), m = leerNum(d.querySelector('.mv-costo').value);
         d.querySelector('.mv-cant').placeholder = 'En ' + unidad(id);
-        if (m > 0) { tot += m; if (claseCosto(DX.insumos.find(x => x.id === id)) === 'desechable') des += m; else dir += m; }
+        if (m > 0) { tot += m; if (claseCosto(DX.insumos.find(x => x.id === id)) === 'desechable') des += m; else dir += m;
+          if (d.querySelector('.mv-ex').checked) exe += m; else grav += m; }
       });
-      $('rc-total').textContent = usd(tot);
+      const iva = r2(grav * TASA_IVA);
+      $('rc-iva').innerHTML = tot > 0 ? `Base gravable ${usd(grav)} · IVA ${Math.round(TASA_IVA * 100)} % ${usd(iva)} · Exento ${usd(exe)}` : '';
+      $('rc-total').textContent = usd(r2(tot + iva));
       $('rc-clases').textContent = tot > 0 ? `· material directo ${usd(dir)} · desechable ${usd(des)}` : '';
     };
     // Cantidad × costo por unidad = costo total; si escribes uno de los dos, el otro se calcula
@@ -4272,10 +4317,13 @@ function pintarAdmInventario() {
       d.innerHTML = `<select class="sel mv-ins">${optsIns}</select><input class="txt num mv-cant" inputmode="decimal">
         <div class="con-signo"><span>$</span><input class="txt num mv-cu" inputmode="decimal" placeholder="0,00"></div>
         <div class="con-signo"><span>$</span><input class="txt num mv-costo" inputmode="decimal" placeholder="0,00"></div>
+        <label class="mv-ex-l" title="Exento de IVA"><input type="checkbox" class="mv-ex"> <span>Exento</span></label>
         <button type="button" class="quitar" title="Quitar">✕</button>`;
       $('mv-filas').appendChild(d);
       if (ins) d.querySelector('.mv-ins').value = ins; if (cant) d.querySelector('.mv-cant').value = fmtCant(cant);
-      d.querySelector('.mv-ins').onchange = recalcular;
+      const exDef = () => { d.querySelector('.mv-ex').checked = !!DX.insumos.find(x => x.id === Number(d.querySelector('.mv-ins').value))?.iva_exento; };
+      exDef(); d.querySelector('.mv-ex').onchange = recalcular;
+      d.querySelector('.mv-ins').onchange = () => { exDef(); recalcular(); };
       d.querySelector('.mv-cant').oninput = () => cuadrar(d, 'cant');
       d.querySelector('.mv-cu').oninput = () => cuadrar(d, 'cu');
       d.querySelector('.mv-costo').oninput = () => cuadrar(d, 'total');
@@ -4293,14 +4341,14 @@ function pintarAdmInventario() {
       const num = limpiar($('rc-num').value), em = $('rc-em').value || hoyVE(), contado = $('rc-pago').value === 'contado';
       if (!central && !num) return err('Escribe el número de la factura');
       if (!central && em > hoyVE()) return err('La fecha de la factura no puede ser de mañana');
-      const filas = [...ic.querySelectorAll('.fila-rec')].map(d => ({ id: Number(d.querySelector('.mv-ins').value), c: leerNum(d.querySelector('.mv-cant').value), m: leerNum(d.querySelector('.mv-costo').value), d }));
+      const filas = [...ic.querySelectorAll('.fila-rec')].map(d => ({ id: Number(d.querySelector('.mv-ins').value), c: leerNum(d.querySelector('.mv-cant').value), m: leerNum(d.querySelector('.mv-costo').value), ex: d.querySelector('.mv-ex').checked, d }));
       filas.forEach(x => { x.d.querySelector('.mv-cant').classList.toggle('falta', !(x.c > 0)); x.d.querySelector('.mv-costo').classList.toggle('falta', !(x.m >= 0)); });
       if (filas.some(x => !(x.c > 0))) return err('Escribe la cantidad de cada línea');
       if (filas.some(x => !(x.m >= 0))) return err('Escribe el costo de cada línea (0 si vino sin costo)');
       const provId = Number(o) || null, vence = contado ? em : sumarDias(em, Number($('rc-dias').value));
       if (!central && provId && DX.facturas.some(f => f.proveedor_id === provId && f.numero.toUpperCase() === num.toUpperCase()))
         return err(`La factura ${num} de ese proveedor ya está registrada`);
-      const total = r2(filas.reduce((a, x) => a + x.m, 0)), nota = limpiar($('rc-nota').value);
+      const base = r2(filas.reduce((a, x) => a + x.m, 0)), iva = r2(filas.filter(x => !x.ex).reduce((a, x) => a + x.m, 0) * TASA_IVA), total = r2(base + iva), nota = limpiar($('rc-nota').value);
       if (!DEMO) return guardando($('f-rec').querySelector('.btn-primario'), async () => {
         let foto_path = null;
         if (foto && !central) {
@@ -4310,7 +4358,7 @@ function pintarAdmInventario() {
         }
         const res = await rpc('pos_inv_recibir2', { p_clave: A.clave, p_tienda: t, p: { central, proveedor_id: provId, proveedor_nuevo: nuevo || undefined,
           numero: num || null, emitida: em, vence, pagada: contado, referencia_pago: limpiar($('rc-ref').value) || null, foto_path, nota: nota || null,
-          pedido_id: ped?.id || null, lineas: filas.map(x => ({ insumo_id: x.id, cantidad: x.c, costo_total: x.m })) } });
+          pedido_id: ped?.id || null, lineas: filas.map(x => ({ insumo_id: x.id, cantidad: x.c, costo_total: x.m, exento: x.ex })) } });
         INV.pedido = null; toast(`Entrada registrada por ${usd(Number(res.total))}`); INV.sub = 'existencias'; refrescarAdmin(); }, err);
       // demo
       let pid = provId, provNom = 'Producción central';
@@ -4324,12 +4372,13 @@ function pintarAdmInventario() {
         ins.costo_usd = antes + x.c > 0 ? Math.round(((antes * ins.costo_usd) + x.m) / (antes + x.c) * 1e6) / 1e6 : unit;
         moverStock(t, x.id, x.c, 'entrada', provNom + (num && !central ? ' · Fact. ' + num : '') + (nota ? ' · ' + nota : ''));
         Object.assign(DX.movs.at(-1), { costo_total: r2(x.m), costo_unit: Math.round(unit * 1e6) / 1e6 });
-        detalle.push({ insumo_id: ins.id, nombre: ins.nombre, unidad: ins.unidad, cantidad: x.c, costo_unit: Math.round(unit * 1e6) / 1e6, costo_total: r2(x.m), clase: claseCosto(ins) });
+        ins.iva_exento = x.ex;
+        detalle.push({ insumo_id: ins.id, nombre: ins.nombre, unidad: ins.unidad, cantidad: x.c, costo_unit: Math.round(unit * 1e6) / 1e6, costo_total: r2(x.m), clase: claseCosto(ins), exento: x.ex });
       }
       let facId = null;
       if (!central && total > 0) {
         facId = nid();
-        DX.facturas.push({ id: facId, proveedor_id: pid, tienda_id: t, numero: num, emitida: em, vence, monto_usd: total, nota, detalle,
+        DX.facturas.push({ id: facId, proveedor_id: pid, tienda_id: t, numero: num, emitida: em, vence, monto_usd: total, base_usd: base, iva_usd: iva, nota, detalle,
           foto_data: foto && foto.demo ? foto.demo : null, pedido_id: ped?.id || null,
           abonos: contado ? [{ fecha: em, monto_usd: total, referencia: limpiar($('rc-ref').value) || 'De contado' }] : [] });
       }
@@ -4503,10 +4552,11 @@ function pintarProduccion(ic, t, optsIns) {
     return xs.length ? `<optgroup label="${t2}">${xs.map(i => `<option value="${i.id}" ${INV.prodSel === i.id ? 'selected' : ''}>${esc(i.nombre)}</option>`).join('')}</optgroup>` : ''; };
   const hechosHoy = DX.movs.filter(m => m.tienda_id === t && m.tipo === 'produccion' && diaVE(m.fecha) === hoy);
   ic.innerHTML = `<form id="f-prod" class="form-caja"><h4>Registrar producción</h4>
-      <p class="ayuda"><b>1. Hacer bolitas:</b> se descuenta la materia prima (harina, chispas…) y suben las bolitas congeladas.<br><b>2. Hornear:</b> se descuentan bolitas congeladas y suben las galletas horneadas. Al vender una galleta se descuenta una horneada.</p>
+      <p class="ayuda"><b>Galletas:</b> 1) hacer bolitas: baja la materia prima (harina, chispas…) y suben las bolitas congeladas; 2) hornear: bajan bolitas y suben galletas horneadas.<br>
+      <b>Sirope de chocolate:</b> se diluye el chocolate con aceite: escribe cuánto sirope salió y cuánto chocolate y aceite usaste; baja eso y sube el sirope.</p>
       <div id="pr-error" class="mensaje-error oculto"></div>
-      <label class="campo"><span>¿Qué hiciste? *</span><select id="pr-sal" class="sel"><option value="">Elige…</option>${grupo('en_proceso', '1. Hacer bolitas (masa que queda congelada)')}${grupo('terminado', '2. Hornear')}</select></label>
-      <div class="dos-campos"><label class="campo"><span>¿Cuántas? *</span><input id="pr-cant" class="txt num" inputmode="decimal" placeholder="Ej. 40"></label>
+      <label class="campo"><span>¿Qué hiciste? *</span><select id="pr-sal" class="sel"><option value="">Elige…</option>${grupo('en_proceso', 'Preparaciones (masa de galletas que queda congelada…)')}${grupo('terminado', 'Productos listos (hornear galletas, diluir chocolate…)')}</select></label>
+      <div class="dos-campos"><label class="campo"><span>¿Cuánto salió? *</span><input id="pr-cant" class="txt num" inputmode="decimal" placeholder="Ej. 40"></label>
         <label class="campo"><span>Nota</span><input id="pr-nota" class="txt" placeholder="Opcional"></label></div>
       <div id="pr-prev"></div>
       <button class="btn btn-primario">Registrar</button></form>
@@ -4522,23 +4572,28 @@ function pintarProduccion(ic, t, optsIns) {
     INV.prodSel = s?.id || null;
     if (!s || !(n > 0)) { $('pr-prev').innerHTML = ''; return; }
     const ls = prod[s.id] || [];
-    const filas = ls.map(l => { const i = DX.insumos.find(x => x.id === l.insumo_id), usa = l.cantidad * n, hay = stockDe(i, t); return { i, usa, hay }; });
-    const costo = filas.reduce((a, f) => a + f.usa * f.i.costo_usd, 0);
-    $('pr-prev').innerHTML = `<p class="ayuda">Se va a descontar:</p><table class="tabla-simple num"><tbody>${filas.map(f => `<tr><td>${esc(f.i.nombre)}</td><td class="der">${fmtCant(f.usa)} ${esc(f.i.unidad)}</td>
-      <td class="der ${f.hay < f.usa ? 'rojo' : ''}">hay ${fmtCant(Math.max(f.hay, 0))}</td></tr>`).join('')}</tbody></table>
-      <p class="ayuda">Suben <b>${fmtCant(n)} ${esc(s.nombre)}</b> · costo ${usd(costo)} (${usd(costo / n)} c/u)${filas.some(f => f.hay < f.usa) ? ' · <span class="rojo">ojo: según el sistema no alcanza algo (si es porque falta el conteo, igual se puede registrar)</span>' : ''}</p>`;
+    const filas = ls.map(l => { const i = DX.insumos.find(x => x.id === l.insumo_id), usa = r2(l.cantidad * n * 1000) / 1000, hay = stockDe(i, t); return { i, usa, hay }; });
+    // Lo que se usó en ESTE lote: sale sugerido de la receta y se puede cambiar (21/11/2026: p. ej. el chocolate que se diluye con aceite)
+    $('pr-prev').innerHTML = `<p class="ayuda">Lo que se usó en este lote (sale sugerido; cámbialo si usaste otra cantidad):</p><table class="tabla-simple num"><tbody>${filas.map(f => `<tr><td>${esc(f.i.nombre)}</td>
+      <td class="der"><input class="txt num pr-usa" data-i="${f.i.id}" inputmode="decimal" value="${fmtCant(f.usa)}" style="max-width:110px"> ${esc(f.i.unidad)}</td>
+      <td class="der ${f.hay < f.usa ? 'rojo' : ''}">hay ${fmtCant(Math.max(f.hay, 0))}</td></tr>`).join('')}</tbody></table><p class="ayuda" id="pr-costo"></p>`;
+    const costear = () => { const c = [...$('pr-prev').querySelectorAll('.pr-usa')].reduce((a, x) => a + leerNum(x.value) * (DX.insumos.find(i => i.id === Number(x.dataset.i))?.costo_usd || 0), 0);
+      $('pr-costo').innerHTML = `Suben <b>${fmtCant(n)} ${esc(s.unidad)} de ${esc(s.nombre)}</b> · costo ${usd(c)} (${usd(c / n)} c/u)${filas.some(f => f.hay < f.usa) ? ' · <span class="rojo">ojo: según el sistema no alcanza algo (si es porque falta el conteo, igual se puede registrar)</span>' : ''}`; };
+    $('pr-prev').querySelectorAll('.pr-usa').forEach(x => x.oninput = costear); costear();
   };
   $('pr-sal').onchange = prev; $('pr-cant').oninput = prev; prev();
   $('f-prod').onsubmit = async e => { e.preventDefault();
     const err = m => { $('pr-error').textContent = m; $('pr-error').classList.remove('oculto'); };
     const s = DX.insumos.find(i => i.id === Number($('pr-sal').value)), n = leerNum($('pr-cant').value), nota = limpiar($('pr-nota').value);
-    if (!s) return err('Elige qué hiciste'); if (!(n > 0)) return err('Escribe cuántas');
+    if (!s) return err('Elige qué hiciste'); if (!(n > 0)) return err('Escribe cuánto salió');
+    const consumo = [...$('pr-prev').querySelectorAll('.pr-usa')].map(x => ({ insumo_id: Number(x.dataset.i), cantidad: leerNum(x.value) })).filter(x => x.cantidad > 0);
+    if (!consumo.length) return err('Escribe lo que se usó');
     if (!DEMO) return guardando($('f-prod').querySelector('.btn-primario'), async () => {
-      const r = await rpc('pos_producir', { p_clave: A.clave, p_tienda: t, p_salida: s.id, p_cantidad: n, p_nota: nota || null });
+      const r = await rpc('pos_producir_lote', { p_clave: A.clave, p_tienda: t, p_salida: s.id, p_cantidad: n, p_nota: nota || null, p_consumo: consumo });
       toast(`Listo: ${fmtCant(n)} ${s.nombre} (costo ${usd(Number(r.costo))})`); refrescarAdmin(); }, err);
-    const txt = (etapaDe(s) === 'en_proceso' ? 'Hecho: ' : 'Horneado: ') + fmtCant(n) + ' ' + s.nombre + (nota ? ' · ' + nota : '');
+    const txt = 'Producido: ' + fmtCant(n) + ' ' + s.unidad + ' ' + s.nombre + (nota ? ' · ' + nota : '');
     let total = 0;
-    for (const l of prod[s.id] || []) { const i = DX.insumos.find(x => x.id === l.insumo_id); total += l.cantidad * n * i.costo_usd; moverStock(t, i.id, -l.cantidad * n, 'consumo_produccion', txt); }
+    for (const l of consumo) { const i = DX.insumos.find(x => x.id === l.insumo_id); total += l.cantidad * i.costo_usd; moverStock(t, i.id, -l.cantidad, 'consumo_produccion', txt); }
     const antes = Math.max(stockDe(s, t), 0);
     s.costo_usd = Math.round(((antes * s.costo_usd) + total) / (antes + n) * 1e6) / 1e6;
     moverStock(t, s.id, n, 'produccion', txt); Object.assign(DX.movs.at(-1), { costo_total: r2(total) });
@@ -4607,6 +4662,45 @@ function estadoFactura(f, hoy = hoyVE()) {
   if (f.vence <= sumarDias(hoy, 7)) return { k: 'pendiente', html: `<span class="badge abierta">Vence en ${diasEntre(hoy, f.vence) - 1} días</span>` };
   return { k: 'pendiente', html: '<span class="badge">Por pagar</span>' };
 }
+// ---- El dueño corrige facturas él mismo (21/11/2026): tienda, proveedor, número, fechas, nota; o la anula ----
+async function tiendasEmpresa() {
+  if (DEMO) return DEMO_DATA.tiendas.map(x => ({ id: x.id, nombre: x.nombre }));
+  return S.tiendas?.length ? S.tiendas : (await sb.from('pos_tiendas').select('id,nombre').order('id')).data || [];
+}
+async function corregirFactura(f) {
+  const tiendas = await tiendasEmpresa();
+  const r = abrirModal(`<form id="f-cf"><div class="modal-cab"><h3 class="titulo">Corregir factura ${esc(f.numero)}</h3>
+      <p>Si cambias la tienda, la mercancía de esta factura sale de la tienda donde se cargó y entra en la nueva.</p></div>
+    <div class="modal-cuerpo"><div id="cf-error" class="mensaje-error oculto"></div>
+      <div class="dos-campos"><label class="campo"><span>Tienda</span><select id="cf-t" class="sel">${tiendas.map(x => `<option value="${x.id}" ${x.id === f.tienda_id ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select></label>
+        <label class="campo"><span>Proveedor</span><select id="cf-p" class="sel">${DX.proveedores.map(p => `<option value="${p.id}" ${p.id === f.proveedor_id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label></div>
+      <div class="dos-campos"><label class="campo"><span>N° de factura</span><input id="cf-n" class="txt" value="${esc(f.numero)}"></label>
+        <label class="campo"><span>Fecha de la factura</span><input id="cf-e" type="date" class="txt" value="${f.emitida}"></label></div>
+      <div class="dos-campos"><label class="campo"><span>Vence</span><input id="cf-v" type="date" class="txt" value="${f.vence}"></label>
+        <label class="campo"><span>Nota</span><input id="cf-nota" class="txt" value="${esc(f.nota || '')}"></label></div>
+      <p class="ayuda">Si lo que está mal son las cantidades o los costos, anula la factura y cárgala otra vez bien.</p></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="cf-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar corrección</button></div></form>`, 620);
+  r.querySelector('#cf-x').onclick = cerrarModal;
+  r.querySelector('#f-cf').onsubmit = e => { e.preventDefault();
+    const q = { tienda_id: Number(r.querySelector('#cf-t').value), proveedor_id: Number(r.querySelector('#cf-p').value), numero: limpiar(r.querySelector('#cf-n').value),
+      emitida: r.querySelector('#cf-e').value, vence: r.querySelector('#cf-v').value, nota: limpiar(r.querySelector('#cf-nota').value) };
+    guardando(r.querySelector('.btn-primario'), async () => {
+      if (!q.numero) throw new Error('Escribe el número');
+      if (DEMO) {
+        if (q.tienda_id !== f.tienda_id) (f.detalle || []).forEach(l => { moverStock(f.tienda_id, l.insumo_id, -l.cantidad, 'ajuste', 'Factura pasada a otra tienda'); moverStock(q.tienda_id, l.insumo_id, l.cantidad, 'entrada', 'Factura ' + q.numero); });
+        Object.assign(f, q); guardarDemo();
+      } else await rpc('pos_factura_editar', { p_id: f.id, p: q });
+      cerrarModal(); toast('Factura corregida'); DEMO ? pintarAdmin() : refrescarAdmin();
+    }, m => { r.querySelector('#cf-error').textContent = m; r.querySelector('#cf-error').classList.remove('oculto'); }); };
+}
+function anularFactura(f) {
+  const motivo = prompt(`Anular la factura ${f.numero} (${usd(f.monto_usd)}). Se saca del inventario la mercancía que entró con ella y se borran sus pagos.\n\n¿Por qué se anula?`);
+  if (!motivo || !motivo.trim()) return;
+  guardando(null, async () => {
+    if (DEMO) { (f.detalle || []).forEach(l => moverStock(f.tienda_id, l.insumo_id, -l.cantidad, 'ajuste', 'Factura anulada: ' + motivo)); DX.facturas = DX.facturas.filter(x => x !== f); guardarDemo(); }
+    else await rpc('pos_factura_anular', { p_id: f.id, p_motivo: motivo.trim() });
+    cerrarModal(); toast('Factura anulada'); DEMO ? pintarAdmin() : refrescarAdmin(); });
+}
 function verFactura(f) {
   const p = DX.proveedores.find(x => x.id === f.proveedor_id), det = f.detalle || [];
   const tot = c => r2(det.filter(x => (x.clase || 'directo') === c).reduce((a, x) => a + Number(x.costo_total), 0));
@@ -4617,6 +4711,7 @@ function verFactura(f) {
         ${det.map(x => `<tr><td>${esc(x.nombre)}</td><td class="der">${fmtCant(Number(x.cantidad))} ${esc(x.unidad || '')}</td><td class="der">$${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(Number(x.costo_unit))}</td>
           <td class="der">${usd(Number(x.costo_total))}</td><td>${NOMBRE_CLASE[x.clase || 'directo']}</td></tr>`).join('')}</tbody></table>
         <p class="ayuda">Material directo ${usd(tot('directo'))} · Desechable ${usd(tot('desechable'))}</p>` : '<p class="ayuda">Esta factura se cargó sin el detalle de insumos.</p>'}
+      ${f.iva_usd != null && Number(f.iva_usd) > 0 ? `<p class="ayuda der">Base ${usd(Number(f.base_usd))} · IVA ${usd(Number(f.iva_usd))} · Exento ${usd(Number(f.exento_usd || 0))}</p>` : ''}
       <p class="rec-total"><span>Total</span><b class="num">${usd(f.monto_usd)}</b></p>
       <h4 style="margin:10px 0 4px">Pagos</h4>
       ${(f.abonos || []).length ? `<table class="tabla-simple num"><tbody>${f.abonos.map(a => `<tr><td>${fechaLarga(a.fecha)}</td><td>${esc(a.referencia || '')}</td><td class="der">${usd(a.monto_usd)}</td></tr>`).join('')}</tbody></table>` : '<p class="ayuda">Todavía no tiene pagos.</p>'}
@@ -4624,8 +4719,11 @@ function verFactura(f) {
       ${f.nota ? `<p class="ayuda">Nota: ${esc(f.nota)}</p>` : ''}
     </div>
     <div class="modal-pie">${f.foto_path || f.foto_data ? '<button type="button" class="btn btn-sec" id="vf-foto">📷 Ver foto</button>' : '<span class="ayuda">Sin foto</span>'}
+      ${S.perfil.rol === 'dueno' ? '<button type="button" class="btn btn-sec" id="vf-editar">✏️ Corregir</button><button type="button" class="link rojo" id="vf-anular">Anular factura</button>' : ''}
       <span class="espacio"></span><button type="button" class="btn btn-primario" id="vf-x">Cerrar</button></div>`, 720);
   r.querySelector('#vf-x').onclick = cerrarModal;
+  if (r.querySelector('#vf-editar')) r.querySelector('#vf-editar').onclick = () => corregirFactura(f);
+  if (r.querySelector('#vf-anular')) r.querySelector('#vf-anular').onclick = () => anularFactura(f);
   if (r.querySelector('#vf-foto')) r.querySelector('#vf-foto').onclick = () => verFotoFactura(f);
 }
 
@@ -5493,7 +5591,7 @@ function pintarAdmClientes() {
 /* ---------- PERMISOS POR USUARIO (etapa 16): el dueño pone o quita cada función a encargadas y cajeros ---------- */
 const PERMISOS = [
   ['Caja', [['anular', 'Anular ventas']]],
-  ['Administrar', [['sin_clave', 'Entrar a Administrar SIN la clave de administrador'], ['panel', 'Panel (ventas y números de la tienda)'], ['productos', 'Productos y precios'],
+  ['Administrar', [['sin_clave', 'Entra a Administrar con su propio usuario (sin pedirle la clave de administrador)'], ['panel', 'Panel (ventas y números de la tienda)'], ['productos', 'Productos y precios'],
     ['opciones', 'Toppings y sabores'], ['portienda', 'Qué vende cada tienda (productos y materia prima)'], ['cierres', 'Cierres de caja'],
     ['gastos', 'Gastos y pagos (presupuesto, plan de pagos, facturas y proveedores)'], ['clientes', 'Clientes'], ['reportes', 'Reportes'],
     ['evaluacion', 'Evaluar al equipo de su tienda'], ['cajas', 'Registrar o quitar la computadora de la caja']]],
@@ -5615,7 +5713,7 @@ function pintarFuncionesRoles(cont) {
   const act = Object.fromEntries(ROLES_EQUIPO.map(r => [r, { ...permRol(r) }])), orig = JSON.parse(JSON.stringify(act));
   const cambiados = () => ROLES_EQUIPO.filter(r => PERM_KEYS.some(k => act[r][k] !== orig[r][k]));
   cont.innerHTML = `<div class="adm-barra"><p>Marca qué puede hacer cada rol. Vender, abrir y cerrar caja lo pueden hacer todos los que tienen tienda.
-      Usuarios, clave, dispositivos y aprobar solicitudes de pago son solo del dueño. A una persona en particular le puedes cambiar sus funciones en <b>👤 Personas</b> (toca su nombre).</p></div>
+      Usuarios, clave, dispositivos y aprobar solicitudes de pago son solo del dueño. Todos los que tienen el mismo rol pueden hacer lo mismo.</p></div>
     <div class="tabla-scroll"><table class="tabla-simple matriz-roles"><thead><tr><th>Función</th>${ROLES_EQUIPO.map(r => `<th class="centro">${ROLES[r]}</th>`).join('')}</tr></thead><tbody>
     ${PERMISOS.map(([g, ks]) => `<tr class="grupo-fila"><td colspan="${ROLES_EQUIPO.length + 1}"><b>${esc(g)}</b></td></tr>` + ks.map(([k, n]) => `<tr><td>${esc(n)}</td>${ROLES_EQUIPO.map(r =>
       `<td class="centro"><input type="checkbox" class="casilla" data-r="${r}" data-k="${k}" ${act[r][k] ? 'checked' : ''} aria-label="${esc(ROLES[r] + ': ' + n)}"></td>`).join('')}</tr>`).join('')).join('')}
@@ -5640,14 +5738,11 @@ function pintarFuncionesRoles(cont) {
 function pintarUsuariosPersonas(cont) {
   cont.innerHTML = `<div class="adm-barra"><p>Cada persona entra con su usuario y contraseña. Un usuario desactivado ya no puede entrar, pero sus ventas y cierres quedan guardados.</p><span class="espacio"></span><button class="btn btn-primario" id="us-nuevo">+ Usuario</button></div>
     <table class="tabla-simple"><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Tiendas</th><th>Estado</th><th></th></tr></thead><tbody>
-    ${DX.usuarios.map(u => `<tr class="${u.activo ? '' : 'anulada'}"><td>${PERM_DEF[u.rol] ? `<button class="link" data-pu="${esc(u.id)}" title="Ver y cambiar sus funciones">▸ ${esc(u.nombre + ' ' + u.apellido)}</button>${u.permisos ? ' <span class="badge abierta">funciones a la medida</span>' : ''}` : esc(u.nombre + ' ' + u.apellido)}</td><td class="num">${esc(u.usuario)}</td><td>${ROLES[u.rol]}</td>
+    ${DX.usuarios.map(u => `<tr class="${u.activo ? '' : 'anulada'}"><td>${esc(u.nombre + ' ' + u.apellido)}</td><td class="num">${esc(u.usuario)}</td><td>${ROLES[u.rol]}</td>
       <td>${u.rol === 'dueno' ? 'Todas' : esc(u.tiendas.map(tiendaNombre).join(', '))}</td><td>${u.activo ? '<span class="badge ok">Activo</span>' : '<span class="badge">Desactivado</span>'}</td>
       <td>${u.rol === 'dueno' ? '' : `<button class="link" data-e="${esc(u.id)}">Editar</button>`}</td></tr>
-      ${PERM_DEF[u.rol] ? `<tr class="oculto" data-pf="${esc(u.id)}"><td colspan="6"><div class="perm-cont"></div></td></tr>` : ''}`).join('')}</tbody></table>
-    <p class="ayuda">Toca el nombre de una persona para ver y cambiar SUS funciones (lo normal de su rol se cambia en ☑️ Funciones por rol).</p>`;
-  cont.querySelectorAll('[data-pu]').forEach(b => b.onclick = () => { const u = DX.usuarios.find(x => String(x.id) === b.dataset.pu), fila = cont.querySelector(`[data-pf="${b.dataset.pu}"]`);
-    const abrir = fila.classList.contains('oculto'); fila.classList.toggle('oculto', !abrir); b.textContent = (abrir ? '▾ ' : '▸ ') + u.nombre + ' ' + u.apellido;
-    if (abrir) pintarPermisosUsuario(u, fila.querySelector('.perm-cont')); });
+`).join('')}</tbody></table>
+    <p class="ayuda">Lo que puede hacer cada persona depende de su ROL: se cambia en ☑️ Funciones por rol (21/11/2026: ya no hay funciones por persona).</p>`;
   const editar = u => {
     const r = abrirModal(`<form id="f-us"><div class="modal-cab"><h3 class="titulo">${u ? 'Editar usuario' : 'Nuevo usuario'}</h3></div><div class="modal-cuerpo"><div id="us-error" class="mensaje-error oculto"></div>
       <div class="dos-campos"><label class="campo"><span>Nombre *</span><input id="us-nombre" class="txt" value="${esc(u?.nombre || '')}"></label><label class="campo"><span>Apellido *</span><input id="us-apellido" class="txt" value="${esc(u?.apellido || '')}"></label></div>
@@ -5988,21 +6083,41 @@ function errorLogin(msg) {
 
 async function pedirCodigo() {
   mostrar('vista-login');
-  $('paso-clave').classList.add('oculto'); $('paso-codigo').classList.remove('oculto');
+  $('paso-clave').classList.add('oculto'); $('paso-codigo').classList.remove('oculto'); $('paso-autorizar').classList.add('oculto');
   $('btn-login').textContent = 'Verificar código';
   $('login-codigo').value = ''; $('login-codigo').focus();
 }
+function pedirAutorizacion() {
+  mostrar('vista-login');
+  $('paso-clave').classList.add('oculto'); $('paso-codigo').classList.add('oculto'); $('paso-autorizar').classList.remove('oculto');
+  $('btn-login').textContent = '🔓 Autorizar este equipo';
+  if (!$('aut-nombre').value) $('aut-nombre').value = nombreDispositivo();
+  $('aut-clave').value = ''; $('aut-clave').focus();
+}
+// Después de entrar: ¿este equipo necesita el código (dueño) o la autorización (los demás)?
+async function revisarEquipoYSeguir() {
+  const r = await api.revisarEquipo();
+  if (r.requiere) return r.tipo === 'autorizar' ? pedirAutorizacion() : pedirCodigo();
+  await despuesDeEntrar();
+}
+$('aut-revisar').onclick = async () => { const r = await api.revisarEquipo(); if (r.requiere) { $('login-error').textContent = 'Todavía no lo han aprobado.'; $('login-error').classList.remove('oculto'); return; }
+  $('paso-autorizar').classList.add('oculto'); $('paso-clave').classList.remove('oculto'); $('btn-login').textContent = 'Entrar'; await despuesDeEntrar(); };
+$('aut-salir').onclick = async () => { await api.salir(); location.reload(); };
 
 $('form-login').onsubmit = async e => {
   e.preventDefault();
   const btn = $('btn-login'); btn.disabled = true;
   $('login-error').classList.add('oculto');
   try {
-    if (!$('paso-codigo').classList.contains('oculto')) {
+    if (!$('paso-autorizar').classList.contains('oculto')) {
+      await api.autorizarEquipo($('aut-clave').value, limpiar($('aut-nombre').value));
+      $('paso-autorizar').classList.add('oculto'); $('paso-clave').classList.remove('oculto'); $('btn-login').textContent = 'Entrar';
+      toast('Equipo autorizado');
+    } else if (!$('paso-codigo').classList.contains('oculto')) {
       await api.verificarCodigo($('login-codigo').value.trim());
     } else {
       await api.login($('login-correo').value.trim(), $('login-clave').value);
-      if (await api.necesitaCodigo()) { btn.disabled = false; return pedirCodigo(); }
+      btn.disabled = false; return revisarEquipoYSeguir();
     }
     await despuesDeEntrar();
   } catch (err) {
@@ -6054,8 +6169,7 @@ if (!DEMO && 'serviceWorker' in navigator && location.protocol === 'https:') {
     if (DEMO) { cargarDemo(); sembrarBase(); guardarDemo(); pintarPildoraDemo(); return despuesDeEntrar(); }
     const sesion = await api.sesion();
     if (!sesion) return mostrar('vista-login');
-    if (await api.necesitaCodigo()) return pedirCodigo();
-    await despuesDeEntrar();
+    await revisarEquipoYSeguir();
   } catch (e) {
     errorLogin(e.message);
   }
