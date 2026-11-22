@@ -1699,12 +1699,20 @@ function cajaVieja(t = S.turno) {
   const diaAbierta = new Date(t.abierto_en).toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
   return diaAbierta < hoyVE();   // desde las 12:00 a. m. de Venezuela (decisión del dueño, 16/11/2026)
 }
+// En la pantalla de vender solo sale la cajera que abrió la caja (pedido del dueño, 22/11/2026).
+// El usuario con el que se entró solo se muestra en Administración o cuando no hay caja abierta.
+function pintarNombreBarra() {
+  const el = $('nombre-usuario'); if (!el || !S.perfil) return;
+  const enVenta = S.turno && !MODO_ADMIN && !document.body.classList.contains('sin-caja');
+  el.textContent = enVenta ? (S.turno.cajero || '') : S.perfil.nombre;
+}
 function pintarCaja() {
   const abierta = !!S.turno, vieja = cajaVieja();
   $('chip-caja').classList.toggle('oculto', !abierta);
   $('btn-cerrar-caja').classList.toggle('oculto', !abierta);
   $('capa-caja').classList.toggle('oculto', abierta && !vieja);
   pintarBotonesTurno();
+  pintarNombreBarra();
   if (abierta) {
     const d = new Date(S.turno.abierto_en);
     const h = d.toLocaleTimeString('es-VE', { timeZone: 'America/Caracas', hour: '2-digit', minute: '2-digit' });
@@ -5656,6 +5664,7 @@ const esCaja = t => !CAJA || !CAJA.exige.includes(t) || CAJA.es.includes(t);
 // Este equipo no es caja de la tienda: no se vende; se entra directo a Administración
 function modoSinCaja(t) {
   document.body.classList.add('sin-caja');
+  pintarNombreBarra();
   $('productos').innerHTML = `<div class="vacio" style="grid-column:1/-1;padding:40px 20px;text-align:center">
     ${MODO_ADMIN ? `<h3 style="margin:0 0 8px">⚙ Administración · ${esc(t.nombre)}</h3>
     <p>Aquí solo se administra. Para vender usa el ícono <b>ChocoTentación Caja</b> en la computadora de la tienda.</p>`
