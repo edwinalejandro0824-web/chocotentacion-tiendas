@@ -147,9 +147,17 @@
   .op.sel small{color:#F2B705}
   .op:disabled{opacity:.4;cursor:not-allowed}
   /* 21/11/2026: sin existencia = bloqueado hasta que la encargada lo desbloquee */
-  .prod.agotado{position:relative;opacity:.55;filter:grayscale(.85)} .prod.agotado::after{content:'Sin existencia';position:absolute;top:8px;right:8px;background:#B3261E;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px}
-  .op.agotada{opacity:.6;border-style:dashed;background:#f6efe9} .op.agotada::after{content:'sin existencia';font-size:11px;color:#B3261E;font-weight:700}
+  .prod.agotado{position:relative;opacity:.55;filter:grayscale(.85)} .prod.agotado::after{content:'Sin stock';position:absolute;top:8px;right:8px;background:#B3261E;color:#fff;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px}
+  .op.agotada{opacity:.6;border-style:dashed;background:#f6efe9} .op.agotada::after{content:'sin stock';font-size:11px;color:#B3261E;font-weight:700}
   #modal-raiz2 .fondo{z-index:60}
+  .matriz-roles td.centro,.matriz-roles th.centro{text-align:center} .matriz-roles .grupo-fila td{background:#f6efe9;padding-top:10px}
+  .matriz-roles .casilla{width:20px;height:20px;cursor:pointer;accent-color:var(--naranja)} .matriz-roles td.cambiado{background:#fff4d6}
+  .tabla-scroll{overflow-x:auto}
+  .pv-insumos{max-height:240px;overflow:auto;border:1px solid var(--linea);border-radius:10px;padding:6px 10px;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:2px 12px}
+  .pv-ins{display:flex;gap:6px;align-items:center;padding:3px 0;font-size:14px}
+  .presu-compras h4{margin:0 0 4px} .kpis-chico{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:8px 0}
+  .kpis-chico>div{background:#fff;border:1px solid var(--linea);border-radius:10px;padding:8px 12px} .kpis-chico span{display:block;font-size:12px;color:var(--suave)} .kpis-chico b{font-size:18px}
+  .barra-presu{height:10px;border-radius:999px;background:#eee3d8;overflow:hidden} .barra-presu i{display:block;height:100%;background:#2E7D32} .barra-presu i.medio{background:#E6A100} .barra-presu i.mal{background:#B3261E}
   .lista-faltan{margin:8px 0;padding-left:18px} .lista-faltan li{margin:3px 0}
   .op .veces{font-weight:800;color:#F2B705}
   .op .quitar{margin-left:2px;width:20px;height:20px;line-height:18px;text-align:center;border-radius:50%;
@@ -545,19 +553,20 @@
       <div>
         <h2 class="titulo">Administrar menú · <span id="adm-tienda"></span></h2>
         <nav class="adm-tabs">
-          <button class="adm-tab" data-tab="panel" data-rol="dueno encargada cajera" data-mod="1">Panel</button>
+          <button class="adm-tab" data-tab="panel" data-mod="1">Panel</button>
           <button class="adm-tab activa" data-tab="productos">Productos</button>
           <button class="adm-tab" data-tab="opciones">Toppings y sabores</button>
-          <button class="adm-tab" data-tab="inventario" data-rol="dueno encargada cajera" data-mod="1">Inventario</button>
-          <button class="adm-tab" data-tab="cierres" data-rol="dueno encargada cajera">Cierres de caja</button>
-          <button class="adm-tab" data-tab="proveedores" data-rol="dueno encargada cajera" data-mod="1">Gastos y pagos</button>
-          <button class="adm-tab" data-tab="solpe" data-rol="dueno encargada cajera" data-mod="1">📝 Solicitudes de pago</button>
-          <button class="adm-tab" data-tab="clientes" data-rol="dueno encargada cajera" data-mod="1">Clientes</button>
-          <button class="adm-tab" data-tab="reportes" data-rol="dueno encargada cajera" data-mod="1">Reportes</button>
-          <button class="adm-tab" data-tab="evaluacion" data-rol="dueno encargada cajera" data-mod="1">⭐ Evaluación</button>
-          <button class="adm-tab" data-tab="nomina" data-rol="dueno" data-mod="1">Nómina</button>
-          <button class="adm-tab" data-tab="cajas" data-rol="dueno encargada" data-mod="1">🖥️ Cajas</button>
-          <button class="adm-tab" data-tab="usuarios" data-rol="dueno" data-mod="1">Usuarios</button>
+          <button class="adm-tab" data-tab="portienda" data-mod="1">🏪 Qué vende cada tienda</button>
+          <button class="adm-tab" data-tab="inventario" data-mod="1">Inventario</button>
+          <button class="adm-tab" data-tab="compras" data-mod="1">🛒 Compras</button>
+          <button class="adm-tab" data-tab="cierres">Cierres de caja</button>
+          <button class="adm-tab" data-tab="proveedores" data-mod="1">Gastos y pagos</button>
+          <button class="adm-tab" data-tab="clientes" data-mod="1">Clientes</button>
+          <button class="adm-tab" data-tab="reportes" data-mod="1">Reportes</button>
+          <button class="adm-tab" data-tab="evaluacion" data-mod="1">⭐ Evaluación</button>
+          <button class="adm-tab" data-tab="nomina" data-mod="1">Gestión de gente</button>
+          <button class="adm-tab" data-tab="cajas" data-mod="1">🖥️ Cajas</button>
+          <button class="adm-tab" data-tab="usuarios" data-rol="dueno" data-mod="1">Usuarios y funciones</button>
           <button class="adm-tab" data-tab="clave" id="adm-tab-clave" data-rol="dueno">Clave</button>
           <button class="adm-tab" data-tab="dispositivos" data-rol="dueno" data-mod="1">Dispositivos</button>
         </nav>
@@ -707,7 +716,7 @@ const api = {
     if (DEMO) {
       const D = DEMO_DATA;
       return { ...D,
-        precios: D.precios.filter(x => x.tienda_id === tiendaId),
+        precios: D.precios.filter(x => x.tienda_id === tiendaId && x.disponible !== false),
         precios_opciones: D.precios_opciones.filter(x => x.tienda_id === tiendaId),
         promociones: (D.promociones || []).filter(x => x.tienda_id === tiendaId && x.activa) };
     }
@@ -716,7 +725,7 @@ const api = {
       q('pos_categorias', 'id,nombre,color,orden').order('orden'),
       q('pos_productos', 'id,categoria_id,nombre,foto_url,orden,activo,no_en_hc').eq('activo', true).order('orden'),
       q('pos_variantes', 'id,producto_id,nombre,orden').order('orden'),
-      q('pos_precios', 'variante_id,tienda_id,precio_usd').eq('tienda_id', tiendaId),
+      q('pos_precios', 'variante_id,tienda_id,precio_usd').eq('tienda_id', tiendaId).eq('disponible', true),
       q('pos_grupos_opciones', 'id,nombre'),
       q('pos_opciones', 'id,grupo_id,nombre,orden,activa').eq('activa', true).order('orden'),
       q('pos_precios_opciones', 'opcion_id,tienda_id,precio_usd,disponible').eq('tienda_id', tiendaId),
@@ -966,7 +975,7 @@ function pedirDesbloqueo(tipo, id, despues, varId) {
   faltan = [...new Map((faltan || []).map(f => [f.insumo, f])).values()];
   const raiz = $('modal-raiz2');
   raiz.innerHTML = `<div class="fondo"><div class="modal" style="width:min(480px,100%)">
-    <div class="modal-cab"><h3 class="titulo">🚫 ${esc(nombre || '')}: sin existencia</h3>
+    <div class="modal-cab"><h3 class="titulo">🚫 ${esc(nombre || '')}: sin stock</h3>
       <p>No se puede vender porque en el inventario de ${esc(S.tienda.nombre)} falta:</p></div>
     <div class="modal-cuerpo"><ul class="lista-faltan">${faltan.map(lineaFalta).join('') || '<li>Lo que lleva su receta</li>'}</ul>
       <p class="ayuda">Si sí lo tienen en la tienda, cárguenlo en Inventario (Recibir mercancía o Conteo físico). Para venderlo ya, la encargada lo desbloquea: queda desbloqueado hasta que vuelva a haber existencia.</p>
@@ -1022,7 +1031,7 @@ function mostrarFaltaStock(lista) {
   lista.forEach(f => { const k = f.tipo + ':' + f.id; if (!porFuente.has(k)) porFuente.set(k, { ...f, faltan: [] }); porFuente.get(k).faltan.push(f); });
   const raiz = $('modal-raiz2');
   raiz.innerHTML = `<div class="fondo"><div class="modal" style="width:min(520px,100%)">
-    <div class="modal-cab"><h3 class="titulo">🚫 No alcanza la existencia</h3><p>Para cobrar esta venta falta en el inventario de ${esc(S.tienda.nombre)}:</p></div>
+    <div class="modal-cab"><h3 class="titulo">🚫 Sin stock suficiente</h3><p>Para cobrar esta venta falta en el inventario de ${esc(S.tienda.nombre)}:</p></div>
     <div class="modal-cuerpo">${[...porFuente.values()].map(x => `<div class="graf" style="margin-bottom:8px"><b>${esc(x.nombre || '')}</b>
       <ul class="lista-faltan">${x.faltan.map(lineaFalta).join('')}</ul>
       <button class="btn btn-sec" data-dt="${x.tipo === 'producto' ? 'producto' : 'opcion'}" data-di="${x.id}">🔓 Desbloquear ${esc(x.nombre || '')}</button></div>`).join('')}
@@ -1422,7 +1431,7 @@ function abrirCobro() {
       ventaLista(venta);
     } catch (e) {
       $('c-error').textContent = 'No se guardó la venta: ' + String(e.message).replace(/\|[PO]:\d+$/, '');
-      if (/Sin existencia/.test(e.message)) cargarBloqueos().then(() => { pintarProductos(); });
+      if (/Sin (existencia|stock)/.test(e.message)) cargarBloqueos().then(() => { pintarProductos(); });
       $('c-error').classList.remove('oculto');
       btn.textContent = 'Confirmar e imprimir'; enviando = false; pintarResumen();
     }
@@ -2084,7 +2093,7 @@ async function entrarAdmin() {
   A.tiendaInicial = S.tienda.id;
   pintarSelectorTiendaAdmin();
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('oculto',
-    !!((b.dataset.mod && !MOD) || (b.dataset.rol && !b.dataset.rol.split(' ').includes(S.perfil.rol)) || (TAB_PERM[b.dataset.tab] && !puede(TAB_PERM[b.dataset.tab])))));
+    !!((b.dataset.mod && !MOD) || (b.dataset.rol && !b.dataset.rol.split(' ').includes(S.perfil.rol)) || !puedeTab(b.dataset.tab))));
   A.tab = [...document.querySelectorAll('.adm-tab:not(.oculto)')][0]?.dataset.tab || 'productos';
   await recargarAdmin();
 }
@@ -2136,7 +2145,7 @@ async function recargarVenta() {
 /* --- pantalla --- */
 function pintarAdmin() {
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('activa', b.dataset.tab === A.tab));
-  const vistas = { cajas: pintarAdmCajas, nomina: pintarAdmNomina, evaluacion: pintarAdmEvaluacion, solpe: pintarAdmSolpe, panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
+  const vistas = { cajas: pintarAdmCajas, nomina: pintarAdmNomina, evaluacion: pintarAdmEvaluacion, solpe: pintarAdmSolpe, compras: pintarAdmCompras, portienda: pintarAdmPortienda, panel: pintarAdmPanel, productos: pintarAdmProductos, opciones: pintarAdmOpciones, inventario: pintarAdmInventario,
     cierres: pintarAdmCierres, gastos: pintarAdmGastos, proveedores: pintarAdmProveedores, clientes: pintarAdmClientes,
     reportes: pintarAdmReportes, usuarios: pintarAdmUsuarios, clave: pintarAdmClave, dispositivos: pintarAdmDispositivos };
   const f = vistas[A.tab] || pintarAdmProductos;
@@ -2425,8 +2434,8 @@ async function detallePagosCierre(r, boton) {
    ===================================================================== */
 const NOM = { vista: 'nominas', periodoId: null, grupo: '', centro: '', q: '', soloActivos: true };
 let NOMD = null, NOMP = null;   // datos generales y la nómina abierta
-const NOM_GRUPOS = { tiendas: 'Tiendas (semanal, lunes a domingo)', fabrica: 'Fábrica (semanal, sábado a viernes)', administrativo: 'Administrativos (quincenal)' };
-const NOM_GRUPO_CORTO = { tiendas: 'Tiendas', fabrica: 'Fábrica', administrativo: 'Administrativos' };
+const NOM_GRUPOS = { tiendas: 'Tiendas (semanal, lunes a domingo)', fabrica: 'Fábrica (semanal, sábado a viernes)', administrativo: 'Administrativos (quincenal)', admin_semanal: 'Administrativos (semanal, lunes a domingo)' };
+const NOM_GRUPO_CORTO = { tiendas: 'Tiendas', fabrica: 'Fábrica', administrativo: 'Administrativos', admin_semanal: 'Administrativos semanal' };
 const DIAS_CORTOS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
 const CONCEPTOS_DESC = ['Inventario', 'Ausencia', 'Adelanto', 'Uniforme', 'Otro'];
 const nomDow = f => new Date(f + 'T12:00:00Z').getUTCDay();
@@ -2511,17 +2520,21 @@ async function abrirVistaNomina() {
   NOM.raiz = 'vista';
   mostrar('vista-nomina');
   $('nom-usuario').textContent = S.perfil?.nombre || '';
-  if (S.perfil?.rol === 'mercadeo') { document.querySelector('#vista-nomina .marca small').textContent = 'Solicitudes de pago'; return pintarNomina(); }
+  document.querySelector('#vista-nomina .marca small').textContent = puede('nomina') ? 'Gestión de gente' : puede('postulaciones') ? 'Postulaciones' : 'Solicitudes de pago';
+  if (!puede('nomina')) return pintarNomina();
   try { await cargarNominaReal(); } catch (e) { $('nom-raiz').innerHTML = `<p class="mensaje-error">${esc(e.message)}</p>`; return; }
   pintarNomina();
 }
 function pintarNomina() {
   if (DEMO) nomDatosDemo();
   const cont = NOM.raiz === 'vista' ? $('nom-raiz') : $('adm-contenido');
-  const soloSolpe = S.perfil?.rol === 'mercadeo';
-  if (soloSolpe) NOM.vista = 'solpe';
-  if (!NOMD && !soloSolpe) return cont.innerHTML = '<p class="vacio">Cargando…</p>';
-  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${(soloSolpe ? [['solpe', '📝 Solicitudes de pago']] : [['nominas', 'Nóminas'], ['trabajadores', `Trabajadores (${NOMD.trabajadores.filter(t => t.activo).length})`], ['bonos', '🎯 Bonos'], ['liquidaciones', '📄 Liquidaciones y constancias'], ['postulaciones', '📥 Postulaciones'], ['solpe', '📝 Solicitudes de pago'], ['ajustes', 'Ajustes']])
+  // Cada sub-pestaña según las funciones de la persona (21/11/2026: roles con casillas)
+  const subs = [['nominas', 'Nóminas', 'nomina'], ['trabajadores', `Trabajadores${NOMD ? ` (${NOMD.trabajadores.filter(t => t.activo).length})` : ''}`, 'nomina'], ['bonos', '🎯 Bonos', 'bonos'],
+    ['liquidaciones', '📄 Liquidaciones y constancias', 'nomina'], ['postulaciones', '📥 Postulaciones', 'postulaciones'], ['solpe', '📝 Solicitudes de pago', 'solpe'], ['ajustes', 'Ajustes', 'nomina']]
+    .filter(([, , k]) => puede(k) && (k !== 'solpe' || NOM.raiz === 'vista'));
+  if (!subs.some(([k]) => k === NOM.vista)) NOM.vista = subs[0]?.[0] || 'nominas';
+  if (!NOMD && puede('nomina') && NOM.vista !== 'solpe' && NOM.vista !== 'postulaciones') return cont.innerHTML = '<p class="vacio">Cargando…</p>';
+  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${subs
     .map(([k, n]) => `<button class="sub-tab ${NOM.vista === k ? 'activa' : ''}" data-nv="${k}">${n}</button>`).join('')}</nav><div id="nom-cont"></div>`;
   cont.querySelectorAll('[data-nv]').forEach(b => b.onclick = () => { NOM.vista = b.dataset.nv; NOM.periodoId = null; NOMP = null; pintarNomina(); });
   const c = $('nom-cont');
@@ -3465,10 +3478,11 @@ async function cargarInventarioReal() {
   Object.entries(d.recetas || {}).forEach(([k, filas]) => { DX.recetas[k] = filas.map(r => ({ insumo_id: r.insumo_id, cantidad: num(r.cantidad) })); });
   DX.movs = d.movs.map(m => ({ ...m, cantidad: num(m.cantidad), costo_total: num(m.costo_total), costo_unit: num(m.costo_unit) }));
   if (S.perfil.rol !== 'dueno' || !DX.proveedores.length || DX.proveedores.some(p => p.rif === undefined)) DX.proveedores = d.proveedores;
+  DX.insumosOff = { ...(DX.insumosOff || {}), [S.tienda.id]: (d.apagados || []).map(Number) };
 }
 async function cargarProveedoresReal() {
   const d = await rpc('pos_admin_proveedores', { p_clave: A.clave, p_tienda: S.tienda.id });
-  DX.proveedores = d.proveedores;
+  DX.proveedores = d.proveedores; DX.insumosProv = d.insumos || null;
   DX.facturas = d.facturas.map(f => ({ ...f, monto_usd: num(f.monto_usd), abonos: f.abonos.map(a => ({ ...a, monto_usd: num(a.monto_usd) })) }));
 }
 async function cargarUsuariosReal() {
@@ -3482,7 +3496,7 @@ async function cargarClientesReal() {
 }
 // Qué hay que cargar antes de pintar cada pestaña (solo versión real)
 const CARGA = {
-  nomina: async () => { NOM.raiz = 'admin'; await cargarNominaReal(); },
+  nomina: async () => { NOM.raiz = 'admin'; if (puede('nomina')) await cargarNominaReal(); },
   panel: () => cargarVentasReal(sumarDias(hoyVE(), -62), hoyVE()),
   inventario: async () => { await cargarInventarioReal(); await Promise.all([cargarPedidosReal(), cargarProveedoresReal()]); },
   gastos: () => { const m = (GAS.mes || mesVE()) + '-01', fin = sumarDias(sumarDias(m, 32).slice(0, 7) + '-01', -1);
@@ -3490,11 +3504,13 @@ const CARGA = {
   proveedores: async () => { const m = (GAS.mes || mesVE()) + '-01', fin = sumarDias(sumarDias(m, 32).slice(0, 7) + '-01', -1);
     await Promise.all([cargarProveedoresReal(), cargarCxpReal(), cargarPresupuestoReal(), cargarVentasReal(m, fin < hoyVE() ? fin : hoyVE())]);
     if (PROV.vista === 'plan') await cargarPlanReal(); },
+  portienda: async () => { PT.d = await rpc('pos_portienda_datos', {}); },
+  compras: async () => { await CARGA.inventario(); await cargarPresupuestoCompras(); },
   clientes: () => cargarClientesReal(),
   reportes: async () => { if (REP.tipo === 'general' && REP.rango !== 'otro') [REP.desde, REP.hasta] = rangoReporte(REP.rango);
     REP.desde = REP.desde || hoyVE().slice(0, 8) + '01'; REP.hasta = REP.hasta || hoyVE();
     await cargarVentasReal(REP.desde, REP.hasta); try { await cargarInventarioReal(); } catch (e) { } },
-  usuarios: () => cargarUsuariosReal(),
+  usuarios: async () => { await cargarUsuariosReal(); const r = await rpc('pos_roles_permisos', {}); ROL_PERM = Object.fromEntries(Object.entries(r || {}).map(([k, v]) => [k, v.actual])); },
   dispositivos: async () => { const { data, error } = await sb.rpc('pos_dispositivos_lista'); if (error) throw new Error(error.message); DX.dispositivos = data; },
 };
 // Después de guardar algo: recargar los datos de la pestaña y volver a pintar
@@ -3749,7 +3765,7 @@ function sembrarHistoriaReal() {
 function usuarioDemo() { return DX.usuarios.find(u => u.id === DX.usuarioActual && u.activo) || DX.usuarios.find(u => u.rol === 'dueno'); }
 function perfilDemo() { const u = usuarioDemo(); return { nombre: u.nombre + ' ' + u.apellido, rol: u.rol }; }
 function tiendasDemo() { const u = usuarioDemo(); return DEMO_DATA.tiendas.filter(t => u.rol === 'dueno' || u.tiendas.includes(t.id)); }
-const ROLES = { dueno: 'Dueño', encargada: 'Encargada', cajera: 'Cajero', nomina: 'Administrativa (nómina)', mercadeo: 'Mercadeo (solo solicitudes de pago)' };
+const ROLES = { dueno: 'Dueño', encargada: 'Líder', cajera: 'Cajero', gerente: 'Gerente', produccion: 'Producción', nomina: 'Gestión gente', mercadeo: 'Mercadeo' };
 function pintarPildoraDemo() {
   if (!DEMO) return;
   let p = $('pildora-demo');
@@ -3792,7 +3808,9 @@ function inventarioPorVenta(v, signo, tipo) {
   total.forEach((q, id) => moverStock(v.tienda_id, id, signo * q, tipo, 'Venta N° ' + v.numero));
 }
 const stockDe = (i, t) => r2(i.stock[t] || 0);
-const insumosBajos = t => DX.insumos.filter(i => i.activo !== false && stockDe(i, t) <= i.minimo);
+// Materia prima apagada en una tienda (no la usa): no sale en su inventario, conteo, pedidos ni alertas
+const insEnTienda = (i, t) => !((DX.insumosOff || {})[t] || []).includes(i.id);
+const insumosBajos = t => DX.insumos.filter(i => i.activo !== false && insEnTienda(i, t) && stockDe(i, t) <= i.minimo);
 async function pintarChipStock() {
   const c = $('chip-stock'); if (!c) return;
   if (!MOD || !S.tienda) { c.classList.add('oculto'); return; }
@@ -4035,6 +4053,55 @@ function pintarAdmPanel() {
 
 /* ---------- INVENTARIO ---------- */
 const INV = { sub: 'existencias' };
+// ---- Ajuste de inventario (conteo físico) en PDF: sobró/faltó por insumo, total del ajuste y % de variación (21/11/2026, dueño) ----
+function resumenAjuste(c) {
+  const ls = (c.detalle || []).map(l => { const cu = Number(l.costo_unit) || 0, s = Number(l.sistema), k = Number(l.contado), d = Number(l.diferencia ?? (k - s));
+    return { ...l, sistema: s, contado: k, diferencia: d, costo_unit: cu, dif_usd: r2(d * cu), val_sis: r2(Math.max(s, 0) * cu), val_con: r2(k * cu) }; });
+  const sum = f => r2(ls.reduce((a, l) => a + f(l), 0));
+  const valSis = sum(l => l.val_sis), valCon = sum(l => l.val_con), neto = sum(l => l.dif_usd);
+  return { ls, valSis, valCon, neto, faltante: sum(l => Math.min(l.dif_usd, 0)), sobrante: sum(l => Math.max(l.dif_usd, 0)),
+    pct: valSis > 0 ? (neto / valSis) * 100 : null, faltan: ls.filter(l => l.diferencia < -0.0001).length, sobran: ls.filter(l => l.diferencia > 0.0001).length };
+}
+function pdfAjuste(c) {
+  const z = resumenAjuste(c), tienda = tiendaNombre(c.tienda_id) || S.tienda.nombre, f = new Date(c.fecha);
+  const fecha = f.toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'long', timeStyle: 'short' });
+  const q = n => fmtCant(n), sg = n => (n > 0.0001 ? '+' : '') + fmtCant(n), us = n => (n > 0.004 ? '+' : '') + usd(n);
+  const w = window.open('', '_blank'); if (!w) return toast('Permite las ventanas emergentes para sacar el PDF', true);
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ajuste de inventario ${esc(tienda)} ${diaVE(c.fecha)}</title><style>
+    @page{size:letter;margin:12mm} body{font-family:Arial,Helvetica,sans-serif;color:#222;font-size:11px}
+    h1{font-size:18px;margin:0} .sub{color:#666;margin:2px 0 12px} table{width:100%;border-collapse:collapse} th,td{padding:5px 6px;border-bottom:1px solid #ddd;text-align:left}
+    th{background:#f3ebe3;font-size:10px;text-transform:uppercase} .n{text-align:right;font-variant-numeric:tabular-nums} .m{color:#B3261E} .p{color:#1E5AA0} .ok{color:#2E7D32}
+    .res{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0} .res div{border:1px solid #ddd;border-radius:6px;padding:8px} .res span{display:block;color:#666;font-size:10px} .res b{font-size:15px}
+    .tot td{font-weight:bold;border-top:2px solid #333} .final{margin-top:14px;padding:10px;border:2px solid #333;border-radius:6px;font-size:13px}</style></head><body>
+    <h1>${esc(NEGOCIO_NOMBRE)} · Ajuste de inventario</h1><p class="sub">${esc(tienda)} · ${esc(fecha)} · Contó: ${esc(c.usuario_nombre || '—')} · ${z.ls.length} insumos contados</p>
+    <table><thead><tr><th>Insumo</th><th>Unidad</th><th class="n">Sistema</th><th class="n">Contado</th><th class="n">Diferencia</th><th>Resultado</th><th class="n">Costo unit.</th><th class="n">Ajuste $</th></tr></thead><tbody>
+    ${z.ls.map(l => `<tr><td>${esc(l.nombre)}</td><td>${esc(l.unidad || '')}</td><td class="n">${q(l.sistema)}</td><td class="n">${q(l.contado)}</td>
+      <td class="n ${l.diferencia < -0.0001 ? 'm' : l.diferencia > 0.0001 ? 'p' : 'ok'}">${sg(l.diferencia)}</td>
+      <td class="${l.diferencia < -0.0001 ? 'm' : l.diferencia > 0.0001 ? 'p' : 'ok'}">${l.diferencia < -0.0001 ? 'Faltó' : l.diferencia > 0.0001 ? 'Sobró' : 'Cuadró'}</td>
+      <td class="n">${l.costo_unit > 0 && l.costo_unit < 0.1 ? '$' + new Intl.NumberFormat('es-VE', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(l.costo_unit) : usd(l.costo_unit)}</td><td class="n ${l.dif_usd < 0 ? 'm' : l.dif_usd > 0 ? 'p' : ''}">${us(l.dif_usd)}</td></tr>`).join('')}
+    <tr class="tot"><td colspan="7">Total del ajuste</td><td class="n ${z.neto < 0 ? 'm' : z.neto > 0 ? 'p' : ''}">${us(z.neto)}</td></tr></tbody></table>
+    <div class="res"><div><span>Valor según el sistema</span><b>${usd(z.valSis)}</b></div><div><span>Valor de lo contado</span><b>${usd(z.valCon)}</b></div>
+      <div><span>Insumos que faltaron / sobraron</span><b>${z.faltan} / ${z.sobran}</b></div>
+      <div><span>Faltante (lo que no apareció)</span><b class="m">${usd(z.faltante)}</b></div><div><span>Sobrante</span><b class="p">${us(z.sobrante)}</b></div>
+      <div><span>Variación del inventario</span><b class="${z.neto < 0 ? 'm' : z.neto > 0 ? 'p' : 'ok'}">${z.pct == null ? '—' : (z.pct > 0 ? '+' : '') + fmt.format(r2(z.pct)) + ' %'}</b></div></div>
+    <div class="final">Resultado: el ajuste de inventario fue <b class="${z.neto < 0 ? 'm' : z.neto > 0 ? 'p' : 'ok'}">${Math.abs(z.neto) < 0.005 ? 'de $0 (cuadró)' : z.neto < 0 ? 'NEGATIVO por ' + usd(-z.neto) : 'POSITIVO por ' + usd(z.neto)}</b>,
+      una variación de <b>${z.pct == null ? '—' : (z.pct > 0 ? '+' : '') + fmt.format(r2(z.pct)) + ' %'}</b> sobre el valor del inventario contado según el sistema (${usd(z.valSis)}).</div>
+    <p class="sub" style="margin-top:20px">Firma de quien contó: ______________________ &nbsp;&nbsp; Firma de quien revisó: ______________________</p>
+    <script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+async function pintarHistConteos(t) {
+  const box = $('ct-hist'); if (!box) return;
+  let lista = [];
+  try { lista = DEMO ? (DX.conteos || []).filter(c => c.tienda_id === t) : await rpc('pos_conteos_lista', { p_clave: A.clave, p_tienda: t }); }
+  catch (e) { box.innerHTML = `<h4>Ajustes anteriores</h4><p class="mensaje-error">${esc(e.message)}</p>`; return; }
+  if (!$('ct-hist')) return;
+  box.innerHTML = `<h4>Ajustes anteriores</h4>${lista.length ? `<table class="tabla-simple num"><thead><tr><th>Fecha</th><th>Contó</th><th class="der">Insumos</th><th class="der">Ajuste</th><th class="der">Variación</th><th></th></tr></thead><tbody>
+    ${lista.map((c, k) => { const z = resumenAjuste(c); return `<tr><td>${esc(new Date(c.fecha).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'short', timeStyle: 'short' }))}</td><td>${esc(c.usuario_nombre || '')}</td>
+      <td class="der">${z.ls.length}</td><td class="der ${z.neto < 0 ? 'rojo' : z.neto > 0 ? 'azul' : ''}">${usd(z.neto)}</td><td class="der">${z.pct == null ? '—' : fmt.format(r2(z.pct)) + ' %'}</td>
+      <td><button class="link" data-cpdf="${k}">📄 PDF</button></td></tr>`; }).join('')}</tbody></table>` : '<p class="vacio">Todavía no hay ajustes guardados (se guardan desde hoy).</p>'}`;
+  box.querySelectorAll('[data-cpdf]').forEach(b => b.onclick = () => pdfAjuste(lista[Number(b.dataset.cpdf)]));
+}
 // Productos y toppings/sabores que no se pueden vender por falta de existencia, y los desbloqueados
 async function pintarInvBloqueos(ic) {
   ic.innerHTML = '<p class="vacio">Revisando existencias…</p>';
@@ -4051,9 +4118,9 @@ async function pintarInvBloqueos(ic) {
   const nP = [...prods.keys()].filter(id => S.d.productos.some(p => p.id === id));
   ic.innerHTML = `<div class="adm-barra"><p>${BLQ.activo ? 'El bloqueo está <b>encendido</b>' : `El bloqueo arranca el <b>${BLQ.desde ? new Date(BLQ.desde).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'short', timeStyle: 'short' }) : '—'}</b>`}: lo que no tenga existencia de su receta no se puede vender.
       Al desbloquearlo se puede vender hasta que vuelva a haber existencia; cuando carguen la mercancía se quita solo el desbloqueo.</p></div>
-    <section class="graf"><h4>Productos sin existencia (${nP.length})</h4>${nP.length ? `<table class="tabla-simple"><thead><tr><th>Producto</th><th>Lo que falta</th><th>Estado</th><th></th></tr></thead><tbody>
+    <section class="graf"><h4>Productos sin stock (${nP.length})</h4>${nP.length ? `<table class="tabla-simple"><thead><tr><th>Producto</th><th>Lo que falta</th><th>Estado</th><th></th></tr></thead><tbody>
       ${nP.map(id => { const x = prods.get(id), todos = (S.d.varsDe.get(id) || []).length; return fila('producto', id, S.d.producto.get(id).nombre, x.faltan, todos > 1 ? `<br><small class="ayuda">${esc([...x.vars].join(', '))}</small>` : ''); }).join('')}</tbody></table>` : '<p class="vacio">Todos los productos tienen existencia.</p>'}</section>
-    <section class="graf"><h4>Toppings, sabores y siropes sin existencia (${ops.size})</h4>${ops.size ? `<table class="tabla-simple"><thead><tr><th>Opción</th><th>Lo que falta</th><th>Estado</th><th></th></tr></thead><tbody>
+    <section class="graf"><h4>Toppings, sabores y siropes sin stock (${ops.size})</h4>${ops.size ? `<table class="tabla-simple"><thead><tr><th>Opción</th><th>Lo que falta</th><th>Estado</th><th></th></tr></thead><tbody>
       ${[...ops].map(([id, f]) => fila('opcion', id, S.d.opcion.get(id).nombre, f)).join('')}</tbody></table>` : '<p class="vacio">Todos tienen existencia.</p>'}</section>
     <section class="graf"><h4>Desbloqueados (${BLQ.des.length})</h4>${BLQ.des.length ? `<table class="tabla-simple"><thead><tr><th>Qué</th><th>Por</th><th>Cuándo</th><th>Motivo</th><th></th></tr></thead><tbody>
       ${BLQ.des.map(d => `<tr><td>${esc(d.nombre || '')}</td><td>${esc(d.por || '')}</td><td>${esc(new Date(d.en).toLocaleString('es-VE', { timeZone: 'America/Caracas', dateStyle: 'short', timeStyle: 'short' }))}</td><td>${esc(d.motivo || '')}</td>
@@ -4066,13 +4133,13 @@ async function pintarInvBloqueos(ic) {
 }
 function pintarAdmInventario() {
   const cont = $('adm-contenido'), t = S.tienda.id;
-  const subs = [['existencias', 'Existencias'], ['recibir', 'Recibir mercancía'], ['produccion', 'Producción'], ['pedidos', 'Pedidos' + ((DX.pedidos || []).filter(p => (S.perfil.rol === 'dueno' || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length ? ` (${(DX.pedidos || []).filter(p => (S.perfil.rol === 'dueno' || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length})` : '')], ['merma', 'Mermas'], ['conteo', 'Conteo físico'], ['recetas', 'Recetas y costos'], ['movs', 'Movimientos'], ['bloqueos', '🚫 Sin existencia']];
+  const subs = [['existencias', 'Existencias'], ['recibir', 'Recibir mercancía'], ['produccion', 'Producción'], ['merma', 'Mermas'], ['conteo', 'Conteo físico'], ['recetas', 'Recetas y costos'], ['movs', 'Movimientos'], ['bloqueos', '🚫 Sin stock']];
   const subsOk = subs.filter(([k]) => puede(INV_PERM[k] || 'inventario'));
   if (!subsOk.some(([k]) => k === INV.sub)) INV.sub = subsOk[0]?.[0] || 'existencias';
   cont.innerHTML = `<div class="adm-barra"><p>Inventario de <b>${esc(S.tienda.nombre)}</b>. Cada venta descuenta lo que usa según su receta.${DEMO ? ' Las cantidades y costos de ejemplo hay que cambiarlos por los reales.' : (DX.insumos.length ? '' : ' Todavía no hay insumos: agrégalos con <b>+ Insumo</b> y luego arma las recetas.')}</p></div>
     <nav class="sub-tabs">${subsOk.map(([k, n]) => `<button class="sub-tab ${INV.sub === k ? 'activa' : ''}" data-s="${k}">${n}</button>`).join('')}</nav><div id="inv-cont"></div>`;
   cont.querySelectorAll('.sub-tab').forEach(b => b.onclick = () => { INV.sub = b.dataset.s; if (INV.sub !== 'recibir') INV.pedido = null; pintarAdmInventario(); });
-  const ic = $('inv-cont'), activos = DX.insumos.filter(i => i.activo !== false);
+  const ic = $('inv-cont'), activos = DX.insumos.filter(i => i.activo !== false && insEnTienda(i, t));
   const optsIns = activos.map(i => `<option value="${i.id}">${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('');
   if (INV.sub === 'existencias') {
     const valor = r2(activos.reduce((a, i) => a + Math.max(stockDe(i, t), 0) * i.costo_usd, 0));
@@ -4272,8 +4339,6 @@ function pintarAdmInventario() {
     pintarInvBloqueos(ic);
   } else if (INV.sub === 'produccion') {
     pintarProduccion(ic, t, optsIns);
-  } else if (INV.sub === 'pedidos') {
-    pintarPedidos(ic, t, optsIns);
   } else if (INV.sub === 'merma') {
     ic.innerHTML = `<form id="f-mov" class="form-caja"><h4>Registrar merma (lo que se pierde)</h4>
       <div id="mv-error" class="mensaje-error oculto"></div>
@@ -4301,15 +4366,22 @@ function pintarAdmInventario() {
       <div id="ct-error" class="mensaje-error oculto"></div>
       ${Object.entries(ETAPAS).map(([et, n]) => { const xs = activos.filter(i => etapaDe(i) === et); return xs.length ? `<h4 class="conteo-grupo">${n} <span class="ayuda">(${xs.length})</span></h4>
         <div class="conteo-ins">${xs.map(i => `<label><span>${esc(i.nombre)}</span><input class="txt num" data-i="${i.id}" inputmode="decimal" placeholder="${esc(i.unidad)}"></label>`).join('')}</div>` : ''; }).join('')}
-      <button class="btn btn-primario">Comparar y ajustar</button></form>`;
+      <button class="btn btn-primario">Comparar y ajustar</button></form>
+      <section class="graf" id="ct-hist"><h4>Ajustes anteriores</h4><p class="vacio">Cargando…</p></section>`;
+    pintarHistConteos(t);
     $('f-conteo').onsubmit = async e => { e.preventDefault();
       const filas = [...ic.querySelectorAll('[data-i]')].filter(x => x.value.trim() !== '').map(x => ({ i: DX.insumos.find(z => z.id === Number(x.dataset.i)), c: leerNum(x.value) }));
       if (!filas.length || filas.some(x => !(x.c >= 0))) { $('ct-error').textContent = 'Escribe lo contado (al menos un insumo)'; $('ct-error').classList.remove('oculto'); return; }
       const res = filas.map(x => ({ ...x, s: stockDe(x.i, t), d: r2(x.c - stockDe(x.i, t)) }));
-      if (DEMO) { res.forEach(x => { if (Math.abs(x.d) > 0.0001) moverStock(t, x.i.id, x.d, 'ajuste', 'Conteo físico'); }); guardarDemo(); }
+      let conteo = null;
+      if (DEMO) { res.forEach(x => { if (Math.abs(x.d) > 0.0001) moverStock(t, x.i.id, x.d, 'ajuste', 'Conteo físico'); });
+        conteo = { id: nid(), tienda_id: t, fecha: new Date().toISOString(), usuario_nombre: S.perfil.nombre,
+          detalle: res.map(x => ({ insumo_id: x.i.id, nombre: x.i.nombre, unidad: x.i.unidad, costo_unit: x.i.costo_usd, sistema: x.s, contado: x.c, diferencia: x.d })) };
+        DX.conteos = [conteo, ...(DX.conteos || [])].slice(0, 40); guardarDemo(); }
       else {
         const b = $('f-conteo').querySelector('.btn-primario'); b.disabled = true;
-        try { await rpc('pos_inv_conteo', { p_clave: A.clave, p_tienda: t, p_conteo: Object.fromEntries(filas.map(x => [x.i.id, x.c])) }); await cargarInventarioReal(); }
+        try { await rpc('pos_inv_conteo', { p_clave: A.clave, p_tienda: t, p_conteo: Object.fromEntries(filas.map(x => [x.i.id, x.c])) }); await cargarInventarioReal();
+          conteo = (await rpc('pos_conteos_lista', { p_clave: A.clave, p_tienda: t }))[0] || null; }
         catch (x) { b.disabled = false; $('ct-error').textContent = x.message; $('ct-error').classList.remove('oculto'); return; }
       }
       pintarChipStock();
@@ -4317,7 +4389,8 @@ function pintarAdmInventario() {
       const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">Resultado del conteo</h3><p class="num">Diferencia valorizada: <b class="${valor < 0 ? 'rojo' : ''}">${usd(valor)}</b>. El inventario quedó ajustado a lo contado.</p></div>
         <div class="modal-cuerpo"><table class="tabla-simple num"><thead><tr><th>Insumo</th><th class="der">Sistema</th><th class="der">Contado</th><th class="der">Diferencia</th></tr></thead><tbody>
         ${res.map(x => `<tr><td>${esc(x.i.nombre)}</td><td class="der">${fmtCant(x.s)}</td><td class="der">${fmtCant(x.c)}</td><td class="der ${x.d < 0 ? 'rojo' : x.d > 0 ? 'azul' : 'verde'}">${Math.abs(x.d) < 0.0001 ? '✓' : (x.d > 0 ? '+' : '') + fmtCant(x.d)} ${esc(x.i.unidad)}</td></tr>`).join('')}
-        </tbody></table></div><div class="modal-pie"><span class="espacio"></span><button class="btn btn-primario" id="ct-ok">Listo</button></div>`, 620);
+        </tbody></table></div><div class="modal-pie">${conteo ? '<button class="btn btn-sec" id="ct-pdf">📄 Descargar PDF del ajuste</button>' : ''}<span class="espacio"></span><button class="btn btn-primario" id="ct-ok">Listo</button></div>`, 620);
+      if (conteo) r.querySelector('#ct-pdf').onclick = () => pdfAjuste(conteo);
       r.querySelector('#ct-ok').onclick = () => { cerrarModal(); INV.sub = 'existencias'; pintarAdmInventario(); };
     };
   } else if (INV.sub === 'recetas') {
@@ -4564,6 +4637,109 @@ async function cargarPedidosReal() {
 }
 // ---- Pedidos de mercancía (etapa 15): la tienda anota en una LISTA lo que necesita; el dueño ve el consolidado por proveedor ----
 const PDV = { vista: null, cant: {}, q: '', bajo: false, dias: null, nota: '' };
+const valorPedido = items => r2((items || []).reduce((a, x) => a + Number(x.cantidad) * (DX.insumos.find(i => i.id === Number(x.insumo_id))?.costo_usd || 0), 0));
+let PRESC = null;   // presupuesto de compras de la semana de la tienda
+async function cargarPresupuestoCompras() {
+  const t = S.tienda.id;
+  if (!DEMO) { try { PRESC = await rpc('pos_compras_presupuesto', { p_tienda: t }); ['venta_anterior', 'presupuesto', 'usado', 'disponible'].forEach(k => PRESC[k] = num(PRESC[k])); } catch (e) { PRESC = null; } return; }
+  const hoy = hoyVE(); let lunes = hoy; while (nomDow(lunes) !== 1) lunes = sumarDias(lunes, -1);
+  const desde = sumarDias(lunes, -7), hasta = sumarDias(lunes, -1);
+  const venta = r2(DEMO_VENTAS.filter(v => v.tienda_id === t && v.estado !== 'anulada' && diaVE(v.fecha) >= desde && diaVE(v.fecha) <= hasta).reduce((a, v) => a + v.total_usd, 0));
+  const usado = r2((DX.pedidos || []).filter(p => p.tienda_id === t && !['rechazado', 'cancelado'].includes(p.estado) && diaVE(p.creado_en) >= lunes).reduce((a, p) => a + (p.total_usd ?? valorPedido(p.items)), 0));
+  PRESC = { pct: 45, desde, hasta, semana: lunes, venta_anterior: venta, presupuesto: r2(venta * 0.45), usado, disponible: r2(venta * 0.45 - usado) };
+}
+function repintarPedidos() { if (A.tab === 'compras') cargarPresupuestoCompras().then(pintarAdmCompras); else pintarAdmInventario(); }
+// ---- QUÉ VENDE CADA TIENDA (21/11/2026, dueño): productos y materia prima por tienda con casillas ----
+const PT = { vista: 'productos', d: null, q: '' };
+function datosPortiendaDemo() {
+  const tiendas = DEMO_DATA.tiendas.map(x => ({ id: x.id, nombre: x.nombre })), off = DX.insumosOff || {};
+  const cat = id => DEMO_DATA.categorias.find(c => c.id === id) || {};
+  const productos = DEMO_DATA.productos.filter(p => p.activo !== false && DEMO_DATA.variantes.some(v => v.producto_id === p.id)).map(p => {
+    const vs = DEMO_DATA.variantes.filter(v => v.producto_id === p.id).map(v => v.id);
+    return { id: p.id, nombre: p.nombre, categoria: cat(p.categoria_id).nombre, cat_orden: cat(p.categoria_id).orden || 0,
+      estado: Object.fromEntries(tiendas.map(x => { const ps = DEMO_DATA.precios.filter(r => r.tienda_id === x.id && vs.includes(r.variante_id));
+        return [x.id, ps.some(r => r.disponible !== false) ? 'si' : ps.length ? 'no' : 'sin']; })) }; })
+    .sort((a, b) => a.cat_orden - b.cat_orden || a.nombre.localeCompare(b.nombre));
+  const usa = x => { const s = new Set(); DEMO_DATA.precios.filter(r => r.tienda_id === x && r.disponible !== false).forEach(r => (DX.recetas['v' + r.variante_id] || []).forEach(l => s.add(l.insumo_id)));
+    DEMO_DATA.precios_opciones.filter(r => r.tienda_id === x && r.disponible !== false).forEach(r => (DX.recetas['o' + r.opcion_id] || []).forEach(l => s.add(l.insumo_id)));
+    let crece = true; while (crece) { crece = false; Object.entries(DX.produccion || {}).forEach(([k, ls]) => { if (s.has(Number(k))) ls.forEach(l => { if (!s.has(l.insumo_id)) { s.add(l.insumo_id); crece = true; } }); }); }
+    return s; };
+  const usos = Object.fromEntries(tiendas.map(x => [x.id, usa(x.id)]));
+  return { tiendas, productos, insumos: DX.insumos.filter(i => i.activo !== false).map(i => ({ id: i.id, nombre: i.nombre, unidad: i.unidad, etapa: i.etapa,
+    off: tiendas.filter(x => (off[x.id] || []).includes(i.id)).map(x => x.id), usa: tiendas.filter(x => usos[x.id].has(i.id)).map(x => x.id) })).sort((a, b) => a.nombre.localeCompare(b.nombre)) };
+}
+function pintarAdmPortienda() {
+  const cont = $('adm-contenido');
+  if (DEMO) PT.d = datosPortiendaDemo();
+  if (!PT.d) return cont.innerHTML = '<p class="vacio">Cargando…</p>';
+  const { tiendas, productos, insumos } = PT.d;
+  cont.innerHTML = `<nav class="sub-tabs prov-vistas"><button class="sub-tab ${PT.vista === 'productos' ? 'activa' : ''}" data-ptv="productos">🍦 Productos</button>
+      <button class="sub-tab ${PT.vista === 'insumos' ? 'activa' : ''}" data-ptv="insumos">🧂 Materia prima</button></nav><div id="pt-cont"></div>`;
+  cont.querySelectorAll('[data-ptv]').forEach(b => b.onclick = () => { PT.vista = b.dataset.ptv; pintarAdmPortienda(); });
+  const c = $('pt-cont'), q = PT.q.toLowerCase();
+  const buscar = `<input id="pt-q" class="txt" placeholder="Buscar…" value="${esc(PT.q)}" style="max-width:280px">`;
+  if (PT.vista === 'productos') {
+    const vis = productos.filter(p => !q || p.nombre.toLowerCase().includes(q) || (p.categoria || '').toLowerCase().includes(q));
+    let cat = null;
+    c.innerHTML = `<div class="adm-barra"><p>Marca lo que <b>vende cada tienda</b>. Lo que desmarques deja de salir en la caja de esa tienda (el precio se guarda por si lo vuelves a encender).
+        Después, en 🧂 Materia prima, apaga lo que esa tienda ya no usa.</p></div><div class="adm-barra">${buscar}</div>
+      <div class="tabla-scroll"><table class="tabla-simple matriz-roles"><thead><tr><th>Producto</th>${tiendas.map(x => `<th class="centro">${esc(x.nombre)}</th>`).join('')}</tr></thead><tbody>
+      ${vis.map(p => (p.categoria !== cat ? (cat = p.categoria, `<tr class="grupo-fila"><td colspan="${tiendas.length + 1}"><b>${esc(cat || '')}</b></td></tr>`) : '') +
+        `<tr><td>${esc(p.nombre)}</td>${tiendas.map(x => { const e = p.estado[x.id] || 'sin';
+          return `<td class="centro"><input type="checkbox" class="casilla" data-pp="${p.id}" data-t="${x.id}" ${e === 'si' ? 'checked' : ''} aria-label="${esc(p.nombre + ' en ' + x.nombre)}">${e === 'sin' ? '<br><small class="ayuda">sin precio</small>' : ''}</td>`; }).join('')}</tr>`).join('')}
+      </tbody></table></div><p class="ayuda">"sin precio": esa tienda nunca lo ha tenido; al marcarlo toma el precio que tiene en otra tienda (luego lo cambias en Productos si hace falta).</p>`;
+    c.querySelectorAll('[data-pp]').forEach(ch => ch.onchange = () => guardando(null, async () => {
+      const pid = Number(ch.dataset.pp), tid = Number(ch.dataset.t), on = ch.checked;
+      try {
+        if (DEMO) { const vs = DEMO_DATA.variantes.filter(v => v.producto_id === pid).map(v => v.id);
+          vs.forEach(v => { const r = DEMO_DATA.precios.find(x => x.variante_id === v && x.tienda_id === tid);
+            if (r) r.disponible = on; else if (on) { const otro = Math.max(...DEMO_DATA.precios.filter(x => x.variante_id === v).map(x => x.precio_usd));
+              if (!isFinite(otro)) throw new Error('Ese producto no tiene precio en ninguna tienda'); DEMO_DATA.precios.push({ variante_id: v, tienda_id: tid, precio_usd: otro, disponible: true }); } });
+          guardarDemo(); }
+        else await rpc('pos_portienda_producto', { p_producto: pid, p_tienda: tid, p_on: on });
+        const p = productos.find(x => x.id === pid); p.estado[tid] = on ? 'si' : 'no';
+        toast(`${p.nombre}: ${on ? 'se vende' : 'ya no se vende'} en ${tiendas.find(x => x.id === tid).nombre}`);
+        if (!DEMO) PT.d = await rpc('pos_portienda_datos', {});
+      } catch (e) { ch.checked = !on; throw e; } }));
+  } else {
+    const vis = insumos.filter(i => !q || i.nombre.toLowerCase().includes(q));
+    c.innerHTML = `<div class="adm-barra"><p>Marca la materia prima que <b>maneja cada tienda</b>. La que desmarques no sale en su inventario, conteo físico, pedidos ni alertas.
+        <span class="badge">no la usa</span> = ningún producto que vende esa tienda la lleva en su receta.</p></div>
+      <div class="adm-barra">${buscar}<span class="espacio"></span>${tiendas.map(x => `<button class="btn btn-sec" data-sinuso="${x.id}">Apagar lo que ${esc(x.nombre)} no usa</button>`).join('')}</div>
+      <div class="tabla-scroll"><table class="tabla-simple matriz-roles"><thead><tr><th>Materia prima</th>${tiendas.map(x => `<th class="centro">${esc(x.nombre)}</th>`).join('')}</tr></thead><tbody>
+      ${vis.map(i => `<tr><td>${esc(i.nombre)} <small class="ayuda">${esc(i.unidad)}</small></td>${tiendas.map(x => `<td class="centro"><input type="checkbox" class="casilla" data-pi="${i.id}" data-t="${x.id}" ${i.off.includes(x.id) ? '' : 'checked'}>${i.usa.includes(x.id) ? '' : '<br><span class="badge">no la usa</span>'}</td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>`;
+    c.querySelectorAll('[data-pi]').forEach(ch => ch.onchange = () => guardando(null, async () => {
+      const iid = Number(ch.dataset.pi), tid = Number(ch.dataset.t), on = ch.checked, i = insumos.find(x => x.id === iid);
+      try {
+        if (DEMO) { DX.insumosOff = DX.insumosOff || {}; const l = new Set(DX.insumosOff[tid] || []); on ? l.delete(iid) : l.add(iid); DX.insumosOff[tid] = [...l]; guardarDemo(); }
+        else await rpc('pos_portienda_insumo', { p_insumo: iid, p_tienda: tid, p_on: on });
+        i.off = on ? i.off.filter(x => x !== tid) : [...i.off, tid];
+      } catch (e) { ch.checked = !on; throw e; } }));
+    c.querySelectorAll('[data-sinuso]').forEach(b => b.onclick = () => { const tid = Number(b.dataset.sinuso), n = insumos.filter(i => !i.usa.includes(tid) && !i.off.includes(tid)).length;
+      if (!n) return toast('Esa tienda ya tiene apagado todo lo que no usa');
+      if (!confirm(`¿Apagar ${n} materias primas que ${tiendas.find(x => x.id === tid).nombre} no usa?`)) return;
+      guardando(b, async () => {
+        if (DEMO) { DX.insumosOff = DX.insumosOff || {}; DX.insumosOff[tid] = [...new Set([...(DX.insumosOff[tid] || []), ...insumos.filter(i => !i.usa.includes(tid)).map(i => i.id)])]; guardarDemo(); }
+        else { await rpc('pos_portienda_apagar_sin_uso', { p_tienda: tid }); PT.d = await rpc('pos_portienda_datos', {}); }
+        toast(`Listo: ${n} apagadas`); pintarAdmPortienda(); }); });
+  }
+  const qq = $('pt-q'); qq.oninput = e => { PT.q = e.target.value; const pos = e.target.selectionStart; pintarAdmPortienda(); const n = $('pt-q'); n.focus(); n.setSelectionRange(pos, pos); };
+}
+
+// ---- Pestaña COMPRAS (21/11/2026): pedidos de materia prima (con presupuesto) + solicitudes de pago ----
+const COMP = { vista: null };
+function pintarAdmCompras() {
+  const cont = $('adm-contenido'), t = S.tienda.id;
+  const subs = [['pedidos', '📦 Pedidos de materia prima', puede('inv_pedidos') || puede('compras_aprobar')], ['solpe', '📝 Solicitudes de pago (otras compras y gastos)', puede('solpe')]].filter(x => x[2]);
+  if (!subs.some(([k]) => k === COMP.vista)) COMP.vista = subs[0]?.[0];
+  cont.innerHTML = `<nav class="sub-tabs prov-vistas">${subs.map(([k, n]) => `<button class="sub-tab ${COMP.vista === k ? 'activa' : ''}" data-cv="${k}">${n}</button>`).join('')}</nav><div id="comp-cont"></div>`;
+  cont.querySelectorAll('[data-cv]').forEach(b => b.onclick = () => { COMP.vista = b.dataset.cv; pintarAdmCompras(); });
+  if (COMP.vista === 'solpe') return pintarSolpe($('comp-cont'));
+  if (DEMO && !PRESC) { cargarPresupuestoCompras().then(pintarAdmCompras); return; }
+  const optsIns = DX.insumos.filter(i => i.activo !== false).map(i => `<option value="${i.id}">${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('');
+  pintarPedidos($('comp-cont'), t, optsIns);
+}
 const provDe = id => (DX.proveedores || []).find(p => p.id === id);
 const telWa = t => { const d = soloDigitos(t || ''); return !d ? '' : d.startsWith('58') ? d : '58' + d.replace(/^0/, ''); };
 function pedidosDemoProv() {   // demo: cada insumo con un proveedor de ejemplo
@@ -4576,7 +4752,7 @@ function pedidosDemoProv() {   // demo: cada insumo con un proveedor de ejemplo
 }
 function pintarPedidos(ic, t, optsIns) {
   pedidosDemoProv();
-  const dueno = S.perfil.rol === 'dueno';
+  const dueno = puede('compras_aprobar');
   if (!PDV.vista) PDV.vista = dueno ? 'consolidado' : 'hacer';
   const abiertos = (DX.pedidos || []).filter(p => (dueno || p.tienda_id === t) && ['pendiente', 'aprobado', 'en_camino'].includes(p.estado)).length;
   ic.innerHTML = `<nav class="sub-tabs" style="margin-bottom:10px">${[['hacer', '📝 Hacer pedido'], ['lista', `Pedidos${abiertos ? ` (${abiertos})` : ''}`], ...(dueno ? [['consolidado', '📦 Consolidado de las tiendas']] : [])]
@@ -4590,11 +4766,13 @@ function pintarPedidos(ic, t, optsIns) {
 
 function pintarHacerPedido(c, t, ic, optsIns) {
   const hoy = hoyVE();
-  const ins = DX.insumos.filter(i => i.activo !== false && etapaDe(i) === 'materia_prima').sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const ins = DX.insumos.filter(i => i.activo !== false && insEnTienda(i, t) && etapaDe(i) === 'materia_prima').sort((a, b) => a.nombre.localeCompare(b.nombre));
   const q = PDV.q.toLowerCase();
   const vis = ins.filter(i => (!q || i.nombre.toLowerCase().includes(q) || (provDe(i.proveedor_id)?.nombre || '').toLowerCase().includes(q)) && (!PDV.bajo || stockDe(i, t) <= i.minimo));
   const n = () => Object.values(PDV.cant).filter(v => v > 0).length;
-  c.innerHTML = `<div class="adm-barra"><p>Anota <b>cuánto necesitas</b> de cada cosa para ${esc(S.tienda.nombre)}. Lo que dejes en blanco no se pide. El dueño junta los pedidos de todas las tiendas y compra por proveedor.</p></div>
+  const jefe = puede('compras_aprobar');
+  c.innerHTML = `<section class="graf presu-compras" id="pd-presu"></section>
+    <div class="adm-barra"><p>Anota <b>cuánto necesitas</b> de cada cosa para ${esc(S.tienda.nombre)}. Lo que dejes en blanco no se pide. El dueño junta los pedidos de todas las tiendas y compra por proveedor.</p></div>
     <div class="adm-barra"><input id="pd-q" class="txt" placeholder="Buscar insumo o proveedor…" value="${esc(PDV.q)}" style="max-width:320px">
       <label class="interruptor" style="margin:0"><input type="checkbox" id="pd-bajo" ${PDV.bajo ? 'checked' : ''}><span>Solo lo que está por agotarse</span></label></div>
     <table class="tabla-simple num"><thead><tr><th>Insumo</th><th>Proveedor</th><th class="der">Hay</th><th class="der">Mínimo</th><th class="der">Pedir</th></tr></thead><tbody>
@@ -4609,10 +4787,25 @@ function pintarHacerPedido(c, t, ic, optsIns) {
       <label class="campo"><span>Nota (opcional)</span><input id="pd-nota" class="txt" value="${esc(PDV.nota)}" placeholder="Ej. que el sirope sea de la marca de siempre"></label>
       <div id="pd-error" class="mensaje-error oculto"></div>
       <button class="btn btn-primario" id="pd-enviar">Enviar pedido (<span id="pd-n">${n()}</span> productos)</button></section>`;
+  // Presupuesto: lo de esta semana no puede pasar del 45 % de lo vendido la semana anterior
+  const pintarPresu = () => {
+    const b = PRESC, este = valorPedido(Object.entries(PDV.cant).filter(([, v]) => v > 0).map(([k, v]) => ({ insumo_id: Number(k), cantidad: v })));
+    const box = c.querySelector('#pd-presu'), btn = c.querySelector('#pd-enviar');
+    if (!b) { box.innerHTML = '<p class="ayuda">No se pudo calcular el presupuesto de compras.</p>'; return; }
+    const queda = r2(b.disponible - este), pasa = queda < -0.009, pct = b.presupuesto > 0 ? Math.min(100, ((b.usado + este) / b.presupuesto) * 100) : 100;
+    box.innerHTML = `<h4>💰 Presupuesto de compras de la semana</h4>
+      <p class="ayuda">${b.pct} % de lo vendido del ${fechaCorta(b.desde)} al ${fechaCorta(b.hasta)} (${usd(b.venta_anterior)}).</p>
+      <div class="kpis kpis-chico"><div><span>Presupuesto</span><b class="num">${usd(b.presupuesto)}</b></div><div><span>Ya pedido esta semana</span><b class="num">${usd(b.usado)}</b></div>
+        <div><span>Este pedido</span><b class="num">${usd(este)}</b></div><div><span>${pasa ? 'Te pasas por' : 'Queda'}</span><b class="num ${pasa ? 'rojo' : ''}">${usd(Math.abs(queda))}</b></div></div>
+      <div class="barra-presu"><i style="width:${pct.toFixed(1)}%" class="${pasa ? 'mal' : pct > 85 ? 'medio' : ''}"></i></div>
+      ${pasa ? `<p class="mensaje-error">🚨 Este pedido se pasa del presupuesto por <b>${usd(-queda)}</b>. ${jefe ? 'Revísalo; como puedes aprobar pedidos, igual lo puedes enviar.' : 'Recorta cantidades hasta que quede dentro del presupuesto para poder enviarlo.'}</p>` : ''}`;
+    btn.disabled = pasa && !jefe;
+  };
+  pintarPresu();
   const redibujar = () => { const pos = c.querySelector('#pd-q').selectionStart; pintarHacerPedido(c, t, ic, optsIns); const qq = c.querySelector('#pd-q'); qq.focus(); qq.setSelectionRange(pos, pos); };
   c.querySelector('#pd-q').oninput = e => { PDV.q = e.target.value; redibujar(); };
   c.querySelector('#pd-bajo').onchange = e => { PDV.bajo = e.target.checked; pintarHacerPedido(c, t, ic, optsIns); };
-  c.querySelectorAll('.pd-c').forEach(x => x.oninput = () => { const v = leerNum(x.value); if (v > 0) PDV.cant[x.dataset.i] = v; else delete PDV.cant[x.dataset.i]; c.querySelector('#pd-n').textContent = n(); });
+  c.querySelectorAll('.pd-c').forEach(x => x.oninput = () => { const v = leerNum(x.value); if (v > 0) PDV.cant[x.dataset.i] = v; else delete PDV.cant[x.dataset.i]; c.querySelector('#pd-n').textContent = n(); pintarPresu(); });
   c.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { PDV.dias = Number(b.dataset.d); pintarHacerPedido(c, t, ic, optsIns); });
   c.querySelector('#pd-otro').onchange = e => { const v = parseInt(soloDigitos(e.target.value), 10); PDV.dias = v > 0 ? v : null; pintarHacerPedido(c, t, ic, optsIns); };
   c.querySelector('#pd-nota').oninput = e => PDV.nota = e.target.value;
@@ -4621,6 +4814,9 @@ function pintarHacerPedido(c, t, ic, optsIns) {
     const items = Object.entries(PDV.cant).filter(([, v]) => v > 0).map(([k, v]) => ({ insumo_id: Number(k), cantidad: v }));
     if (!items.length) return err('Anota la cantidad de al menos un insumo');
     if (!PDV.dias || PDV.dias > 60) return err('Elige en cuántos días tiene que llegar');
+    const este = valorPedido(items);
+    if (PRESC && este > PRESC.disponible + 0.009) { if (!jefe) return err(`Este pedido se pasa del presupuesto por ${usd(este - PRESC.disponible)}. Recorta para poder enviarlo.`);
+      if (!confirm(`Este pedido se pasa del presupuesto de la semana por ${usd(este - PRESC.disponible)}. ¿Enviarlo igual?`)) return; }
     const nota = limpiar(PDV.nota), dias = PDV.dias;
     const listo = msg => { PDV.cant = {}; PDV.nota = ''; PDV.dias = null; PDV.vista = 'lista'; toast(msg); };
     if (!DEMO) return guardando(c.querySelector('#pd-enviar'), async () => {
@@ -4631,7 +4827,8 @@ function pintarHacerPedido(c, t, ic, optsIns) {
     DX.pedidos.unshift({ id: nid(), tienda_id: t, tienda: S.tienda.nombre, solicitante: u ? (u.nombre + ' ' + (u.apellido || '')).trim() : 'Encargada',
       creado_en: new Date().toISOString(), para_fecha: sumarDias(hoyVE(), dias), nota, estado: 'pendiente', respuesta: null, factura_id: null,
       items: items.map(x => { const i = DX.insumos.find(z => z.id === x.insumo_id); return { ...x, nombre: i.nombre, unidad: i.unidad, proveedor_id: i.proveedor_id ?? null }; }) });
-    guardarDemo(); listo('Pedido enviado'); pintarAdmInventario();
+    DX.pedidos[0].total_usd = valorPedido(DX.pedidos[0].items);
+    guardarDemo(); listo('Pedido enviado'); repintarPedidos();
   };
 }
 
@@ -4680,11 +4877,11 @@ function pintarConsolidado(c, ic, t, optsIns) {
         if (DEMO) p.estado = 'en_camino';
         else { if (p.estado === 'pendiente') await rpc('pos_pedido_estado', { p_clave: A.clave, p_id: p.id, p_estado: 'aprobado', p_respuesta: null });
           await rpc('pos_pedido_estado', { p_clave: A.clave, p_id: p.id, p_estado: 'en_camino', p_respuesta: null }); } }
-      if (DEMO) { guardarDemo(); pintarAdmInventario(); } else refrescarAdmin(); toast('Pedidos en camino'); }); };
+      if (DEMO) { guardarDemo(); repintarPedidos(); } else refrescarAdmin(); toast('Pedidos en camino'); }); };
 }
 
 function pintarPedidosLista(ic, t) {
-  const dueno = S.perfil.rol === 'dueno', hoy = hoyVE();
+  const dueno = puede('compras_aprobar'), hoy = hoyVE();
   const lista = (DX.pedidos || []).filter(p => dueno || p.tienda_id === t);
   const abiertos = lista.filter(p => ['pendiente', 'aprobado', 'en_camino'].includes(p.estado));
   const cuando = p => { const d = diasEntre(hoy, p.para_fecha) - 1;
@@ -4695,7 +4892,7 @@ function pintarPedidosLista(ic, t) {
     <div class="pedidos">${lista.map(p => { const [en, cl] = ESTADO_PEDIDO[p.estado] || [p.estado, ''];
       const abierto = ['pendiente', 'aprobado', 'en_camino'].includes(p.estado);
       return `<article class="pedido ${abierto ? '' : 'cerrado'}"><header><b>Pedido N° ${p.id}</b>${dueno ? ` · ${esc(p.tienda || '')}` : ''}<span class="espacio"></span><span class="badge ${cl}">${en}</span></header>
-        <p class="ayuda">Lo pidió ${esc(p.solicitante || '—')} el ${fechaLarga(diaVE(p.creado_en))} · Lo necesita para el ${cuando(p)}</p>
+        <p class="ayuda">Lo pidió ${esc(p.solicitante || '—')} el ${fechaLarga(diaVE(p.creado_en))} · Lo necesita para el ${cuando(p)} · Valor aprox. <b>${usd(p.total_usd ?? valorPedido(p.items))}</b></p>
         <ul>${p.items.map(i => `<li><span>${esc(i.nombre)}</span><b class="num">${fmtCant(i.cantidad)} ${esc(i.unidad)}</b></li>`).join('')}</ul>
         ${p.nota ? `<p class="ayuda">Nota: ${esc(p.nota)}</p>` : ''}${p.respuesta ? `<p class="ayuda">Respuesta: ${esc(p.respuesta)}</p>` : ''}
         <footer><button class="link" data-wa="${p.id}">Copiar para WhatsApp</button><span class="espacio"></span>
@@ -4709,10 +4906,11 @@ function pintarPedidosLista(ic, t) {
     if (estado === 'rechazado') { resp = prompt('¿Por qué se rechaza? (opcional)') ; if (resp === null) return; }
     if (!DEMO) return guardando(null, async () => { await rpc('pos_pedido_estado', { p_clave: A.clave, p_id: p.id, p_estado: estado, p_respuesta: resp || null });
       toast('Pedido actualizado'); refrescarAdmin(); });
-    Object.assign(p, { estado, respuesta: resp || p.respuesta }); guardarDemo(); toast('Pedido actualizado'); pintarAdmInventario();
+    Object.assign(p, { estado, respuesta: resp || p.respuesta }); guardarDemo(); toast('Pedido actualizado'); repintarPedidos();
   };
   ic.querySelectorAll('[data-est]').forEach(b => b.onclick = () => cambiar(lista.find(p => p.id === Number(b.dataset.id)), b.dataset.est));
-  ic.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => { INV.pedido = lista.find(p => p.id === Number(b.dataset.rec)); INV.sub = 'recibir'; pintarAdmInventario(); });
+  ic.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => { INV.pedido = lista.find(p => p.id === Number(b.dataset.rec)); INV.sub = 'recibir';
+    const tab = document.querySelector('.adm-tab[data-tab="inventario"]'); if (A.tab !== 'inventario' && tab && !tab.classList.contains('oculto')) tab.click(); else pintarAdmInventario(); });
   ic.querySelectorAll('[data-wa]').forEach(b => b.onclick = () => { const p = lista.find(x => x.id === Number(b.dataset.wa));
     copiarTexto(`*Pedido N° ${p.id} · ${p.tienda || S.tienda.nombre}*\nPara el ${fechaLarga(p.para_fecha)}\n` + p.items.map(i => `• ${i.nombre}: ${fmtCant(i.cantidad)} ${i.unidad}`).join('\n') + (p.nota ? `\nNota: ${p.nota}` : '')); });
 }
@@ -5063,16 +5261,33 @@ function pintarPresupuesto(cont) {
     r.querySelector('#pp-x').onclick = cerrarModal; });
 }
 
+// Materia prima de cada proveedor: la que tiene asignada (proveedor habitual) + la que le hemos comprado según las facturas
+const insumosLista = () => (DX.insumosProv || DX.insumos || []);
+function mercanciaProv(p) {
+  const ins = insumosLista(), asign = ins.filter(i => i.proveedor_id === p.id).map(i => i.id);
+  const comprado = (p.comprado || (DX.facturas || []).filter(f => f.proveedor_id === p.id).flatMap(f => (f.detalle || []).map(l => Number(l.insumo_id))).filter(Boolean));
+  const ids = [...new Set([...asign, ...comprado])];
+  return ids.map(id => ins.find(i => i.id === id)?.nombre).filter(Boolean).sort((a, b) => a.localeCompare(b));
+}
 function editarProveedor(p) {
+  const ins = insumosLista().filter(i => i.activo !== false).sort((a, b) => (etapaDe(a) !== 'materia_prima') - (etapaDe(b) !== 'materia_prima') || a.nombre.localeCompare(b.nombre));
+  const comprado = p ? new Set((p.comprado || (DX.facturas || []).filter(f => f.proveedor_id === p.id).flatMap(f => (f.detalle || []).map(l => Number(l.insumo_id)))).map(Number)) : new Set();
+  const marcado = new Set(ins.filter(i => p && i.proveedor_id === p.id).map(i => i.id));
   const r = abrirModal(`<form id="f-pv"><div class="modal-cab"><h3 class="titulo">${p ? 'Editar proveedor' : 'Nuevo proveedor'}</h3></div><div class="modal-cuerpo"><div id="pv-error" class="mensaje-error oculto"></div>
     <label class="campo"><span>Nombre *</span><input id="pv-nombre" class="txt" value="${esc(p?.nombre || '')}"></label>
     <div class="dos-campos"><label class="campo"><span>RIF</span><input id="pv-rif" class="txt" placeholder="J-12345678-9" value="${esc(p?.rif || '')}"></label>
       <label class="campo"><span>Teléfono (WhatsApp)</span><input id="pv-tel" class="txt" inputmode="tel" value="${esc(p?.telefono || '')}"></label></div>
-    <label class="campo"><span>Qué vende</span><input id="pv-vende" class="txt" value="${esc(p?.vende || '')}"></label>
+    <label class="campo"><span>Tipo de mercancía (en pocas palabras)</span><input id="pv-vende" class="txt" value="${esc(p?.vende || '')}" placeholder="Ej. lácteos, desechables, siropes…"></label>
     <div class="dos-campos"><label class="campo"><span>¿Cómo se le paga? *</span><select id="pv-cond" class="sel"><option value="credito" ${p?.condicion !== 'contado' ? 'selected' : ''}>A crédito (se le pide y se paga después)</option><option value="contado" ${p?.condicion === 'contado' ? 'selected' : ''}>De contado (se compra y se paga en el momento)</option></select></label>
       <label class="campo" id="pv-dias-c"><span>Días de crédito</span><input id="pv-dias" class="txt num" inputmode="numeric" value="${p?.dias_credito ?? ''}" placeholder="Ej. 15"></label></div>
-    <p class="ayuda">Al recibir mercancía de este proveedor, la forma de pago y los días salen solos.</p></div>
-    <div class="modal-pie"><button type="button" class="btn btn-sec" id="pv-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 520);
+    <p class="ayuda">Al recibir mercancía de este proveedor, la forma de pago y los días salen solos. Y cada factura que se carga los actualiza: si vence el mismo día queda <b>contado</b>; si vence después, <b>crédito</b> a esos días.</p>
+    <div class="campo"><span>Materia prima que le compramos (es su proveedor habitual)</span>
+      <input id="pv-q" class="txt" placeholder="Buscar insumo…" style="margin-bottom:6px">
+      <div class="pv-insumos">${ins.map(i => { const otro = i.proveedor_id && i.proveedor_id !== p?.id ? DX.proveedores.find(x => x.id === i.proveedor_id) : null;
+        return `<label class="pv-ins" data-n="${esc(i.nombre.toLowerCase())}"><input type="checkbox" value="${i.id}" ${marcado.has(i.id) ? 'checked' : ''}> ${esc(i.nombre)}${comprado.has(i.id) ? ' <span class="badge ok">comprado</span>' : ''}${otro ? ` <small class="ayuda">(ahora: ${esc(otro.nombre)})</small>` : ''}</label>`; }).join('')}</div>
+      <p class="ayuda">"comprado" = aparece en sus facturas. Lo que marques aquí sale con este proveedor en los pedidos y en el consolidado.</p></div></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="pv-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 620);
+  r.querySelector('#pv-q').oninput = e => { const q = e.target.value.toLowerCase(); r.querySelectorAll('.pv-ins').forEach(l => l.classList.toggle('oculto', !!q && !l.dataset.n.includes(q))); };
   const dias = () => r.querySelector('#pv-dias-c').classList.toggle('oculto', r.querySelector('#pv-cond').value === 'contado');
   r.querySelector('#pv-cond').onchange = dias; dias();
   r.querySelector('#pv-x').onclick = cerrarModal;
@@ -5080,10 +5295,13 @@ function editarProveedor(p) {
     const err = m => { r.querySelector('#pv-error').textContent = m; r.querySelector('#pv-error').classList.remove('oculto'); };
     const cond = r.querySelector('#pv-cond').value, d = parseInt(soloDigitos(r.querySelector('#pv-dias').value), 10);
     const q = { id: p?.id || null, nombre: limpiar(r.querySelector('#pv-nombre').value), rif: limpiar(r.querySelector('#pv-rif').value), telefono: soloDigitos(r.querySelector('#pv-tel').value),
-      vende: limpiar(r.querySelector('#pv-vende').value), condicion: cond, dias_credito: cond === 'credito' && d > 0 ? d : null };
+      vende: limpiar(r.querySelector('#pv-vende').value), condicion: cond, dias_credito: cond === 'credito' && d > 0 ? d : null,
+      insumos: [...r.querySelectorAll('.pv-ins input:checked')].map(x => Number(x.value)) };
     if (q.nombre.length < 2) return err('Escribe el nombre');
     if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => { await rpc('pos_admin_guardar_proveedor', { p_clave: A.clave, p: q }); cerrarModal(); toast('Proveedor guardado'); refrescarAdmin(); }, err);
-    if (p) Object.assign(p, q); else DX.proveedores.push({ ...q, id: nid(), activo: true });
+    const { insumos: marcados, ...datos } = q; let pr = p;
+    if (p) Object.assign(p, datos); else { pr = { ...datos, id: nid(), activo: true }; DX.proveedores.push(pr); }
+    insumosLista().forEach(i => { if (marcados.includes(i.id)) i.proveedor_id = pr.id; else if (i.proveedor_id === pr.id) i.proveedor_id = null; });
     guardarDemo(); cerrarModal(); toast('Proveedor guardado'); pintarAdmProveedores(); };
 }
 
@@ -5180,8 +5398,8 @@ function pintarFacturasProv() {
     <table class="tabla-simple num"><thead><tr><th>Proveedor</th><th>N°</th><th>Emitida</th><th>Vence</th><th class="der">Monto</th><th class="der">Saldo</th><th>Estado</th><th></th></tr></thead><tbody>
     ${fs.map(f => `<tr><td>${esc(prov(f.proveedor_id)?.nombre || '')}</td><td>${esc(f.numero)}${f.foto_path || f.foto_data ? ' 📷' : ''}</td><td>${fechaCorta(f.emitida)}</td><td>${fechaCorta(f.vence)}</td><td class="der">${usd(f.monto_usd)}</td><td class="der">${usd(saldoFactura(f))}</td><td>${estadoFactura(f, hoy).html}</td>
       <td class="acciones"><button class="link" data-ver="${f.id}">Ver</button>${saldoFactura(f) > 0.009 ? ` <button class="link" data-ab="${f.id}">Pagar</button>` : ''}</td></tr>`).join('') || `<tr><td colspan="8" class="vacio">${PROV.filtro === 'pagadas' ? 'No hay facturas pagadas.' : 'No hay facturas por pagar.'}</td></tr>`}</tbody></table>
-    <section class="graf"><h4>Proveedores</h4><table class="tabla-simple"><thead><tr><th>Nombre</th><th>RIF</th><th>Teléfono</th><th>Qué vende</th><th>Pago</th><th class="der">Facturas</th><th class="der">Le debemos</th><th></th></tr></thead><tbody>
-      ${DX.proveedores.map(p => `<tr><td>${esc(p.nombre)}</td><td>${esc(p.rif || '')}</td><td class="num">${esc(p.telefono || '')}</td><td>${esc(p.vende || '')}</td><td>${condProv(p)}</td>
+    <section class="graf"><h4>Proveedores</h4><table class="tabla-simple"><thead><tr><th>Nombre</th><th>RIF</th><th>Teléfono</th><th>Qué le compramos</th><th>Pago</th><th class="der">Facturas</th><th class="der">Le debemos</th><th></th></tr></thead><tbody>
+      ${DX.proveedores.map(p => `<tr><td>${esc(p.nombre)}</td><td>${esc(p.rif || '')}</td><td class="num">${esc(p.telefono || '')}</td><td>${p.vende ? `<b>${esc(p.vende)}</b><br>` : ''}${(m => m.length ? `<small>${esc(m.slice(0, 5).join(', '))}${m.length > 5 ? ` y ${m.length - 5} más` : ''}</small>` : '<small class="ayuda">—</small>')(mercanciaProv(p))}</td><td>${condProv(p)}</td>
         <td class="der num">${todas.filter(f => f.proveedor_id === p.id).length}</td><td class="der num">${usd(debeProv(p.id))}</td><td><button class="link" data-pve="${p.id}">Editar</button></td></tr>`).join('')}</tbody></table></section>`;
   cont.querySelectorAll('[data-pf]').forEach(b => b.onclick = () => { PROV.filtro = b.dataset.pf; pintarAdmProveedores(); });
   cont.querySelectorAll('[data-ver]').forEach(b => b.onclick = () => verFactura(DX.facturas.find(x => x.id === Number(b.dataset.ver))));
@@ -5276,27 +5494,42 @@ function pintarAdmClientes() {
 const PERMISOS = [
   ['Caja', [['anular', 'Anular ventas']]],
   ['Administrar', [['sin_clave', 'Entrar a Administrar SIN la clave de administrador'], ['panel', 'Panel (ventas y números de la tienda)'], ['productos', 'Productos y precios'],
-    ['opciones', 'Toppings y sabores'], ['cierres', 'Cierres de caja'], ['gastos', 'Gastos y pagos (presupuesto, plan de pagos, facturas y proveedores)'],
-    ['solpe', 'Solicitudes de pago'], ['clientes', 'Clientes'], ['reportes', 'Reportes'], ['evaluacion', 'Evaluación del equipo']]],
-  ['Inventario', [['inventario', 'Ver existencias y movimientos'], ['inv_recibir', 'Recibir mercancía'], ['inv_mermas', 'Registrar mermas'], ['inv_conteo', 'Conteo físico'],
-    ['inv_pedidos', 'Hacer pedidos'], ['inv_produccion', 'Producción (galletas)'], ['inv_editar', 'Crear y editar insumos y recetas']]]];
-const PERM_DEF = {
-  encargada: Object.fromEntries(PERMISOS.flatMap(g => g[1]).map(([k]) => [k, true])),
-  cajera: { anular: true, sin_clave: false, panel: false, productos: true, opciones: true, cierres: false, gastos: false, solpe: false, clientes: false, reportes: false,
-    evaluacion: false, inventario: true, inv_recibir: true, inv_mermas: true, inv_conteo: true, inv_pedidos: true, inv_produccion: true, inv_editar: true } };
+    ['opciones', 'Toppings y sabores'], ['portienda', 'Qué vende cada tienda (productos y materia prima)'], ['cierres', 'Cierres de caja'],
+    ['gastos', 'Gastos y pagos (presupuesto, plan de pagos, facturas y proveedores)'], ['clientes', 'Clientes'], ['reportes', 'Reportes'],
+    ['evaluacion', 'Evaluar al equipo de su tienda'], ['cajas', 'Registrar o quitar la computadora de la caja']]],
+  ['Compras', [['inv_pedidos', 'Hacer pedidos de materia prima'], ['compras_aprobar', 'Aprobar pedidos y ver el consolidado de todas las tiendas'], ['solpe', 'Hacer solicitudes de pago']]],
+  ['Inventario', [['inventario', 'Ver existencias y movimientos'], ['inv_recibir', 'Recibir mercancía'], ['inv_mermas', 'Registrar mermas'], ['inv_conteo', 'Conteo físico (ajuste de inventario)'],
+    ['inv_produccion', 'Producción (galletas)'], ['inv_editar', 'Crear y editar insumos y recetas']]],
+  ['Gestión de gente', [['nomina', 'Nómina, trabajadores, liquidaciones y constancias'], ['bonos', 'Bonos y evaluación de líderes y gerentes'], ['postulaciones', 'Postulaciones de empleo']]]];
+const PERM_KEYS = PERMISOS.flatMap(g => g[1]).map(([k]) => k);
+const ROLES_EQUIPO = ['encargada', 'cajera', 'gerente', 'produccion', 'nomina', 'mercadeo'];
+// Lo que trae cada rol "de fábrica" (igual que pos_permisos_base en el servidor)
+function permBase(rol) {
+  const si = { encargada: k => !['portienda', 'compras_aprobar', 'nomina', 'bonos', 'postulaciones'].includes(k), gerente: k => !['nomina', 'bonos'].includes(k),
+    cajera: k => ['anular', 'productos', 'opciones', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
+    produccion: k => ['sin_clave', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
+    nomina: k => ['nomina', 'bonos', 'postulaciones', 'solpe'].includes(k), mercadeo: k => k === 'solpe' }[rol];
+  return si ? Object.fromEntries(PERM_KEYS.map(k => [k, si(k)])) : null;
+}
+let ROL_PERM = {};   // lo que el dueño marcó para cada rol (real: pos_roles_permisos; demo: DX.rolPermisos)
+const permRol = rol => { const b = permBase(rol); return b ? { ...b, ...((DEMO ? DX.rolPermisos : ROL_PERM) || {})[rol] } : null; };
+const PERM_DEF = new Proxy({}, { get: (_, rol) => permRol(String(rol)) });
 const permisosDe = (rol, propios) => ({ ...(PERM_DEF[rol] || {}), ...(propios || {}) });
 function puede(k) {
   const r = S.perfil?.rol;
   if (r === 'dueno') return true;
-  if (!PERM_DEF[r]) return false;
+  if (!permBase(r)) return false;
   if (DEMO) { const u = DX.usuarios.find(x => x.id === DX.usuarioActual); return !!permisosDe(r, u?.permisos)[k]; }
   return !!(S.permisos || PERM_DEF[r])[k];
 }
-const TAB_PERM = { panel: 'panel', productos: 'productos', opciones: 'opciones', inventario: 'inventario', cierres: 'cierres', proveedores: 'gastos',
-  solpe: 'solpe', clientes: 'clientes', reportes: 'reportes', evaluacion: 'evaluacion' };
-const INV_PERM = { existencias: 'inventario', movs: 'inventario', recibir: 'inv_recibir', produccion: 'inv_produccion', pedidos: 'inv_pedidos', merma: 'inv_mermas',
-  conteo: 'inv_conteo', recetas: 'inv_editar' };
-const tieneAdmin = () => S.perfil?.rol === 'dueno' || Object.values(TAB_PERM).some(puede);
+// Cada pestaña se ve si la persona tiene AL MENOS UNA de estas funciones
+const TAB_PERM = { panel: ['panel'], productos: ['productos'], opciones: ['opciones'], portienda: ['portienda'], inventario: ['inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_produccion', 'inv_editar'],
+  cierres: ['cierres'], proveedores: ['gastos'], compras: ['inv_pedidos', 'compras_aprobar', 'solpe'], clientes: ['clientes'], reportes: ['reportes'], evaluacion: ['evaluacion'],
+  cajas: ['cajas'], nomina: ['nomina', 'bonos', 'postulaciones'] };
+const puedeTab = tab => !TAB_PERM[tab] || TAB_PERM[tab].some(puede);
+const INV_PERM = { existencias: 'inventario', movs: 'inventario', recibir: 'inv_recibir', produccion: 'inv_produccion', merma: 'inv_mermas',
+  conteo: 'inv_conteo', recetas: 'inv_editar', bloqueos: 'inventario' };
+const tieneAdmin = () => S.perfil?.rol === 'dueno' || Object.keys(TAB_PERM).some(puedeTab);
 
 // Usuarios: tocar el nombre despliega sus funciones
 function pintarPermisosUsuario(u, cont) {
@@ -5368,15 +5601,50 @@ async function pintarAdmCajas() {
 }
 
 /* ---------- USUARIOS ---------- */
+const USR = { vista: 'personas' };
 function pintarAdmUsuarios() {
-  const cont = $('adm-contenido');
+  const raiz = $('adm-contenido');
+  raiz.innerHTML = `<nav class="sub-tabs prov-vistas"><button class="sub-tab ${USR.vista === 'personas' ? 'activa' : ''}" data-uv="personas">👤 Personas</button>
+    <button class="sub-tab ${USR.vista === 'roles' ? 'activa' : ''}" data-uv="roles">☑️ Funciones por rol</button></nav><div id="usr-cont"></div>`;
+  raiz.querySelectorAll('[data-uv]').forEach(b => b.onclick = () => { USR.vista = b.dataset.uv; pintarAdmUsuarios(); });
+  if (USR.vista === 'roles') return pintarFuncionesRoles($('usr-cont'));
+  pintarUsuariosPersonas($('usr-cont'));
+}
+// Matriz: cada función × cada rol, con casillas. Lo que se marca aquí es lo normal de ese rol; a una persona se le puede cambiar aparte.
+function pintarFuncionesRoles(cont) {
+  const act = Object.fromEntries(ROLES_EQUIPO.map(r => [r, { ...permRol(r) }])), orig = JSON.parse(JSON.stringify(act));
+  const cambiados = () => ROLES_EQUIPO.filter(r => PERM_KEYS.some(k => act[r][k] !== orig[r][k]));
+  cont.innerHTML = `<div class="adm-barra"><p>Marca qué puede hacer cada rol. Vender, abrir y cerrar caja lo pueden hacer todos los que tienen tienda.
+      Usuarios, clave, dispositivos y aprobar solicitudes de pago son solo del dueño. A una persona en particular le puedes cambiar sus funciones en <b>👤 Personas</b> (toca su nombre).</p></div>
+    <div class="tabla-scroll"><table class="tabla-simple matriz-roles"><thead><tr><th>Función</th>${ROLES_EQUIPO.map(r => `<th class="centro">${ROLES[r]}</th>`).join('')}</tr></thead><tbody>
+    ${PERMISOS.map(([g, ks]) => `<tr class="grupo-fila"><td colspan="${ROLES_EQUIPO.length + 1}"><b>${esc(g)}</b></td></tr>` + ks.map(([k, n]) => `<tr><td>${esc(n)}</td>${ROLES_EQUIPO.map(r =>
+      `<td class="centro"><input type="checkbox" class="casilla" data-r="${r}" data-k="${k}" ${act[r][k] ? 'checked' : ''} aria-label="${esc(ROLES[r] + ': ' + n)}"></td>`).join('')}</tr>`).join('')).join('')}
+    </tbody></table></div>
+    <p class="ayuda">Gestión gente y Mercadeo no tienen tienda: entran directo a su pantalla. Las funciones de tienda (inventario, caja, etc.) no les aplican.</p>
+    <div class="adm-barra"><button class="btn btn-sec" id="fr-fabrica">Volver todo a lo de fábrica</button><span class="espacio"></span><span id="fr-n" class="ayuda"></span>
+      <button class="btn btn-primario" id="fr-guardar" disabled>Guardar funciones</button></div>`;
+  const marcar = () => { const n = cambiados().length; $('fr-guardar').disabled = !n; $('fr-n').textContent = n ? `Cambiaste ${n} rol${n > 1 ? 'es' : ''}` : '';
+    cont.querySelectorAll('.casilla').forEach(c => c.closest('td').classList.toggle('cambiado', act[c.dataset.r][c.dataset.k] !== orig[c.dataset.r][c.dataset.k])); };
+  cont.querySelectorAll('.casilla').forEach(c => c.onchange = () => { act[c.dataset.r][c.dataset.k] = c.checked; marcar(); });
+  $('fr-fabrica').onclick = () => { if (!confirm('¿Dejar todos los roles con sus funciones de fábrica?')) return;
+    ROLES_EQUIPO.forEach(r => Object.assign(act[r], permBase(r))); cont.querySelectorAll('.casilla').forEach(c => c.checked = act[c.dataset.r][c.dataset.k]); marcar(); };
+  $('fr-guardar').onclick = () => guardando($('fr-guardar'), async () => {
+    for (const r of cambiados()) {
+      if (DEMO) { const b = permBase(r); DX.rolPermisos = DX.rolPermisos || {}; DX.rolPermisos[r] = Object.fromEntries(PERM_KEYS.filter(k => act[r][k] !== b[k]).map(k => [k, act[r][k]])); }
+      else { const res = await rpc('pos_admin_guardar_rol', { p_rol: r, p: act[r] }); ROL_PERM = Object.fromEntries(Object.entries(res).map(([k, v]) => [k, v.actual])); }
+    }
+    if (DEMO) guardarDemo();
+    toast('Funciones de los roles guardadas'); pintarFuncionesRoles(cont); });
+  marcar();
+}
+function pintarUsuariosPersonas(cont) {
   cont.innerHTML = `<div class="adm-barra"><p>Cada persona entra con su usuario y contraseña. Un usuario desactivado ya no puede entrar, pero sus ventas y cierres quedan guardados.</p><span class="espacio"></span><button class="btn btn-primario" id="us-nuevo">+ Usuario</button></div>
     <table class="tabla-simple"><thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Tiendas</th><th>Estado</th><th></th></tr></thead><tbody>
     ${DX.usuarios.map(u => `<tr class="${u.activo ? '' : 'anulada'}"><td>${PERM_DEF[u.rol] ? `<button class="link" data-pu="${esc(u.id)}" title="Ver y cambiar sus funciones">▸ ${esc(u.nombre + ' ' + u.apellido)}</button>${u.permisos ? ' <span class="badge abierta">funciones a la medida</span>' : ''}` : esc(u.nombre + ' ' + u.apellido)}</td><td class="num">${esc(u.usuario)}</td><td>${ROLES[u.rol]}</td>
       <td>${u.rol === 'dueno' ? 'Todas' : esc(u.tiendas.map(tiendaNombre).join(', '))}</td><td>${u.activo ? '<span class="badge ok">Activo</span>' : '<span class="badge">Desactivado</span>'}</td>
       <td>${u.rol === 'dueno' ? '' : `<button class="link" data-e="${esc(u.id)}">Editar</button>`}</td></tr>
       ${PERM_DEF[u.rol] ? `<tr class="oculto" data-pf="${esc(u.id)}"><td colspan="6"><div class="perm-cont"></div></td></tr>` : ''}`).join('')}</tbody></table>
-    <p class="ayuda">Toca el nombre de una encargada o un cajero para ver y cambiar sus funciones.</p>`;
+    <p class="ayuda">Toca el nombre de una persona para ver y cambiar SUS funciones (lo normal de su rol se cambia en ☑️ Funciones por rol).</p>`;
   cont.querySelectorAll('[data-pu]').forEach(b => b.onclick = () => { const u = DX.usuarios.find(x => String(x.id) === b.dataset.pu), fila = cont.querySelector(`[data-pf="${b.dataset.pu}"]`);
     const abrir = fila.classList.contains('oculto'); fila.classList.toggle('oculto', !abrir); b.textContent = (abrir ? '▾ ' : '▸ ') + u.nombre + ' ' + u.apellido;
     if (abrir) pintarPermisosUsuario(u, fila.querySelector('.perm-cont')); });
@@ -5385,7 +5653,10 @@ function pintarAdmUsuarios() {
       <div class="dos-campos"><label class="campo"><span>Nombre *</span><input id="us-nombre" class="txt" value="${esc(u?.nombre || '')}"></label><label class="campo"><span>Apellido *</span><input id="us-apellido" class="txt" value="${esc(u?.apellido || '')}"></label></div>
       <label class="campo"><span>Usuario para entrar *</span><input id="us-usuario" class="txt" value="${esc(u?.usuario || '')}" placeholder="Ej. ana.sambil" ${u ? 'disabled' : ''}></label>
       <label class="campo"><span>${u ? 'Nueva contraseña (déjala vacía para no cambiarla)' : 'Contraseña * (mínimo 6)'}</span><input id="us-clave" class="txt" type="password" autocomplete="new-password"></label>
-      <label class="campo"><span>Rol *</span><select id="us-rol" class="sel"><option value="cajera" ${u?.rol === 'cajera' ? 'selected' : ''}>Cajero: vende, abre y cierra su caja (con la clave de administrador entra al inventario)</option><option value="encargada" ${u?.rol === 'encargada' ? 'selected' : ''}>Encargada: además recibe mercancía, cuenta inventario y registra mermas</option><option value="nomina" ${u?.rol === 'nomina' ? 'selected' : ''}>Administrativa: solo ve la nómina (no necesita tienda)</option><option value="mercadeo" ${u?.rol === 'mercadeo' ? 'selected' : ''}>Mercadeo: solo hace solicitudes de pago (no necesita tienda)</option></select></label>
+      <label class="campo"><span>Rol *</span><select id="us-rol" class="sel">${[['cajera', 'Cajero: vende, abre y cierra su caja'], ['encargada', 'Líder: lleva la tienda (inventario, compras, cierres, equipo)'],
+        ['gerente', 'Gerente: todo lo de las tiendas que le asignes, y aprueba pedidos'], ['produccion', 'Producción: inventario y producción'],
+        ['nomina', 'Gestión gente: nómina, bonos y postulaciones (no necesita tienda)'], ['mercadeo', 'Mercadeo: solicitudes de pago (no necesita tienda)']]
+        .map(([k, n]) => `<option value="${k}" ${u?.rol === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <div class="campo"><span>Tiendas *</span><div class="opciones">${(DEMO ? DEMO_DATA.tiendas : S.tiendas).map(t => `<label class="op"><input type="checkbox" class="us-t" value="${t.id}" ${u?.tiendas.includes(t.id) || (!u && t.id === S.tienda.id) ? 'checked' : ''}> ${esc(t.nombre)}</label>`).join('')}</div></div>
       ${u ? `<label class="interruptor"><input type="checkbox" id="us-activo" ${u.activo ? 'checked' : ''}><span>Activo</span></label>` : ''}</div>
       <div class="modal-pie"><button type="button" class="btn btn-sec" id="us-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 560);
