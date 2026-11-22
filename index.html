@@ -4466,6 +4466,13 @@ function pintarAdmInventario() {
       const costo = filas.reduce((a, r) => a + r.cantidad * costoInsumo(r.insumo_id), 0), sinIva = pz.precio / 1.16;
       const margen = sinIva > 0 ? (sinIva - costo) / sinIva * 100 : null;
       const card = document.createElement('div'); card.className = 'adm-prod';
+      if (!puede('inv_editar')) {   // solo ver: quien tiene Inventario ve qué lleva cada producto; cambiarlo pide "Editar insumos y recetas" (22/11/2026)
+        card.innerHTML = `<div class="rc-cab"><b>${esc(pz.nombre)}</b><span class="num">Precio ${usd(pz.precio)} · costo <b>${usd(costo)}</b>${margen != null ? ` · margen <b class="${margen < 50 ? 'naranja' : 'verde'}">${Math.round(margen)}%</b>` : ''}</span></div>
+          ${filas.length ? `<table class="tabla-simple num"><tbody>${filas.map(r => { const i = DX.insumos.find(z => z.id === r.insumo_id);
+            return `<tr><td>${esc(i?.nombre || 'Insumo ' + r.insumo_id)}</td><td class="der">${fmtCant(r.cantidad)} ${esc(i?.unidad || '')}</td><td class="der chico">${usd(r.cantidad * costoInsumo(r.insumo_id))}</td></tr>`; }).join('')}</tbody></table>`
+            : '<div class="vacio">Sin receta cargada.</div>'}`;
+        lista.appendChild(card); continue;
+      }
       card.innerHTML = `<div class="rc-cab"><b>${esc(pz.nombre)}</b><span class="num">Precio ${usd(pz.precio)} · costo <b>${usd(costo)}</b>${margen != null ? ` · margen <b class="${margen < 50 ? 'naranja' : 'verde'}">${Math.round(margen)}%</b>` : ''}</span></div>
         <div class="rc-filas">${filas.map(r => `<div class="dos-campos rc-fila"><select class="sel rc-ins">${activos.map(i => `<option value="${i.id}" ${i.id === r.insumo_id ? 'selected' : ''}>${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('')}</select>
           <div class="con-quitar"><input class="txt num rc-cant" value="${fmtCant(r.cantidad)}"><button type="button" class="quitar" title="Quitar">✕</button></div></div>`).join('')}</div>
@@ -5634,7 +5641,7 @@ const TAB_PERM = { panel: ['panel'], productos: ['productos'], opciones: ['opcio
   cajas: ['cajas'], nomina: ['nomina', 'bonos', 'postulaciones'] };
 const puedeTab = tab => !TAB_PERM[tab] || TAB_PERM[tab].some(puede);
 const INV_PERM = { existencias: 'inventario', movs: 'inventario', recibir: 'inv_recibir', produccion: 'inv_produccion', merma: 'inv_mermas',
-  conteo: 'inv_conteo', recetas: 'inv_editar', bloqueos: 'inventario' };
+  conteo: 'inv_conteo', recetas: 'inventario', bloqueos: 'inventario' };
 const tieneAdmin = () => S.perfil?.rol === 'dueno' || Object.keys(TAB_PERM).some(puedeTab);
 
 // Usuarios: tocar el nombre despliega sus funciones
