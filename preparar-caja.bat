@@ -6,11 +6,13 @@ echo  ==========================================================
 echo     ChocoTentacion - Preparar la computadora de la caja
 echo  ==========================================================
 echo.
-echo  Este programa hace 2 cosas:
+echo  Este programa hace 3 cosas:
 echo   1. Pone la tiquera como impresora principal.
-echo   2. Crea en el escritorio el acceso "ChocoTentacion Caja",
-echo      que abre el sistema e imprime el ticket DIRECTO,
+echo   2. Crea en el escritorio el icono verde "ChocoTentacion Caja",
+echo      que abre el sistema para VENDER e imprime el ticket DIRECTO,
 echo      sin la ventana de imprimir.
+echo   3. Crea el icono azul "ChocoTentacion Administracion"
+echo      (inventario, compras, reportes...).
 echo.
 pause
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
@@ -27,14 +29,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
  "$nav = @(\"$env:ProgramFiles\Google\Chrome\Application\chrome.exe\", \"${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe\", \"$env:LocalAppData\Google\Chrome\Application\chrome.exe\", \"${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe\", \"$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe\") | Where-Object { Test-Path $_ } | Select-Object -First 1;" ^
  "if (-not $nav) { throw 'No encontre Google Chrome ni Microsoft Edge. Instala Google Chrome y vuelve a abrir este archivo.' };" ^
  "$perfil = Join-Path $env:LocalAppData 'ChocoTentacionCaja';" ^
+ "New-Item -ItemType Directory -Force -Path $perfil | Out-Null;" ^
+ "$icoCaja = Join-Path $perfil 'icono-caja.ico'; $icoAdm = Join-Path $perfil 'icono-admin.ico';" ^
+ "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest ($url + 'icono-caja.ico') -OutFile $icoCaja -UseBasicParsing; Invoke-WebRequest ($url + 'icono-admin.ico') -OutFile $icoAdm -UseBasicParsing } catch { $icoCaja = $nav; $icoAdm = $nav };" ^
  "$ws = New-Object -ComObject WScript.Shell;" ^
  "$acc = $ws.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'ChocoTentacion Caja.lnk'));" ^
  "$acc.TargetPath = $nav;" ^
  "$acc.Arguments = '--kiosk-printing --app=' + $url + ' --user-data-dir=\"' + $perfil + '\"';" ^
  "$acc.Description = 'Sistema de tiendas ChocoTentacion';" ^
- "$acc.IconLocation = $nav + ',0';" ^
+ "$acc.IconLocation = $icoCaja + ',0';" ^
  "$acc.Save();" ^
- "Write-Host ' Listo: en el escritorio esta el acceso \"ChocoTentacion Caja\".' -ForegroundColor Green"
+ "$adm = $ws.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'ChocoTentacion Administracion.lnk'));" ^
+ "$adm.TargetPath = $nav;" ^
+ "$adm.Arguments = '--app=' + $url + 'admin.html';" ^
+ "$adm.Description = 'Administracion de las tiendas ChocoTentacion';" ^
+ "$adm.IconLocation = $icoAdm + ',0';" ^
+ "$adm.Save();" ^
+ "Write-Host ' Listo: en el escritorio estan los iconos \"ChocoTentacion Caja\" (verde) y \"ChocoTentacion Administracion\" (azul).' -ForegroundColor Green"
 if errorlevel 1 (
   echo.
   echo  Algo fallo. Toma una foto de esta pantalla y mandasela a Edwin.
@@ -43,9 +54,11 @@ if errorlevel 1 (
 )
 echo.
 echo  ==========================================================
-echo   TODO LISTO. De ahora en adelante abre el sistema SIEMPRE
-echo   con el acceso "ChocoTentacion Caja" del escritorio.
-echo   La primera vez entra con tu usuario y tu clave.
+echo   TODO LISTO. Para VENDER abre SIEMPRE el icono verde
+echo   "ChocoTentacion Caja" del escritorio (imprime directo).
+echo   Para administrar usa el azul "ChocoTentacion Administracion".
+echo   La primera vez: tu usuario y tu clave, y si dice que el
+echo   equipo no esta autorizado, la clave de administrador.
 echo  ==========================================================
 echo.
 pause
