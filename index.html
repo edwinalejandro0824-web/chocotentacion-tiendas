@@ -4427,8 +4427,15 @@ function pintarAdmInventario() {
       <section class="graf" id="ct-hist"><h4>Ajustes anteriores</h4><p class="vacio">Cargando…</p></section>`;
     pintarHistConteos(t);
     $('f-conteo').onsubmit = async e => { e.preventDefault();
-      const filas = [...ic.querySelectorAll('[data-i]')].filter(x => x.value.trim() !== '').map(x => ({ i: DX.insumos.find(z => z.id === Number(x.dataset.i)), c: leerNum(x.value) }));
-      if (!filas.length || filas.some(x => !(x.c >= 0))) { $('ct-error').textContent = 'Escribe lo contado (al menos un insumo)'; $('ct-error').classList.remove('oculto'); return; }
+      const llenos = [...ic.querySelectorAll('[data-i]')].filter(x => x.value.trim() !== '');
+      ic.querySelectorAll('[data-i]').forEach(x => x.style.outline = '');
+      const malos = llenos.filter(x => !(leerNum(x.value) >= 0));
+      if (!llenos.length || malos.length) {   // dice CUÁL casilla está mal (22/11/2026: el mensaje genérico confundía)
+        malos.forEach(x => x.style.outline = '2px solid #c0392b');
+        $('ct-error').textContent = !llenos.length ? 'Escribe lo contado (al menos un insumo)'
+          : 'Revisa ' + (malos.length === 1 ? 'esta casilla' : 'estas casillas') + ' (marcadas en rojo; solo números, sin letras ni signos): ' + malos.map(x => (DX.insumos.find(z => z.id === Number(x.dataset.i))?.nombre || '') + ' = "' + x.value + '"').join(' · ');
+        $('ct-error').classList.remove('oculto'); (malos[0] || $('ct-error')).scrollIntoView({ block: 'center' }); return; }
+      const filas = llenos.map(x => ({ i: DX.insumos.find(z => z.id === Number(x.dataset.i)), c: leerNum(x.value) }));
       const res = filas.map(x => ({ ...x, s: stockDe(x.i, t), d: r2(x.c - stockDe(x.i, t)) }));
       let conteo = null;
       if (DEMO) { res.forEach(x => { if (Math.abs(x.d) > 0.0001) moverStock(t, x.i.id, x.d, 'ajuste', 'Conteo físico'); });
