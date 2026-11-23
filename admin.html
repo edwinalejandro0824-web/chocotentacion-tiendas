@@ -2649,7 +2649,7 @@ function pintarNomPeriodo(c) {
   const inp = (l, k, v, w = 56, extra = '') => `<input class="txt num nm-in" data-l="${l.id}" data-k="${k}" value="${v ?? ''}" inputmode="decimal" style="width:${w}px" ${ro} ${extra}>`;
   let centro = null;
   const filas = lineas.map(l => { const d = l.datos, k = l.calculo, cab = l.t.centro !== centro ? (centro = l.t.centro, `<tr class="nm-centro"><td colspan="${quinc ? 9 : 16}">${esc(centro || 'Sin centro')}</td></tr>`) : '';
-    return cab + `<tr data-fila="${l.id}"><td><button class="link" data-rec="${l.id}">${esc(nomNombre(l.t))}</button><br><span class="ayuda">${esc(l.t.cargo || '')}${l.t.tipo === 'destajo' ? ' · a destajo' : ''}</span></td>
+    return cab + `<tr data-fila="${l.id}"><td><button class="link" data-rec="${l.id}">${esc(nomNombre(l.t))}</button>${cerrada ? '' : ` <button class="quitar" data-nq="${l.id}" title="Quitar de esta nómina">✕</button>`}<br><span class="ayuda">${esc(l.t.cargo || '')}${l.t.tipo === 'destajo' ? ' · a destajo' : ''}</span></td>
       ${quinc ? '' : (d.horas || []).map((h, i) => `<td>${inp(l, 'h' + i, h, 44)}</td>`).join('') + `<td class="der" data-o="horas">${fmtCant(k.horas_total)}</td>`}
       <td>${inp(l, 'faltas', d.faltas ?? '', 40, `placeholder="${k.faltas}"`)}</td>
       <td>${inp(l, 'extra_ajuste', d.extra_ajuste ?? '', 44, `placeholder="${quinc ? '0' : '+0'}"`)}${quinc ? '' : `<br><span class="ayuda" data-o="extra">${k.horas_extra ? fmtCant(k.horas_extra) + ' h' : ''}</span>`}</td>
@@ -2691,6 +2691,10 @@ function pintarNomPeriodo(c) {
     ...lineas.map(l => { const k = l.calculo; return [l.t.centro, nomNombre(l.t), l.t.cedula, l.t.cargo, k.dias_pagados ?? k.dias_trabajados, k.horas_total, k.horas_extra || 0, k.sueldo_bs || 0, k.ivss || 0, k.rpe || 0, k.faov || 0, k.ley_neto_bs,
       k.ticket_usd, k.complemento || k.pago_destajo || 0, k.traslado, k.bono_fijo, k.pago_extra || 0, k.otros, k.descuentos, k.juridica_bs || 0, k.complementarios_usd, k.total_usd, k.total_bs]
       .map(x => typeof x === 'number' ? fmt.format(x) : (x ?? '')).join('\t'); })].join('\n'));
+  c.querySelectorAll('[data-nq]').forEach(b => b.onclick = async () => { const l = lineas.find(x => x.id === Number(b.dataset.nq));
+    if (!confirm(`¿Quitar a ${nomNombre(l.t)} de esta nómina? (Sigue en la lista de trabajadores.)`)) return;
+    if (DEMO) { DX.nom.lineas[NOMP.id] = DX.nom.lineas[NOMP.id].filter(x => x.id !== l.id); guardarDemo(); return pintarNomina(); }
+    try { await rpc('pos_nom_linea_quitar', { p_id: l.id }); toast('Quitado de esta nómina'); nomRefrescar(); } catch (e) { toast(e.message, true); } });
   if ($('nm-agregar')) $('nm-agregar').onclick = () => nomAgregar(lineas);
   if ($('nm-cerrar')) $('nm-cerrar').onclick = () => nomEstado('cerrado');
   if ($('nm-reabrir')) $('nm-reabrir').onclick = () => nomEstado('borrador');
