@@ -1457,6 +1457,11 @@ function abrirCobro() {
     } catch (e) {
       $('c-error').textContent = 'No se guardó la venta: ' + String(e.message).replace(/\|[PO]:\d+$/, '');
       if (/Sin (existencia|stock)/.test(e.message)) cargarBloqueos().then(() => { pintarProductos(); });
+      // El precio cambió mientras la caja estaba abierta (23/11/2026): se recarga el menú y la venta queda con el precio nuevo
+      if (/no cubre el total|no se vende en esta tienda/.test(e.message)) {
+        $('c-error').textContent = 'Los precios cambiaron desde que se abrió la pantalla. Ya se actualizaron: cierra esta ventana, revisa el total nuevo y cobra otra vez.';
+        recargarVenta().then(() => { pintarTicket(); });
+      }
       $('c-error').classList.remove('oculto');
       btn.textContent = 'Confirmar e imprimir'; enviando = false; pintarResumen();
     }
@@ -2166,6 +2171,7 @@ async function recargarAdmin() {
   catch (e) { $('adm-contenido').innerHTML = `<div class="mensaje-error">No se pudo cargar: ${esc(e.message)}</div>`; }
 }
 
+setInterval(() => { if (S.tienda && !S.carrito?.length && !document.body.classList.contains('sin-caja') && !$('vista-venta')?.classList.contains('oculto')) recargarVenta(); }, 10 * 60 * 1000);
 async function recargarVenta() {
   try {
     S.d = prepararCatalogo(await api.catalogo(S.tienda.id));
