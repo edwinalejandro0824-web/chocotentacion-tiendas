@@ -4346,7 +4346,7 @@ function pintarAdmInventario() {
         <div class="rec-foto"><label class="btn btn-sec" for="rc-foto">📷 Foto de la factura</label><input id="rc-foto" type="file" accept="image/*,application/pdf" capture="environment" hidden>
           <span id="rc-foto-n" class="ayuda">Sin foto todavía</span></div>
       </div>
-      <div class="rec-cab"><span>Insumo</span><span>Cantidad</span><span>Costo unidad (sin IVA)</span><span>Costo total (sin IVA)</span><span>Exento</span><span></span></div>
+      <div class="rec-cab"><span>Insumo</span><span>Cantidad</span><span>Precio total (sin IVA)</span><span>Costo por unidad</span><span>Exento</span><span></span></div>
       <div id="mv-filas"></div><button type="button" class="link" id="mv-mas">+ otro insumo</button>
       <div class="rec-iva ayuda" id="rc-iva"></div>
       <div class="rec-total"><span>Total de la factura <i class="ayuda" id="rc-clases"></i></span><b class="num" id="rc-total">$0,00</b></div>
@@ -4405,8 +4405,8 @@ function pintarAdmInventario() {
     };
     const fila = (ins, cant) => { const d = document.createElement('div'); d.className = 'fila-rec'; d.dataset.ult = 'total';
       d.innerHTML = `<select class="sel mv-ins">${optsIns}</select><input class="txt num mv-cant" inputmode="decimal">
-        <div class="con-signo"><span>$</span><input class="txt num mv-cu" inputmode="decimal" placeholder="0,00"></div>
-        <div class="con-signo"><span>$</span><input class="txt num mv-costo" inputmode="decimal" placeholder="0,00"></div>
+        <div class="con-signo"><span>$</span><input class="txt num mv-costo" inputmode="decimal" placeholder="Total de la línea"></div>
+        <div class="con-signo"><span>$</span><input class="txt num mv-cu" inputmode="decimal" placeholder="Se calcula"></div>
         <label class="mv-ex-l" title="Exento de IVA"><input type="checkbox" class="mv-ex"> <span>Exento</span></label>
         <button type="button" class="quitar" title="Quitar">✕</button>`;
       $('mv-filas').appendChild(d);
