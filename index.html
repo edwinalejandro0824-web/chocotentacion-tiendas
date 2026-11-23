@@ -625,6 +625,18 @@ function nombreDispositivo(ua = navigator.userAgent) {
   const nav = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : '';
   return so + (nav ? ' · ' + nav : '');
 }
+// Conteo físico (22/11/2026): acepta la letra "o" como cero y unidades escritas ("2 kg" → 2000 g, "1,5 l" → 1500 ml, "3 und")
+const leerCantInv = (v, unidad) => {
+  let s = String(v ?? '').trim().toLowerCase().replace(/\s+/g, ''); if (!s) return NaN;
+  let mult = 1;
+  const m = s.match(/^(.*?)(kilos?|kgs?|kg|gramos?|grs?|g|litros?|lts?|l|ml|pzas?|piezas?|und|unidades?|u)$/);
+  if (m && m[1]) { s = m[1]; const suf = m[2];
+    if (unidad === 'g' && /^k/.test(suf)) mult = 1000;
+    else if (unidad === 'ml' && /^l/.test(suf)) mult = 1000;
+    else if ((/^k/.test(suf) && unidad !== 'g') || (/^l/.test(suf) && unidad !== 'ml')) return NaN; }
+  if (/^[\do.,]+$/.test(s)) s = s.replace(/o/g, '0');
+  const n = leerNum(s); return n >= 0 ? Math.round(n * mult * 1000) / 1000 : NaN;
+};
 const leerNum = s => { // acepta "1.234,56", "1234,56", "1.000" (mil) o "1234.56"
   s = String(s ?? '').trim().replace(/\s/g, ''); if (!s) return NaN;
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
@@ -4421,21 +4433,37 @@ function pintarAdmInventario() {
   } else if (INV.sub === 'conteo') {
     ic.innerHTML = `<form id="f-conteo" class="form-caja ancho"><h4>Conteo físico ciego</h4><p class="ayuda">Cuenta lo que hay en la tienda y escríbelo. El sistema compara después; quien cuenta no ve lo que debería haber.</p>
       <div id="ct-error" class="mensaje-error oculto"></div>
+      <div class="dos-campos" style="align-items:end"><label class="campo"><span>Buscar insumo</span><input id="ct-q" class="txt" placeholder="Escribe para buscar…" autocomplete="off"></label>
+        <p class="ayuda" id="ct-cuenta" style="margin:0 0 10px">Llevas 0 contados</p></div>
+      <p class="ayuda">Escribe solo números en la unidad que sale en gris. También entiende "2 kg", "1,5 l" o la letra "o" como cero. Si algo no se entiende, la casilla se pone en rojo.</p>
       ${Object.entries(ETAPAS).map(([et, n]) => { const xs = activos.filter(i => etapaDe(i) === et); return xs.length ? `<h4 class="conteo-grupo">${n} <span class="ayuda">(${xs.length})</span></h4>
         <div class="conteo-ins">${xs.map(i => `<label><span>${esc(i.nombre)}</span><input class="txt num" data-i="${i.id}" inputmode="decimal" placeholder="${esc(i.unidad)}"></label>`).join('')}</div>` : ''; }).join('')}
+      <label class="check" style="display:flex;gap:8px;align-items:center;margin:14px 0"><input type="checkbox" id="ct-vacio0"> <span><b>Lo que dejé vacío NO hay</b> (cuenta como 0). Úsalo solo cuando contaste TODO.</span></label>
       <button class="btn btn-primario">Comparar y ajustar</button></form>
       <section class="graf" id="ct-hist"><h4>Ajustes anteriores</h4><p class="vacio">Cargando…</p></section>`;
     pintarHistConteos(t);
+    const uniDe = x => DX.insumos.find(z => z.id === Number(x.dataset.i))?.unidad;
+    const todos = [...ic.querySelectorAll('[data-i]')];
+    const revisar = x => { const v = x.value.trim(); const ok = !v || leerCantInv(v, uniDe(x)) >= 0;
+      x.style.outline = ok ? '' : '2px solid #c0392b'; x.title = ok ? '' : 'Solo números (ej. 0, 2,5 o 2000)';
+      $('ct-cuenta').textContent = 'Llevas ' + todos.filter(y => y.value.trim()).length + ' de ' + todos.length + ' contados'; };
+    todos.forEach(x => { x.oninput = () => revisar(x); x.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault();
+      const vis = todos.filter(y => y.closest('label').style.display !== 'none'); vis[vis.indexOf(x) + 1]?.focus(); } }; });
+    $('ct-q').oninput = e => { const q = e.target.value.trim().toLowerCase();
+      todos.forEach(x => { const l = x.closest('label'); l.style.display = !q || l.textContent.toLowerCase().includes(q) ? '' : 'none'; }); };
     $('f-conteo').onsubmit = async e => { e.preventDefault();
-      const llenos = [...ic.querySelectorAll('[data-i]')].filter(x => x.value.trim() !== '');
-      ic.querySelectorAll('[data-i]').forEach(x => x.style.outline = '');
-      const malos = llenos.filter(x => !(leerNum(x.value) >= 0));
+      const vacio0 = $('ct-vacio0').checked, vacios = todos.filter(x => x.value.trim() === '');
+      if (vacio0 && vacios.length && !confirm(`Se van a poner en 0 los ${vacios.length} insumos que dejaste vacíos (no hay). ¿Seguro?`)) return;
+      const llenos = vacio0 ? todos : todos.filter(x => x.value.trim() !== '');
+      todos.forEach(x => x.style.outline = '');
+      const valDe = x => x.value.trim() === '' ? 0 : leerCantInv(x.value, uniDe(x));
+      const malos = llenos.filter(x => !(valDe(x) >= 0));
       if (!llenos.length || malos.length) {   // dice CUÁL casilla está mal (22/11/2026: el mensaje genérico confundía)
         malos.forEach(x => x.style.outline = '2px solid #c0392b');
         $('ct-error').textContent = !llenos.length ? 'Escribe lo contado (al menos un insumo)'
           : 'Revisa ' + (malos.length === 1 ? 'esta casilla' : 'estas casillas') + ' (marcadas en rojo; solo números, sin letras ni signos): ' + malos.map(x => (DX.insumos.find(z => z.id === Number(x.dataset.i))?.nombre || '') + ' = "' + x.value + '"').join(' · ');
         $('ct-error').classList.remove('oculto'); (malos[0] || $('ct-error')).scrollIntoView({ block: 'center' }); return; }
-      const filas = llenos.map(x => ({ i: DX.insumos.find(z => z.id === Number(x.dataset.i)), c: leerNum(x.value) }));
+      const filas = llenos.map(x => ({ i: DX.insumos.find(z => z.id === Number(x.dataset.i)), c: valDe(x) }));
       const res = filas.map(x => ({ ...x, s: stockDe(x.i, t), d: r2(x.c - stockDe(x.i, t)) }));
       let conteo = null;
       if (DEMO) { res.forEach(x => { if (Math.abs(x.d) > 0.0001) moverStock(t, x.i.id, x.d, 'ajuste', 'Conteo físico'); });
