@@ -3520,6 +3520,7 @@ async function cargarInventarioReal() {
   DX.insumos = d.insumos.map(i => ({ id: i.id, nombre: i.nombre, unidad: i.unidad, costo_usd: num(i.costo_usd), minimo: num(i.minimo),
     activo: i.activo, clase_costo: i.clase_costo, etapa: i.etapa, proveedor_id: i.proveedor_id ?? null, iva_exento: !!i.iva_exento, stock: { [S.tienda.id]: num(i.cantidad) } }));
   DX.produccion = {}; Object.entries(d.produccion || {}).forEach(([k, ls]) => { DX.produccion[k] = ls.map(l => ({ insumo_id: l.insumo_id, cantidad: num(l.cantidad) })); });
+  try { const rq = await sb.from('pos_opcion_reemplazos').select('opcion_id,insumo_de,insumo_a'); DX.reemplazos = rq.data || []; } catch (e) { DX.reemplazos = []; }
   DX.recetas = {};
   Object.entries(d.recetas || {}).forEach(([k, filas]) => { DX.recetas[k] = filas.map(r => ({ insumo_id: r.insumo_id, cantidad: num(r.cantidad) })); });
   DX.movs = d.movs.map(m => ({ ...m, cantidad: num(m.cantidad), costo_total: num(m.costo_total), costo_unit: num(m.costo_unit) }));
@@ -4505,13 +4506,17 @@ function pintarAdmInventario() {
         card.innerHTML = `<div class="rc-cab"><b>${esc(pz.nombre)}</b><span class="num">Precio ${usd(pz.precio)} · costo <b>${usd(costo)}</b>${margen != null ? ` · margen <b class="${margen < 50 ? 'naranja' : 'verde'}">${Math.round(margen)}%</b>` : ''}</span></div>
           ${filas.length ? `<table class="tabla-simple num"><tbody>${filas.map(r => { const i = DX.insumos.find(z => z.id === r.insumo_id);
             return `<tr><td>${esc(i?.nombre || 'Insumo ' + r.insumo_id)}</td><td class="der">${fmtCant(r.cantidad)} ${esc(i?.unidad || '')}</td><td class="der chico">${usd(r.cantidad * costoInsumo(r.insumo_id))}</td></tr>`; }).join('')}</tbody></table>`
-            : '<div class="vacio">Sin receta cargada.</div>'}`;
+            : (reemDe(pz) ? '' : '<div class="vacio">Sin receta cargada.</div>')}${reemDe(pz) ? `<p class="ayuda">🔁 En lugar de <b>${esc(nomIns(reemDe(pz).insumo_de))}</b> usa <b>${esc(nomIns(reemDe(pz).insumo_a))}</b> (si escogen 2, mitad y mitad).</p>` : ''}`;
         lista.appendChild(card); continue;
       }
       card.innerHTML = `<div class="rc-cab"><b>${esc(pz.nombre)}</b><span class="num">Precio ${usd(pz.precio)} · costo <b>${usd(costo)}</b>${margen != null ? ` · margen <b class="${margen < 50 ? 'naranja' : 'verde'}">${Math.round(margen)}%</b>` : ''}</span></div>
         <div class="rc-filas">${filas.map(r => `<div class="dos-campos rc-fila"><select class="sel rc-ins">${activos.map(i => `<option value="${i.id}" ${i.id === r.insumo_id ? 'selected' : ''}>${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('')}</select>
           <div class="con-quitar"><input class="txt num rc-cant" value="${fmtCant(r.cantidad)}"><button type="button" class="quitar" title="Quitar">✕</button></div></div>`).join('')}</div>
-        <div class="rc-pie"><button class="link rc-mas">+ insumo</button><span class="espacio"></span><button class="btn btn-primario rc-guardar" disabled>Guardar receta</button></div>`;
+        <div class="rc-pie"><button class="link rc-mas">+ insumo</button><span class="espacio"></span><button class="btn btn-primario rc-guardar" disabled>Guardar receta</button></div>
+        ${pz.clave[0] === 'o' ? `<div class="rc-reem"><p class="ayuda" style="margin:8px 0 4px">🔁 <b>Cambiar un insumo del producto</b> (ej. sabor de la mezcla): cuando escojan esta opción, en lugar de</p>
+          <div class="dos-campos"><select class="sel rr-de"><option value="">— nada —</option>${activos.map(i => `<option value="${i.id}" ${reemDe(pz)?.insumo_de === i.id ? 'selected' : ''}>${esc(i.nombre)}</option>`).join('')}</select>
+          <select class="sel rr-a"><option value="">usa… (escoge)</option>${activos.map(i => `<option value="${i.id}" ${reemDe(pz)?.insumo_a === i.id ? 'selected' : ''}>${esc(i.nombre)}</option>`).join('')}</select></div>
+          <div class="rc-pie"><span class="ayuda">Si escogen dos opciones así, se reparte mitad y mitad.</span><span class="espacio"></span><button class="btn btn-sec rr-guardar">Guardar cambio de insumo</button></div></div>` : ''}`;
       const btn = card.querySelector('.rc-guardar'), sucio = () => { btn.disabled = false; card.classList.add('sucio'); };
       const activarFila = f => { f.querySelectorAll('input,select').forEach(x => x.addEventListener('input', sucio)); f.querySelector('.quitar').onclick = () => { f.remove(); sucio(); }; };
       card.querySelectorAll('.rc-fila').forEach(activarFila);
@@ -4526,6 +4531,18 @@ function pintarAdmInventario() {
           await rpc('pos_inv_guardar_receta', { p_clave: A.clave, p_variante: pz.clave[0] === 'v' ? id : null, p_opcion: pz.clave[0] === 'o' ? id : null, p_filas: nuevas });
           toast('Receta guardada'); refrescarAdmin(); });
         DX.recetas[pz.clave] = nuevas; guardarDemo(); toast('Receta guardada'); pintarAdmInventario(); };
+      const rr = card.querySelector('.rr-guardar');
+      if (rr) rr.onclick = async () => {
+        const op = Number(pz.clave.slice(1)), de = Number(card.querySelector('.rr-de').value) || null, aa = Number(card.querySelector('.rr-a').value) || null, ant = reemDe(pz);
+        if (!de && !ant) return toast('Escoge el insumo que se cambia', true);
+        if (de && !aa) return toast('Escoge por cuál insumo se cambia', true);
+        if (de && de === aa) return toast('Escoge un insumo distinto', true);
+        const quitar = !de;
+        if (!DEMO) return guardando(rr, async () => {
+          await rpc('pos_opcion_reemplazo_guardar', { p_clave: A.clave, p_opcion: op, p_de: quitar ? ant.insumo_de : de, p_a: quitar ? null : aa });
+          toast(quitar ? 'Cambio de insumo quitado' : 'Cambio de insumo guardado'); refrescarAdmin(); });
+        DX.reemplazos = (DX.reemplazos || []).filter(x => x.opcion_id !== op); if (!quitar) DX.reemplazos.push({ opcion_id: op, insumo_de: de, insumo_a: aa });
+        guardarDemo(); toast('Cambio de insumo guardado'); pintarAdmInventario(); };
       lista.appendChild(card);
     }
   } else {
@@ -5686,6 +5703,8 @@ const TAB_PERM = { panel: ['panel'], productos: ['productos'], opciones: ['opcio
 const puedeTab = tab => !TAB_PERM[tab] || TAB_PERM[tab].some(puede);
 const INV_PERM = { existencias: 'inventario', movs: 'inventario', recibir: 'inv_recibir', produccion: 'inv_produccion', merma: 'inv_mermas',
   conteo: 'inv_conteo', recetas: 'inventario', bloqueos: 'inventario' };
+const reemDe = pz => pz.clave[0] === 'o' ? (DX.reemplazos || []).find(x => x.opcion_id === Number(pz.clave.slice(1))) : null;
+const nomIns = id => DX.insumos.find(i => i.id === id)?.nombre || ('Insumo ' + id);
 const esRolSinCaja = () => ['nomina', 'mercadeo'].includes(S.perfil?.rol);   // nunca venden
 const soloVistaNomina = () => esRolSinCaja() && !Object.keys(TAB_PERM).some(t => t !== 'nomina' && t !== 'compras' && puedeTab(t)) && !puede('inv_pedidos') && !puede('compras_aprobar');
 const tieneAdmin = () => S.perfil?.rol === 'dueno' || Object.keys(TAB_PERM).some(puedeTab);
