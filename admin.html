@@ -3851,6 +3851,53 @@ function consumoItem(it) {
   return m;
 }
 const costoInsumo = id => DX.insumos.find(i => i.id === id)?.costo_usd || 0;
+
+// LISTA DE COMPUESTOS Y PARTES (23/11/2026, pedido de Sara): todas las recetas de una vez para revisar costos
+const LCP = { q: '', solo: false };
+function piezasCompuestos() {
+  const out = [], grupos = S.d.raw.grupos || DEMO_DATA.grupos;
+  for (const p of S.d.productos) for (const v of (S.d.varsDe.get(p.id) || []))
+    out.push({ clave: 'v' + v.id, tipo: 'Producto', nombre: v.nombre === 'Único' ? p.nombre : p.nombre + ' ' + v.nombre, precio: S.d.precio.get(v.id) || 0 });
+  for (const g of grupos) for (const o of (S.d.opsDe.get(g.id) || []))
+    out.push({ clave: 'o' + o.id, tipo: 'Opción · ' + g.nombre, nombre: o.nombre, precio: S.d.precioOp.get(o.id) || 0 });
+  return out.map(pz => {
+    const filas = (DX.recetas[pz.clave] || []).map(r => { const i = DX.insumos.find(z => z.id === r.insumo_id), cu = costoInsumo(r.insumo_id);
+      return { nombre: i?.nombre || 'Insumo ' + r.insumo_id, unidad: i?.unidad || '', cantidad: r.cantidad, cu, linea: r.cantidad * cu }; });
+    const costo = filas.reduce((a, f) => a + f.linea, 0), sinIva = pz.precio / 1.16;
+    const margen = sinIva > 0 ? (sinIva - costo) / sinIva * 100 : null;
+    const avisos = [];
+    if (!filas.length && !reemDe(pz)) avisos.push('sin receta');
+    if (filas.some(f => !(f.cu > 0))) avisos.push('insumo con costo 0');
+    if (margen != null && filas.length && margen < 50) avisos.push('margen bajo');
+    if (margen != null && margen < 0) avisos.push('pierde plata');
+    return { ...pz, filas, costo, margen, avisos };
+  });
+}
+function listaCompuestos(cont) {
+  const todas = piezasCompuestos();
+  cont.innerHTML = `<p class="ayuda">Todas las recetas de esta tienda en una sola lista: qué lleva cada producto y cada opción, cuánto, y lo que cuesta. Precio con IVA; el margen se calcula sobre el precio sin IVA.</p>
+    <div class="dos-campos" style="max-width:820px;align-items:end"><label class="campo"><span>Buscar (producto o insumo)</span><input id="lcp-q" class="txt" value="${esc(LCP.q)}" placeholder="Ej. barquilla, brownie, vaso…"></label>
+    <label style="display:flex;gap:8px;align-items:center;padding-bottom:10px;cursor:pointer"><input type="checkbox" id="lcp-solo" ${LCP.solo ? 'checked' : ''} style="width:18px;height:18px"> Solo lo que hay que revisar (sin receta, insumo en $0, margen bajo)</label></div>
+    <div class="fila-botones" style="margin:8px 0"><span id="lcp-cuenta" class="chico"></span><span class="espacio"></span><button class="btn btn-sec" id="lcp-xls">Copiar para Excel</button><button class="btn btn-sec" id="lcp-pdf">Imprimir o guardar PDF</button></div>
+    <div id="lcp-tabla"></div>`;
+  const filtradas = () => { const q = LCP.q.trim().toLowerCase();
+    return todas.filter(pz => (!LCP.solo || pz.avisos.length) && (!q || (pz.nombre + ' ' + pz.tipo).toLowerCase().includes(q) || pz.filas.some(f => f.nombre.toLowerCase().includes(q)))); };
+  const tablaHTML = (lista, imp) => `<table class="${imp ? 'rel' : 'tabla-simple num'}"><thead><tr><th>Producto / insumo</th><th class="der">Cantidad</th><th class="der">Costo unidad</th><th class="der">Costo</th><th class="der">Precio</th><th class="der">Margen</th></tr></thead><tbody>
+    ${lista.map(pz => `<tr style="background:#f6f1ea"><td><b>${esc(pz.nombre)}</b> <span class="chico">${esc(pz.tipo)}</span>${pz.avisos.length ? ` <b class="naranja" style="color:#c0392b">⚠ ${esc(pz.avisos.join(', '))}</b>` : ''}</td><td></td><td></td>
+      <td class="der"><b>${usd(pz.costo)}</b></td><td class="der">${usd(pz.precio)}</td><td class="der">${pz.margen == null ? '—' : `<b class="${pz.margen < 50 ? 'naranja' : 'verde'}">${Math.round(pz.margen)}%</b>`}</td></tr>
+      ${pz.filas.map(f => `<tr><td style="padding-left:18px">${esc(f.nombre)}</td><td class="der">${fmtCant(f.cantidad)} ${esc(f.unidad)}</td><td class="der ${f.cu > 0 ? '' : 'rojo'}">${f.cu > 0 ? '$' + f.cu.toFixed(f.cu < 0.01 ? 6 : 4).replace('.', ',') : '$0 ⚠'}</td><td class="der">${usd(f.linea)}</td><td></td><td></td></tr>`).join('')}
+      ${reemDe(pz) ? `<tr><td colspan="6" style="padding-left:18px" class="chico">🔁 En lugar de ${esc(nomIns(reemDe(pz).insumo_de))} usa ${esc(nomIns(reemDe(pz).insumo_a))}</td></tr>` : ''}`).join('')}</tbody></table>`;
+  const pintar = () => { const l = filtradas();
+    $('lcp-cuenta').textContent = `${l.length} de ${todas.length} · ${todas.filter(x => x.avisos.length).length} por revisar`;
+    $('lcp-tabla').innerHTML = l.length ? tablaHTML(l) : '<div class="vacio">Nada con ese filtro.</div>'; };
+  $('lcp-q').oninput = e => { LCP.q = e.target.value; pintar(); };
+  $('lcp-solo').onchange = e => { LCP.solo = e.target.checked; pintar(); };
+  $('lcp-xls').onclick = () => copiarTexto(tsv(['Producto', 'Tipo', 'Precio', 'Costo total', 'Margen %', 'Insumo', 'Cantidad', 'Unidad', 'Costo unidad', 'Costo línea', 'Revisar'],
+    filtradas().flatMap(pz => (pz.filas.length ? pz.filas : [null]).map(f => [pz.nombre, pz.tipo, fmtCant(pz.precio), fmtCant(r2(pz.costo)), pz.margen == null ? '' : Math.round(pz.margen),
+      f?.nombre || '', f ? fmtCant(f.cantidad) : '', f?.unidad || '', f ? String(f.cu).replace('.', ',') : '', f ? String(r2(f.linea)).replace('.', ',') : '', pz.avisos.join(', ')]))));
+  $('lcp-pdf').onclick = () => nomImprimir([`<div><h2>Lista de compuestos y partes</h2><p class="nota">${esc(S.tienda?.nombre || '')} · ${new Date().toLocaleDateString('es-VE')} · precio con IVA, margen sobre el precio sin IVA</p>${tablaHTML(filtradas(), true)}</div>`], 'Compuestos y partes', true);
+  pintar();
+}
 const costoItem = it => { let c = 0; consumoItem(it).forEach((q, id) => { c += q * costoInsumo(id); }); return c; };
 const costoVenta = v => v.costo_usd != null ? v.costo_usd : v.items.reduce((a, it) => a + costoItem(it), 0);
 function moverStock(tiendaId, insumoId, cantidad, tipo, nota) {
@@ -4511,11 +4558,12 @@ function pintarAdmInventario() {
     const prods = S.d.productos;
     INV.prod = INV.prod || prods.at(0)?.id;
     const grupos = S.d.raw.grupos || DEMO_DATA.grupos;
-    ic.innerHTML = `<div class="dos-campos" style="max-width:640px"><label class="campo"><span>Producto</span><select id="rc-prod" class="sel">${prods.map(p => `<option value="${p.id}" ${p.id === INV.prod ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}
+    ic.innerHTML = `<div class="dos-campos" style="max-width:640px"><label class="campo"><span>Producto</span><select id="rc-prod" class="sel"><option value="todo" ${INV.prod === 'todo' ? 'selected' : ''}>📋 Lista completa (todos los productos y opciones)</option>${prods.map(p => `<option value="${p.id}" ${p.id === INV.prod ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}
         ${grupos.map(g => `<option value="g${g.id}" ${INV.prod === 'g' + g.id ? 'selected' : ''}>Opciones: ${esc(g.nombre)}</option>`).join('')}</select></label></div><div id="rc-lista"></div>`;
-    $('rc-prod').onchange = e => { INV.prod = /^g/.test(e.target.value) ? e.target.value : Number(e.target.value); pintarAdmInventario(); };
+    $('rc-prod').onchange = e => { INV.prod = /^(g|todo)/.test(e.target.value) ? e.target.value : Number(e.target.value); pintarAdmInventario(); };
     const lista = $('rc-lista');
-    const piezas = /^g/.test(String(INV.prod))
+    if (INV.prod === 'todo') listaCompuestos(lista);
+    const piezas = INV.prod === 'todo' ? [] : /^g/.test(String(INV.prod))
       ? (S.d.opsDe.get(Number(String(INV.prod).slice(1))) || []).map(o => ({ clave: 'o' + o.id, nombre: o.nombre, precio: S.d.precioOp.get(o.id) || 0 }))
       : (S.d.varsDe.get(INV.prod) || []).map(v => ({ clave: 'v' + v.id, nombre: v.nombre === 'Único' ? S.d.producto.get(INV.prod).nombre : S.d.producto.get(INV.prod).nombre + ' ' + v.nombre, precio: S.d.precio.get(v.id) }));
     for (const pz of piezas) {
