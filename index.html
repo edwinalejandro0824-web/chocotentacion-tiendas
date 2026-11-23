@@ -5686,6 +5686,8 @@ const TAB_PERM = { panel: ['panel'], productos: ['productos'], opciones: ['opcio
 const puedeTab = tab => !TAB_PERM[tab] || TAB_PERM[tab].some(puede);
 const INV_PERM = { existencias: 'inventario', movs: 'inventario', recibir: 'inv_recibir', produccion: 'inv_produccion', merma: 'inv_mermas',
   conteo: 'inv_conteo', recetas: 'inventario', bloqueos: 'inventario' };
+const esRolSinCaja = () => ['nomina', 'mercadeo'].includes(S.perfil?.rol);   // nunca venden
+const soloVistaNomina = () => esRolSinCaja() && !Object.keys(TAB_PERM).some(t => t !== 'nomina' && t !== 'compras' && puedeTab(t)) && !puede('inv_pedidos') && !puede('compras_aprobar');
 const tieneAdmin = () => S.perfil?.rol === 'dueno' || Object.keys(TAB_PERM).some(puedeTab);
 
 // Usuarios: tocar el nombre despliega sus funciones
@@ -6092,7 +6094,7 @@ async function entrarTienda(t) {
     if (DEMO) { sembrarHistoria(); S.ventasHoy = await api.ventasHoy(t.id); }
     pintarCategorias(); pintarProductos(); pintarTicket(); pintarMeta();
     document.body.classList.remove('sin-caja');
-    if (MODO_ADMIN || !esCaja(t.id)) return modoSinCaja(t);
+    if (MODO_ADMIN || !esCaja(t.id) || esRolSinCaja()) return modoSinCaja(t);
     await cargarBloqueos(); pintarProductos();
     await revisarCaja();
     pintarChipStock();
@@ -6108,8 +6110,10 @@ async function despuesDeEntrar() {
     return errorLogin('Tu usuario no tiene acceso al sistema de tiendas. Pídele al dueño que te dé acceso.');
   }
   $('nombre-usuario').textContent = S.perfil.nombre;
-  if (S.perfil.rol === 'nomina' || S.perfil.rol === 'mercadeo') return abrirVistaNomina();   // la administrativa solo ve la nómina
   try { S.permisos = DEMO ? null : await rpc('pos_mis_permisos'); } catch (e) { S.permisos = null; }
+  // Gestión gente y Mercadeo: si el dueño les marcó funciones de Administrar (panel, reportes…), entran a Administración;
+  // si solo tienen nómina/postulaciones/solicitudes, van a su vista propia (23/11/2026)
+  if (soloVistaNomina()) return abrirVistaNomina();
   await identificarCaja();
   $('btn-admin').classList.toggle('oculto', !tieneAdmin());
   S.tiendas = await api.tiendas();
