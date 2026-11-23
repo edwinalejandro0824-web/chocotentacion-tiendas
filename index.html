@@ -4201,7 +4201,11 @@ function pintarAdmInventario() {
     <nav class="sub-tabs">${subsOk.map(([k, n]) => `<button class="sub-tab ${INV.sub === k ? 'activa' : ''}" data-s="${k}">${n}</button>`).join('')}</nav><div id="inv-cont"></div>`;
   cont.querySelectorAll('.sub-tab').forEach(b => b.onclick = () => { INV.sub = b.dataset.s; if (INV.sub !== 'recibir') INV.pedido = null; pintarAdmInventario(); });
   const ic = $('inv-cont'), activos = DX.insumos.filter(i => i.activo !== false && insEnTienda(i, t));
-  const optsIns = activos.map(i => `<option value="${i.id}">${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('');
+  // Para escoger insumos (recetas, recibir, mermas, producción) salen TODOS, también los apagados en esta tienda (23/11/2026):
+  // al usarlos se vuelven a encender solos en la tienda.
+  const todosAct = DX.insumos.filter(i => i.activo !== false).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const etqIns = i => `${esc(i.nombre)} (${esc(i.unidad)})${insEnTienda(i, t) ? '' : ' · no se usa aquí'}`;
+  const optsIns = todosAct.map(i => `<option value="${i.id}">${etqIns(i)}</option>`).join('');
   if (INV.sub === 'existencias') {
     const valor = r2(activos.reduce((a, i) => a + Math.max(stockDe(i, t), 0) * i.costo_usd, 0));
     const estadoDe = i => { const s = stockDe(i, t); return s <= 0 ? 'agotado' : s <= i.minimo ? 'poragotarse' : 'bien'; };
@@ -4218,7 +4222,13 @@ function pintarAdmInventario() {
       ${visibles.map(i => { const s = stockDe(i, t), est = s <= 0 ? '<span class="badge mal">Agotado</span>' : s <= i.minimo ? '<span class="badge abierta">Por agotarse</span>' : '<span class="badge ok">Bien</span>';
         return `<tr><td>${esc(i.nombre)}${etapaDe(i) !== 'materia_prima' ? ` <span class="badge">${etapaDe(i) === 'en_proceso' ? 'En proceso' : 'Terminado'}</span>` : ''}</td><td class="der">${fmtCant(s)} ${esc(i.unidad)}</td><td class="der">${fmtCant(i.minimo)} ${esc(i.unidad)}</td><td>${est}</td>
           <td class="der">$${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(i.costo_usd)} / ${esc(i.unidad)}</td><td class="der">${usd(Math.max(s, 0) * i.costo_usd)}</td>
-          <td><button class="link" data-e="${i.id}">Editar</button></td></tr>`; }).join('')}</tbody></table>`;
+          <td><button class="link" data-e="${i.id}">Editar</button></td></tr>`; }).join('')}</tbody></table>
+      ${(() => { const off = DX.insumos.filter(i => i.activo !== false && !insEnTienda(i, t) && (!q || i.nombre.toLowerCase().includes(q)));
+        return off.length ? `<details class="graf" ${q ? 'open' : ''}><summary><b>Insumos que no se usan en ${esc(S.tienda.nombre)} (${off.length})</b> <span class="ayuda">— si alguno sí lo usan, tócalo para usarlo aquí</span></summary>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${off.map(i => `<button class="btn btn-sec" data-usar="${i.id}">+ ${esc(i.nombre)}</button>`).join('')}</div></details>` : ''; })()}`;
+    ic.querySelectorAll('[data-usar]').forEach(b => b.onclick = async () => { const id = Number(b.dataset.usar);
+      if (!DEMO) return guardando(b, async () => { await rpc('pos_insumo_usar_aqui', { p_clave: A.clave, p_tienda: t, p_insumo: id }); toast('Listo: ahora se usa en ' + S.tienda.nombre); refrescarAdmin(); });
+      DX.insumosOff[t] = (DX.insumosOff[t] || []).filter(x => x !== id); guardarDemo(); toast('Listo'); pintarAdmInventario(); });
     const editar = i => {
       const r = abrirModal(`<form id="f-ins"><div class="modal-cab"><h3 class="titulo">${i ? 'Editar insumo' : 'Nuevo insumo'}</h3></div><div class="modal-cuerpo">
         <div id="ie-error" class="mensaje-error oculto"></div>
@@ -4511,12 +4521,12 @@ function pintarAdmInventario() {
         lista.appendChild(card); continue;
       }
       card.innerHTML = `<div class="rc-cab"><b>${esc(pz.nombre)}</b><span class="num">Precio ${usd(pz.precio)} · costo <b>${usd(costo)}</b>${margen != null ? ` · margen <b class="${margen < 50 ? 'naranja' : 'verde'}">${Math.round(margen)}%</b>` : ''}</span></div>
-        <div class="rc-filas">${filas.map(r => `<div class="dos-campos rc-fila"><select class="sel rc-ins">${activos.map(i => `<option value="${i.id}" ${i.id === r.insumo_id ? 'selected' : ''}>${esc(i.nombre)} (${esc(i.unidad)})</option>`).join('')}</select>
+        <div class="rc-filas">${filas.map(r => `<div class="dos-campos rc-fila"><select class="sel rc-ins">${todosAct.map(i => `<option value="${i.id}" ${i.id === r.insumo_id ? 'selected' : ''}>${etqIns(i)}</option>`).join('')}</select>
           <div class="con-quitar"><input class="txt num rc-cant" value="${fmtCant(r.cantidad)}"><button type="button" class="quitar" title="Quitar">✕</button></div></div>`).join('')}</div>
         <div class="rc-pie"><button class="link rc-mas">+ insumo</button><span class="espacio"></span><button class="btn btn-primario rc-guardar" disabled>Guardar receta</button></div>
         ${pz.clave[0] === 'o' ? `<div class="rc-reem"><p class="ayuda" style="margin:8px 0 4px">🔁 <b>Cambiar un insumo del producto</b> (ej. sabor de la mezcla): cuando escojan esta opción, en lugar de</p>
-          <div class="dos-campos"><select class="sel rr-de"><option value="">— nada —</option>${activos.map(i => `<option value="${i.id}" ${reemDe(pz)?.insumo_de === i.id ? 'selected' : ''}>${esc(i.nombre)}</option>`).join('')}</select>
-          <select class="sel rr-a"><option value="">usa… (escoge)</option>${activos.map(i => `<option value="${i.id}" ${reemDe(pz)?.insumo_a === i.id ? 'selected' : ''}>${esc(i.nombre)}</option>`).join('')}</select></div>
+          <div class="dos-campos"><select class="sel rr-de"><option value="">— nada —</option>${todosAct.map(i => `<option value="${i.id}" ${reemDe(pz)?.insumo_de === i.id ? 'selected' : ''}>${esc(i.nombre)}</option>`).join('')}</select>
+          <select class="sel rr-a"><option value="">usa… (escoge)</option>${todosAct.map(i => `<option value="${i.id}" ${reemDe(pz)?.insumo_a === i.id ? 'selected' : ''}>${esc(i.nombre)}</option>`).join('')}</select></div>
           <div class="rc-pie"><span class="ayuda">Si escogen dos opciones así, se reparte mitad y mitad.</span><span class="espacio"></span><button class="btn btn-sec rr-guardar">Guardar cambio de insumo</button></div></div>` : ''}`;
       const btn = card.querySelector('.rc-guardar'), sucio = () => { btn.disabled = false; card.classList.add('sucio'); };
       const activarFila = f => { f.querySelectorAll('input,select').forEach(x => x.addEventListener('input', sucio)); f.querySelector('.quitar').onclick = () => { f.remove(); sucio(); }; };
