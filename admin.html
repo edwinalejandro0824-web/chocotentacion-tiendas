@@ -3563,7 +3563,8 @@ const CARGA = {
     if (PROV.vista === 'plan') await cargarPlanReal(); },
   portienda: async () => { PT.d = await rpc('pos_portienda_datos', {}); },
   compras: async () => { if (!(puede('inv_pedidos') || puede('compras_aprobar'))) return;   // solo solicitudes de pago: no necesita inventario (Mercadeo)
-    await CARGA.inventario(); await cargarPresupuestoCompras(); },
+    // sin 'gastos'/'inventario' no se pueden leer las facturas de proveedores (Fabiana, 23/11): los proveedores salen de pos_inv_datos
+    await cargarInventarioReal(); await Promise.all([cargarPedidosReal(), (puede('gastos') || puede('inventario')) ? cargarProveedoresReal() : null]); await cargarPresupuestoCompras(); },
   clientes: () => cargarClientesReal(),
   reportes: async () => { if (REP.tipo === 'general' && REP.rango !== 'otro') [REP.desde, REP.hasta] = rangoReporte(REP.rango);
     REP.desde = REP.desde || hoyVE().slice(0, 8) + '01'; REP.hasta = REP.hasta || hoyVE();
