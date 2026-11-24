@@ -28,7 +28,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
  "Write-Host (' Listo: ' + $imp.Name + ' es la impresora principal.') -ForegroundColor Green;" ^
  "$nav = @(\"$env:ProgramFiles\Google\Chrome\Application\chrome.exe\", \"${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe\", \"$env:LocalAppData\Google\Chrome\Application\chrome.exe\", \"${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe\", \"$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe\") | Where-Object { Test-Path $_ } | Select-Object -First 1;" ^
  "if (-not $nav) { throw 'No encontre Google Chrome ni Microsoft Edge. Instala Google Chrome y vuelve a abrir este archivo.' };" ^
- "$perfil = Join-Path $env:LocalAppData 'ChocoTentacionCaja';" ^
+ "$perfil = Join-Path $env:LocalAppData 'ChocoTentacionCaja2';" ^
  "New-Item -ItemType Directory -Force -Path $perfil | Out-Null;" ^
  "$icoCaja = Join-Path $perfil 'icono-caja.ico'; $icoAdm = Join-Path $perfil 'icono-admin.ico';" ^
  "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest ($url + 'icono-caja.ico') -OutFile $icoCaja -UseBasicParsing; Invoke-WebRequest ($url + 'icono-admin.ico') -OutFile $icoAdm -UseBasicParsing } catch { $icoCaja = $nav; $icoAdm = $nav };" ^
