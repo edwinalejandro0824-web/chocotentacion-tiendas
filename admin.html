@@ -5128,15 +5128,28 @@ function pintarHacerPedido(c, t, ic, optsIns) {
   const vis = ins.filter(i => (!q || i.nombre.toLowerCase().includes(q) || (provDe(i.proveedor_id)?.nombre || '').toLowerCase().includes(q)) && (!PDV.bajo || stockDe(i, t) <= i.minimo));
   const n = () => Object.values(PDV.cant).filter(v => v > 0).length;
   const jefe = puede('compras_aprobar');
-  // Lo que se gastó en los últimos 7 días (ventas, producción y mermas), si los movimientos cargados alcanzan a cubrir la semana (23/11/2026, pedido de Sara)
-  const hace7 = Date.now() - 7 * 864e5, movsT = (DX.movs || []).filter(m => m.tienda_id == null || m.tienda_id === t);
-  const cubre = movsT.length && movsT.some(m => new Date(m.fecha).getTime() <= hace7);
-  const gasto = {}; if (cubre) movsT.forEach(m => { if (new Date(m.fecha).getTime() > hace7 && ['venta', 'consumo_produccion', 'merma'].includes(m.tipo) && m.cantidad < 0) gasto[m.insumo_id] = (gasto[m.insumo_id] || 0) - m.cantidad; });
+  // 24/11/2026 (Sara + Sra. Betsy): NECESITO = proyección del sistema = consumo de los últimos 7 días (ventas − anulaciones,
+  // producción y mermas; si la tienda lleva menos de 7 días se proyecta a 7). Pedir = Necesito − Hay. Las dos casillas se pueden cambiar.
+  const CS = (PDV.consumo || {})[t];
+  if (!CS) {
+    if (DEMO) { const hace7 = Date.now() - 7 * 864e5, g = {}; (DX.movs || []).filter(m => (m.tienda_id == null || m.tienda_id === t) && new Date(m.fecha).getTime() > hace7 && ['venta', 'anulacion', 'consumo_produccion', 'merma'].includes(m.tipo)).forEach(m => g[m.insumo_id] = (g[m.insumo_id] || 0) - m.cantidad);
+      Object.keys(g).forEach(k => { if (!(g[k] > 0)) delete g[k]; }); (PDV.consumo = PDV.consumo || {})[t] = { dias: Object.keys(g).length ? 7 : 0, consumo: g }; }
+    else { c.innerHTML = '<div class="vacio">Calculando lo que se gastó en la semana…</div>';
+      rpc('pos_consumo_semana', { p_tienda: t }).then(r => { (PDV.consumo = PDV.consumo || {})[t] = { dias: num(r.dias), consumo: Object.fromEntries(Object.entries(r.consumo || {}).map(([k, v]) => [k, num(v)])) }; })
+        .catch(() => { (PDV.consumo = PDV.consumo || {})[t] = { dias: 0, consumo: {} }; }).then(() => pintarHacerPedido(c, t, ic, optsIns));
+      return; }
+  }
+  const cons = PDV.consumo[t], cubre = cons.dias > 0, gasto = cons.consumo;
+  if (cubre && !PDV.sugerido?.[t]) {   // primera vez: llenar Necesito y Pedir con la proyección
+    (PDV.sugerido = PDV.sugerido || {})[t] = true;
+    ins.forEach(i => { const g = gasto[i.id]; if (!(g > 0) || PDV.nec[i.id] != null) return; const nec = Math.ceil(g * 100) / 100;
+      PDV.nec[i.id] = nec; const falta = Math.max(0, Math.round((nec - Math.max(stockDe(i, t), 0)) * 100) / 100); if (falta > 0) PDV.cant[i.id] = falta; });
+  }
   c.innerHTML = `<section class="graf presu-compras" id="pd-presu"></section>
-    <div class="adm-barra"><p>En <b>Necesito</b> pon cuánto vas a usar (por ejemplo, en la semana) y el sistema calcula solo cuánto <b>pedir</b> restando lo que <b>hay</b>; también puedes escribir directo en <b>Pedir</b>. Lo que dejes en blanco no se pide. El dueño junta los pedidos de todas las tiendas y compra por proveedor.</p></div>
+    <div class="adm-barra"><p>${cubre ? `<b>Necesito</b> ya viene lleno con lo que el sistema calcula que se gasta en una semana, según lo vendido${cons.dias < 7 ? ` (esta tienda lleva ${fmtCant(cons.dias)} día(s) vendiendo, así que se proyectó a 7)` : ' los últimos 7 días'}. <b>Pedir</b> = Necesito − lo que <b>hay</b>. Puedes cambiar cualquiera de las dos; lo que quede en blanco no se pide.` : `Todavía no hay ventas para calcular el consumo: en <b>Necesito</b> pon cuánto vas a usar en la semana y el sistema calcula cuánto <b>pedir</b> restando lo que <b>hay</b>. Lo que dejes en blanco no se pide.`} El dueño junta los pedidos de todas las tiendas y compra por proveedor.</p></div>
     <div class="adm-barra"><input id="pd-q" class="txt" placeholder="Buscar insumo o proveedor…" value="${esc(PDV.q)}" style="max-width:320px">
       <label class="interruptor" style="margin:0"><input type="checkbox" id="pd-bajo" ${PDV.bajo ? 'checked' : ''}><span>Solo lo que está por agotarse</span></label></div>
-    <table class="tabla-simple num"><thead><tr><th>Insumo</th><th>Proveedor</th><th class="der">Hay</th>${cubre ? '<th class="der" title="Lo que se usó en los últimos 7 días">Gastó 7 días</th>' : ''}<th class="der">Mínimo</th><th class="der">Necesito</th><th class="der">Pedir</th></tr></thead><tbody>
+    <table class="tabla-simple num"><thead><tr><th>Insumo</th><th>Proveedor</th><th class="der">Hay</th>${cubre ? '<th class="der" title="Lo que el sistema calcula que se gasta en 7 días según lo vendido">Gasta en la semana</th>' : ''}<th class="der">Mínimo</th><th class="der">Necesito</th><th class="der">Pedir</th></tr></thead><tbody>
     ${vis.map(i => { const s = stockDe(i, t), bajo = s <= i.minimo, p = provDe(i.proveedor_id);
       return `<tr><td>${esc(i.nombre)}</td><td>${p ? esc(p.nombre) : '<span class="ayuda">—</span>'}</td>
         <td class="der ${s <= 0 ? 'rojo' : ''}">${fmtCant(Math.max(s, 0))} ${esc(i.unidad)}</td>${cubre ? `<td class="der">${gasto[i.id] ? fmtCant(gasto[i.id]) : '—'}</td>` : ''}<td class="der">${bajo && i.minimo ? `<span class="badge abierta">${fmtCant(i.minimo)}</span>` : fmtCant(i.minimo)}</td>
@@ -5187,7 +5200,7 @@ function pintarHacerPedido(c, t, ic, optsIns) {
     if (PRESC && PRESC.venta_anterior > 0 && este > PRESC.disponible + 0.009) { if (!jefe) return err(`Este pedido se pasa del presupuesto por ${usd(este - PRESC.disponible)}. Recorta para poder enviarlo.`);
       if (!confirm(`Este pedido se pasa del presupuesto de la semana por ${usd(este - PRESC.disponible)}. ¿Enviarlo igual?`)) return; }
     const nota = limpiar(PDV.nota), dias = PDV.dias;
-    const listo = msg => { PDV.cant = {}; PDV.nec = {}; PDV.nota = ''; PDV.dias = null; PDV.vista = 'lista'; toast(msg); };
+    const listo = msg => { PDV.cant = {}; PDV.nec = {}; PDV.sugerido = {}; PDV.consumo = {}; PDV.nota = ''; PDV.dias = null; PDV.vista = 'lista'; toast(msg); };
     if (!DEMO) return guardando(c.querySelector('#pd-enviar'), async () => {
       const id = await rpc('pos_pedido_crear', { p_clave: A.clave, p_tienda: t, p: { dias, nota: nota || null, items } });
       listo(`Pedido N° ${id} enviado`); refrescarAdmin(); }, err);
