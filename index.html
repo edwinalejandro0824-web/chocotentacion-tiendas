@@ -701,7 +701,7 @@ const api = {
   async login(correo, clave) {
     // Los cajeros entran con su usuario (ej. ana.sambil); por dentro es usuario@chocotentacion.app
     const email = correo.includes('@') ? correo.trim() : correo.trim().toLowerCase() + '@chocotentacion.app';
-    const { error } = await sb.auth.signInWithPassword({ email, password: clave });
+    const { error } = await sb.auth.signInWithPassword({ email, password: (clave || "").trim() });
     if (error) throw new Error('Usuario o contraseña incorrectos');
   },
   // 16/11/2026: el dueño da el código de su app autenticadora UNA SOLA VEZ por dispositivo (etapa 8).
