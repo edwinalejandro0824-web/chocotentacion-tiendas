@@ -2225,8 +2225,8 @@ function pintarAdmProductos() {
       <p>Precios de <b>${esc(S.tienda.nombre)}</b>, en dólares con IVA incluido. Si dejas un precio en blanco, ese producto o tamaño no se vende en esta tienda.</p>
       <span class="espacio"></span>
       ${S.tiendas.length > 1 ? `<select id="adm-copiar" class="sel corto"><option value="">Copiar precios de…</option>${S.tiendas.filter(t => t.id !== S.tienda.id).map(t => `<option value="${t.id}">${esc(t.nombre)}</option>`).join('')}</select>` : ''}
-      <button class="btn btn-sec" id="adm-nueva-cat">+ Categoría</button>
-      <button class="btn btn-primario" id="adm-nuevo-prod">+ Nuevo producto</button>
+      ${puede('categorias') ? '<button class="btn btn-sec" id="adm-nueva-cat">+ Categoría</button>' : ''}
+      ${puede('prod_crear') ? '<button class="btn btn-primario" id="adm-nuevo-prod">+ Nuevo producto</button>' : ''}
     </div>`;
   const cats = [...D.categorias].sort((a, b) => a.orden - b.orden);
   for (const c of cats) {
@@ -2234,8 +2234,8 @@ function pintarAdmProductos() {
     const sec = document.createElement('section'); sec.className = 'adm-cat';
     sec.innerHTML = `<h3><i style="background:${esc(c.color || '#7A4A2A')}"></i>${esc(c.nombre)} <small>${prods.length} producto${prods.length === 1 ? '' : 's'}</small></h3>`;
     if (!prods.length) {
-      sec.innerHTML += '<p class="adm-vacio">Sin productos todavía. <button class="link rojo adm-quitar-cat">Quitar categoría</button></p>';
-      sec.querySelector('.adm-quitar-cat').onclick = async () => {
+      sec.innerHTML += `<p class="adm-vacio">Sin productos todavía. ${puede('categorias') ? '<button class="link rojo adm-quitar-cat">Quitar categoría</button>' : ''}</p>`;
+      if (sec.querySelector('.adm-quitar-cat')) sec.querySelector('.adm-quitar-cat').onclick = async () => {
         try { await apiAdmin.quitarCategoria(c.id); toast(`Categoría "${c.nombre}" quitada`); await recargarAdmin(); }
         catch (err) { toast(err.message); }
       };
@@ -2248,7 +2248,7 @@ function pintarAdmProductos() {
           <input class="adm-nombre" value="${esc(p.nombre)}" aria-label="Nombre del producto">
           <select class="adm-cat-sel" aria-label="Categoría">${cats.map(x => `<option value="${x.id}" ${x.id === p.categoria_id ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select>
           <label class="interruptor"><input type="checkbox" class="adm-activo" ${p.activo ? 'checked' : ''}><span>${p.activo ? 'En el menú' : 'Quitado del menú'}</span></label>
-          <button class="btn btn-sec adm-ops-prod" type="button" title="Qué se escoge o se agrega al venderlo">⚙️ Opciones</button>
+          ${puede('prod_opciones') ? '<button class="btn btn-sec adm-ops-prod" type="button" title="Qué se escoge o se agrega al venderlo">⚙️ Opciones</button>' : '<span></span>'}
           ${puedeTab('inventario') ? '<button class="btn btn-sec adm-receta" type="button" title="Qué insumos descuenta">🧾 Receta</button>' : '<span></span>'}
           <button class="btn btn-primario adm-guardar" disabled>Guardar</button>
         </div>
@@ -2261,7 +2261,7 @@ function pintarAdmProductos() {
           <button class="link adm-mas-var">+ tamaño o sabor</button>
         </div>`;
       const btn = card.querySelector('.adm-guardar');
-      card.querySelector('.adm-ops-prod').onclick = () => editarGruposProducto(p);
+      if (card.querySelector('.adm-ops-prod')) card.querySelector('.adm-ops-prod').onclick = () => editarGruposProducto(p);
       if (card.querySelector('.adm-receta')) card.querySelector('.adm-receta').onclick = () => { INV.sub = 'recetas'; INV.prod = p.id; A.tab = 'inventario'; pintarAdmin(); };
       const sucio = () => { btn.disabled = false; card.classList.add('sucio'); };
       card.querySelectorAll('input,select').forEach(el => el.addEventListener('input', sucio));
@@ -2296,10 +2296,10 @@ function pintarAdmProductos() {
     }
     cont.appendChild(sec);
   }
-  $('adm-nuevo-prod').onclick = modalNuevoProducto;
+  if ($('adm-nuevo-prod')) $('adm-nuevo-prod').onclick = modalNuevoProducto;
   if ($('adm-copiar')) $('adm-copiar').onchange = e => { const id = Number(e.target.value); e.target.value = '';
     if (id && confirm(`¿Poner en ${S.tienda.nombre} los mismos precios que tiene ${S.tiendas.find(t => t.id === id).nombre}? Los precios actuales de ${S.tienda.nombre} se reemplazan.`)) copiarPreciosDesde(id); };
-  $('adm-nueva-cat').onclick = modalNuevaCategoria;
+  if ($('adm-nueva-cat')) $('adm-nueva-cat').onclick = modalNuevaCategoria;
 }
 
 // Etapa 32: la líder cambia qué opciones lleva un producto (sirope a elección, toppings incluidos, sabores…)
@@ -2413,8 +2413,8 @@ function pintarAdmOpciones() {
   for (const g of D.grupos) {
     const ops = D.opciones.filter(o => o.grupo_id === g.id).sort((a, b) => (disp(b) - disp(a)) || a.orden - b.orden);
     const sec = document.createElement('section'); sec.className = 'adm-cat';
-    sec.innerHTML = `<h3>${esc(g.nombre === 'Topping' ? 'Toppings' : g.nombre === 'Sirope' ? 'Siropes' : g.nombre)} <button class="link chico gr-ren" type="button">✏️ Cambiar nombre</button></h3><div class="adm-ops"></div>`;
-    sec.querySelector('.gr-ren').onclick = async () => { const n = prompt('Nuevo nombre del grupo:', g.nombre); if (!n || n.trim() === g.nombre) return;
+    sec.innerHTML = `<h3>${esc(g.nombre === 'Topping' ? 'Toppings' : g.nombre === 'Sirope' ? 'Siropes' : g.nombre)} ${puede('grupos') ? '<button class="link chico gr-ren" type="button">✏️ Cambiar nombre</button>' : ''}</h3><div class="adm-ops"></div>`;
+    if (sec.querySelector('.gr-ren')) sec.querySelector('.gr-ren').onclick = async () => { const n = prompt('Nuevo nombre del grupo:', g.nombre); if (!n || n.trim() === g.nombre) return;
       try { await apiAdmin.guardarGrupo({ id: g.id, nombre: n.trim() }); toast('Nombre cambiado'); await recargarAdmin(); } catch (e) { toast(e.message, true); } };
     const lista = sec.querySelector('.adm-ops');
     const fila = (o) => {
@@ -2441,6 +2441,7 @@ function pintarAdmOpciones() {
     ops.forEach(fila); fila(null);
     cont.appendChild(sec);
   }
+  if (!puede('grupos')) return;
   const nuevo = document.createElement('div'); nuevo.className = 'adm-barra';
   nuevo.innerHTML = `<button class="btn btn-sec" id="gr-nuevo">+ Grupo nuevo (ej. "Sabor del helado")</button><span class="ayuda">Después, en Productos → ⚙️ Opciones, marcas a qué productos se le pregunta.</span>`;
   cont.appendChild(nuevo);
@@ -4351,7 +4352,7 @@ async function pintarInvBloqueos(ic) {
 function pintarAdmInventario() {
   const cont = $('adm-contenido'), t = S.tienda.id;
   const subs = [['existencias', 'Existencias'], ['recibir', 'Recibir mercancía'], ['produccion', 'Producción'], ['merma', 'Mermas'], ['conteo', 'Conteo físico'], ['recetas', 'Recetas y costos'], ['movs', 'Movimientos'], ['bloqueos', '🚫 Sin stock']];
-  const subsOk = subs.filter(([k]) => puede(INV_PERM[k] || 'inventario'));
+  const subsOk = subs.filter(([k]) => puede(INV_PERM[k] || 'inventario') || (k === 'recetas' && puede('recetas')));
   if (!subsOk.some(([k]) => k === INV.sub)) INV.sub = subsOk[0]?.[0] || 'existencias';
   cont.innerHTML = `<div class="adm-barra"><p>Inventario de <b>${esc(S.tienda.nombre)}</b>. Cada venta descuenta lo que usa según su receta.${DEMO ? ' Las cantidades y costos de ejemplo hay que cambiarlos por los reales.' : (DX.insumos.length ? '' : ' Todavía no hay insumos: agrégalos con <b>+ Insumo</b> y luego arma las recetas.')}</p></div>
     <nav class="sub-tabs">${subsOk.map(([k, n]) => `<button class="sub-tab ${INV.sub === k ? 'activa' : ''}" data-s="${k}">${n}</button>`).join('')}</nav><div id="inv-cont"></div>`;
@@ -4670,7 +4671,7 @@ function pintarAdmInventario() {
       const costo = filas.reduce((a, r) => a + r.cantidad * costoInsumo(r.insumo_id), 0), sinIva = pz.precio / 1.16;
       const margen = sinIva > 0 ? (sinIva - costo) / sinIva * 100 : null;
       const card = document.createElement('div'); card.className = 'adm-prod';
-      if (!puede('inv_editar')) {   // solo ver: quien tiene Inventario ve qué lleva cada producto; cambiarlo pide "Editar insumos y recetas" (22/11/2026)
+      if (!puede('recetas')) {   // solo ver: quien tiene Inventario ve qué lleva cada producto; cambiarlo pide "Editar insumos y recetas" (22/11/2026)
         card.innerHTML = `<div class="rc-cab"><b>${esc(pz.nombre)}</b><span class="num">Precio ${usd(pz.precio)} · costo <b>${usd(costo)}</b>${margen != null ? ` · margen <b class="${margen < 50 ? 'naranja' : 'verde'}">${Math.round(margen)}%</b>` : ''}</span></div>
           ${filas.length ? `<table class="tabla-simple num"><tbody>${filas.map(r => { const i = DX.insumos.find(z => z.id === r.insumo_id);
             return `<tr><td>${esc(i?.nombre || 'Insumo ' + r.insumo_id)}</td><td class="der">${fmtCant(r.cantidad)} ${esc(i?.unidad || '')}</td><td class="der chico">${usd(r.cantidad * costoInsumo(r.insumo_id))}</td></tr>`; }).join('')}</tbody></table>`
@@ -5896,21 +5897,24 @@ function pintarAdmClientes() {
 /* ---------- PERMISOS POR USUARIO (etapa 16): el dueño pone o quita cada función a encargadas y cajeros ---------- */
 const PERMISOS = [
   ['Caja', [['anular', 'Anular ventas']]],
-  ['Administrar', [['sin_clave', 'Entra a Administrar con su propio usuario (sin pedirle la clave de administrador)'], ['panel', 'Panel (ventas y números de la tienda)'], ['productos', 'Productos y precios'],
+  ['Administrar', [['sin_clave', 'Entra a Administrar con su propio usuario (sin pedirle la clave de administrador)'], ['panel', 'Panel (ventas y números de la tienda)'], ['productos', 'Productos: cambiar nombres, tamaños y precios, y quitarlos del menú'],
     ['opciones', 'Toppings y sabores'], ['portienda', 'Qué vende cada tienda (productos y materia prima)'], ['cierres', 'Cierres de caja'],
     ['gastos', 'Gastos y pagos (presupuesto, plan de pagos, facturas y proveedores)'], ['clientes', 'Clientes'], ['reportes', 'Reportes'],
     ['evaluacion', 'Evaluar al equipo de su tienda'], ['cajas', 'Registrar o quitar la computadora de la caja']]],
   ['Compras', [['inv_pedidos', 'Hacer pedidos de materia prima'], ['compras_aprobar', 'Aprobar pedidos y ver el consolidado de todas las tiendas'], ['solpe', 'Hacer solicitudes de pago']]],
   ['Inventario', [['inventario', 'Ver existencias y movimientos'], ['inv_recibir', 'Recibir mercancía'], ['inv_mermas', 'Registrar mermas'], ['inv_conteo', 'Conteo físico (ajuste de inventario)'],
-    ['inv_produccion', 'Producción (galletas)'], ['inv_editar', 'Crear y editar insumos y recetas']]],
+    ['inv_produccion', 'Producción (galletas)'], ['inv_editar', 'Crear insumos y cambiarles el nombre, la unidad o el costo']]],
+  ['Menú y recetas (nuevo 23/11)', [['prod_crear', 'Crear productos nuevos'], ['prod_opciones', 'Cambiar las opciones de un producto (sirope, toppings incluidos, sabores, obligatorio)'],
+    ['categorias', 'Crear o quitar categorías del menú'], ['grupos', 'Crear o cambiar el nombre de grupos de opciones (ej. "Sabor del helado")'],
+    ['recetas', 'Cambiar recetas (qué insumos descuenta cada producto y cada topping)']]],
   ['Gestión de gente', [['nomina', 'Nómina, trabajadores, liquidaciones y constancias'], ['bonos', 'Bonos y evaluación de líderes y gerentes'], ['postulaciones', 'Postulaciones de empleo']]]];
 const PERM_KEYS = PERMISOS.flatMap(g => g[1]).map(([k]) => k);
 const ROLES_EQUIPO = ['encargada', 'cajera', 'gerente', 'produccion', 'nomina', 'mercadeo', 'contadora'];
 // Lo que trae cada rol "de fábrica" (igual que pos_permisos_base en el servidor)
 function permBase(rol) {
   const si = { encargada: k => !['compras_aprobar', 'nomina', 'bonos', 'postulaciones'].includes(k), gerente: k => !['nomina', 'bonos'].includes(k),
-    cajera: k => ['anular', 'productos', 'opciones', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
-    produccion: k => ['sin_clave', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
+    cajera: k => ['anular', 'productos', 'opciones', 'prod_crear', 'prod_opciones', 'categorias', 'grupos', 'recetas', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
+    produccion: k => ['sin_clave', 'recetas', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
     nomina: k => ['nomina', 'bonos', 'postulaciones', 'solpe'].includes(k), mercadeo: k => k === 'solpe',
     contadora: k => ['sin_clave', 'panel', 'cierres', 'gastos', 'reportes', 'solpe'].includes(k) }[rol];
   return si ? Object.fromEntries(PERM_KEYS.map(k => [k, si(k)])) : null;
@@ -5927,7 +5931,7 @@ function puede(k) {
   return !!(S.permisos || PERM_DEF[r])[k];
 }
 // Cada pestaña se ve si la persona tiene AL MENOS UNA de estas funciones
-const TAB_PERM = { panel: ['panel'], productos: ['productos'], opciones: ['opciones'], portienda: ['portienda'], inventario: ['inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_produccion', 'inv_editar'],
+const TAB_PERM = { panel: ['panel'], productos: ['productos'], opciones: ['opciones'], portienda: ['portienda'], inventario: ['inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_produccion', 'inv_editar', 'recetas'],
   cierres: ['cierres'], proveedores: ['gastos'], compras: ['inv_pedidos', 'compras_aprobar', 'solpe'], clientes: ['clientes'], reportes: ['reportes'], evaluacion: ['evaluacion'],
   cajas: ['cajas'], nomina: ['nomina', 'bonos', 'postulaciones'] };
 const puedeTab = tab => !TAB_PERM[tab] || TAB_PERM[tab].some(puede);
