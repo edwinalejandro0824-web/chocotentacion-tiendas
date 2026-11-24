@@ -2211,10 +2211,16 @@ function pintarAdmin() {
   if (DEMO || !CARGA[A.tab]) return f();
   const cont = $('adm-contenido'), tab = A.tab;
   if (!cont.querySelector('.cargando-tab')) cont.insertAdjacentHTML('afterbegin', '<div class="vacio cargando-tab">Cargando…</div>');
-  CARGA[tab]().then(() => { if (A.tab === tab) f(); })
+  CARGA[tab]().then(() => { if (A.tab === tab) { f(); avisoCajasOcultas(tab); } })
     .catch(e => { if (A.tab === tab) cont.innerHTML = `<div class="mensaje-error">No se pudo cargar: ${esc(e.message)}</div>`; });
 }
 
+// Etapa 34 (24/11/2026): las ventas de una caja abierta no salen en Panel/Reportes/Cierres sin la función 'ventas_abiertas'
+function avisoCajasOcultas(tab) {
+  const o = REAL.cajasOcultas || [];
+  if (!['panel', 'reportes', 'cierres'].includes(tab) || !o.length) return;
+  $('adm-contenido').insertAdjacentHTML('afterbegin', `<div class="mensaje-error" style="background:#fff7e6;color:#8a5a00;border-color:#f3d19c">🔒 Las ventas de la caja abierta (${o.map(x => esc(x.tienda) + ' #' + esc(x.numero)).join(', ')}) no se muestran aquí hasta que se cierre. Solo el dueño o el gerente pueden verlas antes.</div>`);
+}
 const precioTxt = n => n == null ? '' : fmt.format(n);
 function leerPrecio(inp) {
   const s = inp.value.trim();
@@ -3640,6 +3646,7 @@ async function cargarVentasReal(desde, hasta, forzar = false) {
     d.ventas.filter(v => v.estado === 'anulada').forEach(v => DX.anulaciones.push({ venta_id: v.id, tienda_id: t.id, fecha: v.anulada_en, numero: v.numero,
       total_usd: num(v.total_usd), motivo: v.motivo_anulacion || '', detalle: '', autorizo: '', cajero: v.usuario || '' }));
   }
+  REAL.cajasOcultas = res.filter(x => x.d.caja_abierta_oculta).map(x => ({ tienda: x.t.nombre, numero: x.d.caja_abierta_oculta }));
   DX.gastos = (res[0]?.d.gastos || []).map(g => ({ ...g, monto_usd: num(g.monto_usd) }));
   DEMO_VENTAS.sort((a, b) => a.fecha < b.fecha ? -1 : 1);
   REAL.ventasRango = clave;
@@ -5919,7 +5926,7 @@ const PERMISOS = [
   ['Caja', [['anular', 'Anular ventas']]],
   ['Administrar', [['sin_clave', 'Entra a Administrar con su propio usuario (sin pedirle la clave de administrador)'], ['panel', 'Panel (ventas y números de la tienda)'], ['productos', 'Productos: cambiar nombres, tamaños y precios, y quitarlos del menú'],
     ['opciones', 'Toppings y sabores'], ['portienda', 'Qué vende cada tienda (productos y materia prima)'], ['cierres', 'Cierres de caja'],
-    ['gastos', 'Gastos y pagos (presupuesto, plan de pagos, facturas y proveedores)'], ['clientes', 'Clientes'], ['reportes', 'Reportes'],
+    ['gastos', 'Gastos y pagos (presupuesto, plan de pagos, facturas y proveedores)'], ['clientes', 'Clientes'], ['reportes', 'Reportes'], ['ventas_abiertas', 'Ver las ventas de una caja que sigue ABIERTA (si no, se ven al cerrarla)'],
     ['evaluacion', 'Evaluar al equipo de su tienda'], ['cajas', 'Registrar o quitar la computadora de la caja']]],
   ['Compras', [['inv_pedidos', 'Hacer pedidos de materia prima'], ['compras_aprobar', 'Aprobar pedidos y ver el consolidado de todas las tiendas'], ['solpe', 'Hacer solicitudes de pago']]],
   ['Inventario', [['inventario', 'Ver existencias y movimientos'], ['inv_recibir', 'Recibir mercancía'], ['inv_mermas', 'Registrar mermas'], ['inv_conteo', 'Conteo físico (ajuste de inventario)'],
@@ -5932,7 +5939,7 @@ const PERM_KEYS = PERMISOS.flatMap(g => g[1]).map(([k]) => k);
 const ROLES_EQUIPO = ['encargada', 'cajera', 'gerente', 'produccion', 'nomina', 'mercadeo', 'contadora'];
 // Lo que trae cada rol "de fábrica" (igual que pos_permisos_base en el servidor)
 function permBase(rol) {
-  const si = { encargada: k => !['compras_aprobar', 'nomina', 'bonos', 'postulaciones'].includes(k), gerente: k => !['nomina', 'bonos'].includes(k),
+  const si = { encargada: k => !['compras_aprobar', 'ventas_abiertas', 'nomina', 'bonos', 'postulaciones'].includes(k), gerente: k => !['nomina', 'bonos'].includes(k),
     cajera: k => ['anular', 'productos', 'opciones', 'prod_crear', 'prod_opciones', 'categorias', 'grupos', 'recetas', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
     produccion: k => ['sin_clave', 'recetas', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
     nomina: k => ['nomina', 'bonos', 'postulaciones', 'solpe'].includes(k), mercadeo: k => k === 'solpe',
