@@ -5154,6 +5154,9 @@ function pintarHacerPedido(c, t, ic, optsIns) {
     const b = PRESC, este = valorPedido(Object.entries(PDV.cant).filter(([, v]) => v > 0).map(([k, v]) => ({ insumo_id: Number(k), cantidad: v })));
     const box = c.querySelector('#pd-presu'), btn = c.querySelector('#pd-enviar');
     if (!b) { box.innerHTML = '<p class="ayuda">No se pudo calcular el presupuesto de compras.</p>'; return; }
+    if (!(b.venta_anterior > 0)) {   // 24/11/2026: tienda sin ventas la semana pasada (Express, 2.0) → sin límite esta semana
+      box.innerHTML = `<h4>💰 Presupuesto de compras de la semana</h4><p class="ayuda">Esta tienda no tiene ventas de la semana pasada (${fechaCorta(b.desde)} al ${fechaCorta(b.hasta)}), así que esta semana <b>no hay límite</b>. Desde la semana que viene el pedido no podrá pasar del ${b.pct} % de lo vendido.</p>`;
+      btn.disabled = false; return; }
     const queda = r2(b.disponible - este), pasa = queda < -0.009, pct = b.presupuesto > 0 ? Math.min(100, ((b.usado + este) / b.presupuesto) * 100) : 100;
     box.innerHTML = `<h4>💰 Presupuesto de compras de la semana</h4>
       <p class="ayuda">${b.pct} % de lo vendido del ${fechaCorta(b.desde)} al ${fechaCorta(b.hasta)} (${usd(b.venta_anterior)}).</p>
@@ -5181,7 +5184,7 @@ function pintarHacerPedido(c, t, ic, optsIns) {
     if (!items.length) return err('Anota la cantidad de al menos un insumo');
     if (!PDV.dias || PDV.dias > 60) return err('Elige en cuántos días tiene que llegar');
     const este = valorPedido(items);
-    if (PRESC && este > PRESC.disponible + 0.009) { if (!jefe) return err(`Este pedido se pasa del presupuesto por ${usd(este - PRESC.disponible)}. Recorta para poder enviarlo.`);
+    if (PRESC && PRESC.venta_anterior > 0 && este > PRESC.disponible + 0.009) { if (!jefe) return err(`Este pedido se pasa del presupuesto por ${usd(este - PRESC.disponible)}. Recorta para poder enviarlo.`);
       if (!confirm(`Este pedido se pasa del presupuesto de la semana por ${usd(este - PRESC.disponible)}. ¿Enviarlo igual?`)) return; }
     const nota = limpiar(PDV.nota), dias = PDV.dias;
     const listo = msg => { PDV.cant = {}; PDV.nec = {}; PDV.nota = ''; PDV.dias = null; PDV.vista = 'lista'; toast(msg); };
