@@ -344,7 +344,8 @@
   .kpi span{display:block;font-size:12px;color:var(--suave);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
   .kpi b{display:block;font-size:24px;margin:4px 0 2px}
   .kpi i{font-style:normal;font-size:12px;color:var(--suave)}
-  .alertas-panel{background:#FFF4D6;color:#6B4A00;border-radius:12px;padding:10px 14px;margin-bottom:14px;display:grid;gap:4px;font-size:14px}
+  tr.resaltada td{background:#fff7d6}
+.alertas-panel{background:#FFF4D6;color:#6B4A00;border-radius:12px;padding:10px 14px;margin-bottom:14px;display:grid;gap:4px;font-size:14px}
   .graf-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .graf{background:var(--papel);border:1.5px solid var(--linea);border-radius:14px;padding:12px 14px;margin-top:12px}
   .graf-grid .graf{margin-top:0}
@@ -2569,6 +2570,7 @@ async function cargarNominaReal() {
 }
 function nomDatosDemo() {
   nomSembrarDemo();
+  if (!DX.nom.cargos) DX.nom.cargos = [{ cargo: 'Operador integral', descripcion: 'preparar y servir los productos de la carta, mantener la limpieza y el orden del lugar de trabajo y velar por el cuadre de caja según las normas de la empresa.' }];
   NOMD = { ...DX.nom, tasa: S.tasa?.tasa || S.tasa || 900,
     periodos: DX.nom.periodos.map(p => ({ ...p, personas: (DX.nom.lineas[p.id] || []).length,
       total_usd: (DX.nom.lineas[p.id] || []).reduce((a, l) => a + (l.calculo?.total_usd || 0), 0) })) };
@@ -2630,7 +2632,8 @@ function pintarNomina() {
   if (DEMO) nomDatosDemo();
   const cont = NOM.raiz === 'vista' ? $('nom-raiz') : $('adm-contenido');
   // Cada sub-pestaña según las funciones de la persona (21/11/2026: roles con casillas)
-  const subs = [['nominas', 'Nóminas', 'nomina'], ['trabajadores', `Trabajadores${NOMD ? ` (${NOMD.trabajadores.filter(t => t.activo).length})` : ''}`, 'nomina'], ['bonos', '🎯 Bonos', 'bonos'],
+  const nAv = NOMD && puede('nomina') ? avisosNomina().urgentes : 0;
+  const subs = [['nominas', 'Nóminas', 'nomina'], ['avisos', `🔔 Avisos${nAv ? ` (${nAv})` : ''}`, 'nomina'], ['trabajadores', `Trabajadores${NOMD ? ` (${NOMD.trabajadores.filter(t => t.activo).length})` : ''}`, 'nomina'], ['bonos', '🎯 Bonos', 'bonos'],
     ['liquidaciones', '📄 Liquidaciones y constancias', 'nomina'], ['postulaciones', '📥 Postulaciones', 'postulaciones'], ['solpe', '📝 Solicitudes de pago', 'solpe'], ['ajustes', 'Ajustes', 'nomina']]
     .filter(([, , k]) => puede(k) && (k !== 'solpe' || NOM.raiz === 'vista'));
   if (!subs.some(([k]) => k === NOM.vista)) NOM.vista = subs[0]?.[0] || 'nominas';
@@ -2639,7 +2642,10 @@ function pintarNomina() {
     .map(([k, n]) => `<button class="sub-tab ${NOM.vista === k ? 'activa' : ''}" data-nv="${k}">${n}</button>`).join('')}</nav><div id="nom-cont"></div>`;
   cont.querySelectorAll('[data-nv]').forEach(b => b.onclick = () => { NOM.vista = b.dataset.nv; NOM.periodoId = null; NOMP = null; pintarNomina(); });
   const c = $('nom-cont');
+  if (nAv && NOM.vista !== 'avisos') { const av = avisosNomina(); c.insertAdjacentHTML('beforebegin', `<div class="alertas-panel" style="cursor:pointer" id="nom-av-ir">🔔 ${av.textos.map(esc).join(' · ')} <b>— ver Avisos</b></div>`);
+    $('nom-av-ir').onclick = () => { NOM.vista = 'avisos'; pintarNomina(); }; }
   if (NOM.vista === 'trabajadores') return pintarNomTrabajadores(c);
+  if (NOM.vista === 'avisos') return pintarNomAvisos(c);
   if (NOM.vista === 'ajustes') return pintarNomAjustes(c);
   if (NOM.vista === 'postulaciones') return pintarPostulaciones(c);
   if (NOM.vista === 'bonos') return pintarBonos(c);
@@ -2920,13 +2926,14 @@ function pintarNomTrabajadores(c) {
     <table class="tabla-simple num"><thead><tr><th>Trabajador</th><th>C.I.</th><th>Grupo</th><th>Centro</th><th>Cargo</th><th>Ingreso</th><th class="der">Paquete mes $</th><th class="der">Hora extra $</th><th class="der">Traslado $</th><th>Horario (L a D)</th><th></th></tr></thead><tbody>
     ${ts.map(t => `<tr class="${t.activo ? '' : 'apagado'}"><td>${esc(nomNombre(t))}${t.nota ? ` <span title="${esc(t.nota)}">⚠️</span>` : ''}</td><td>${esc(t.cedula)}</td><td>${NOM_GRUPO_CORTO[t.grupo]}</td><td>${esc(t.centro || '')}</td><td>${esc(t.cargo || '')}${t.tipo === 'destajo' ? ' (destajo)' : ''}</td>
       <td>${t.fecha_ingreso ? fechaCorta(t.fecha_ingreso) : '—'}</td><td class="der">${usd(t.paquete_mensual_usd)}</td><td class="der">${usd(t.tarifa_extra_usd)}</td><td class="der">${usd(t.bono_traslado_usd)}</td>
-      <td>${(t.horario || []).map(h => fmtCant(Number(h))).join(' · ')}</td><td class="acciones"><button class="link" data-te="${t.id}">Editar</button></td></tr>`).join('') || '<tr><td colspan="11" class="vacio">No hay trabajadores con ese filtro.</td></tr>'}</tbody></table>`;
+      <td>${(t.horario || []).map(h => fmtCant(Number(h))).join(' · ')}</td><td class="acciones"><button class="link" data-te="${t.id}">Editar</button><button class="link" data-tc="${t.id}">📄 Contrato</button></td></tr>`).join('') || '<tr><td colspan="11" class="vacio">No hay trabajadores con ese filtro.</td></tr>'}</tbody></table>`;
   c.querySelector('#nt-g').onchange = e => { NOM.grupo = e.target.value; pintarNomina(); };
   c.querySelector('#nt-c').onchange = e => { NOM.centro = e.target.value; pintarNomina(); };
   c.querySelector('#nt-act').onchange = e => { NOM.soloActivos = e.target.checked; pintarNomina(); };
   c.querySelector('#nt-q').onchange = e => { NOM.q = e.target.value; pintarNomina(); };
   c.querySelector('#nt-nuevo').onclick = () => editarTrabajador(null);
   c.querySelectorAll('[data-te]').forEach(b => b.onclick = () => editarTrabajador(NOMD.trabajadores.find(t => t.id === Number(b.dataset.te))));
+  c.querySelectorAll('[data-tc]').forEach(b => b.onclick = () => abrirContrato(NOMD.trabajadores.find(t => t.id === Number(b.dataset.tc))));
 }
 function editarTrabajador(t) {
   const v = (k, d = '') => esc(t?.[k] ?? d), hor = t?.horario || [8, 8, 8, 8, 8, 0, 0];
@@ -2945,6 +2952,10 @@ function editarTrabajador(t) {
       <label class="campo"><span>Bono traslado por nómina $</span><input id="t-tras" class="txt num" inputmode="decimal" value="${t ? fmt.format(t.bono_traslado_usd) : '0,00'}"></label></div>
     <div class="dos-campos"><label class="campo"><span>Complemento fijo por nómina $</span><input id="t-fijo" class="txt num" inputmode="decimal" value="${t ? fmt.format(t.bono_fijo_usd) : '0,00'}"></label>
       <label class="campo"><span>Teléfono</span><input id="t-tel" class="txt" inputmode="tel" value="${v('telefono')}"></label></div>
+    <div class="dos-campos"><label class="campo"><span>Fecha de nacimiento</span><input id="t-nac" type="date" class="txt" value="${v('fecha_nacimiento')}"></label>
+      <label class="campo"><span>Estado civil</span><select id="t-civil" class="sel"><option value="">—</option>${ESTADOS_CIVILES.map(x => `<option ${t?.estado_civil === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
+    <label class="campo"><span>Dirección completa</span><input id="t-dir" class="txt" value="${v('direccion')}" placeholder="Urbanización, calle, casa, ciudad, estado"></label>
+    <label class="campo"><span>Correo</span><input id="t-correo" class="txt" type="email" value="${v('correo')}"></label>
     <div class="campo"><span>Horario: horas que trabaja cada día (0 = libre)</span><div class="nt-horario">${['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((dn, i) => `<label><small>${dn}</small><input class="txt num t-h" inputmode="decimal" value="${fmtCant(Number(hor[i] || 0))}"></label>`).join('')}</div></div>
     <label class="campo"><span>Nota</span><input id="t-nota" class="txt" value="${v('nota')}"></label>
     <label class="interruptor"><input type="checkbox" id="t-act" ${!t || t.activo ? 'checked' : ''}><span>Activo (entra en las nóminas)</span></label></div>
@@ -2956,13 +2967,139 @@ function editarTrabajador(t) {
     const p = { id: t?.id || null, nombres: limpiar(g('#t-nom')), apellidos: limpiar(g('#t-ape')), cedula: soloDigitos(g('#t-ced')), rif: limpiar(g('#t-rif')), grupo: g('#t-grupo'),
       centro: limpiar(g('#t-centro')), entidad_id: Number(g('#t-ent')) || null, cargo: limpiar(g('#t-cargo')), fecha_ingreso: g('#t-ing') || null, fecha_egreso: g('#t-egr') || null,
       tipo: g('#t-tipo'), paquete_mensual_usd: r2(leerNum(g('#t-paq'))), tarifa_extra_usd: r2(leerNum(g('#t-tar'))), bono_traslado_usd: r2(leerNum(g('#t-tras'))),
-      bono_fijo_usd: r2(leerNum(g('#t-fijo'))), telefono: soloDigitos(g('#t-tel')), horario: [...r.querySelectorAll('.t-h')].map(x => leerNum(x.value) || 0),
+      bono_fijo_usd: r2(leerNum(g('#t-fijo'))), telefono: soloDigitos(g('#t-tel')), fecha_nacimiento: g('#t-nac') || null, estado_civil: g('#t-civil') || null,
+      direccion: limpiar(g('#t-dir')) || null, correo: limpiar(g('#t-correo')) || null, horario: [...r.querySelectorAll('.t-h')].map(x => leerNum(x.value) || 0),
       nota: limpiar(g('#t-nota')) || null, activo: r.querySelector('#t-act').checked };
     if (p.nombres.length < 2) return err('Escribe el nombre'); if (p.cedula.length < 6) return err('Escribe la cédula');
     if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => { await rpc('pos_nom_trabajador_guardar', { p }); cerrarModal(); toast('Trabajador guardado'); nomRefrescar(); }, err);
     if (DX.nom.trabajadores.some(x => x.cedula === p.cedula && x.id !== p.id)) return err('Ya hay un trabajador con esa cédula');
     if (t) Object.assign(DX.nom.trabajadores.find(x => x.id === t.id), p); else DX.nom.trabajadores.push({ ...p, id: nid() });
     guardarDemo(); cerrarModal(); toast('Trabajador guardado'); pintarNomina(); };
+}
+
+
+// ===================== AVISOS DE GESTIÓN DE GENTE Y CONTRATOS (24/11/2026, Katherine + dueño) =====================
+const ESTADOS_CIVILES = ['Soltero', 'Soltera', 'Casado', 'Casada', 'Divorciado', 'Divorciada', 'Viudo', 'Viuda', 'Concubino', 'Concubina'];
+const MESES_NOM = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+const finPrueba = t => t.fecha_ingreso ? sumarDias(t.fecha_ingreso, 29) : null;   // período de prueba de 29 días
+function avisosNomina() {
+  const hoy = hoyVE(), act = (NOMD?.trabajadores || []).filter(t => t.activo), textos = [];
+  const prueba = act.filter(t => finPrueba(t) && diasEntre(hoy, finPrueba(t)) - 1 >= 0 && diasEntre(hoy, finPrueba(t)) - 1 <= 7);
+  const cumpleHoy = act.filter(t => t.fecha_nacimiento && t.fecha_nacimiento.slice(5) === hoy.slice(5));
+  if (prueba.length) textos.push(`${prueba.length} período${prueba.length > 1 ? 's' : ''} de prueba vence${prueba.length > 1 ? 'n' : ''} esta semana (${prueba.map(nomNombre).join(', ')})`);
+  if (cumpleHoy.length) textos.push(`🎂 Hoy cumple${cumpleHoy.length > 1 ? 'n' : ''} años: ${cumpleHoy.map(nomNombre).join(', ')}`);
+  return { urgentes: prueba.length + cumpleHoy.length, textos };
+}
+async function pintarNomAvisos(c) {
+  const hoy = hoyVE(); NOM.mesAv = NOM.mesAv || hoy.slice(0, 7);
+  const mes = NOM.mesAv, mm = mes.slice(5), anio = Number(mes.slice(0, 4)), act = NOMD.trabajadores.filter(t => t.activo);
+  const edad = (nac, a) => a - Number(nac.slice(0, 4));
+  const prueba = act.filter(t => finPrueba(t) && diasEntre(hoy, finPrueba(t)) - 1 >= -15).sort((a, b) => finPrueba(a).localeCompare(finPrueba(b)));
+  const cumple = act.filter(t => t.fecha_nacimiento && t.fecha_nacimiento.slice(5, 7) === mm).sort((a, b) => a.fecha_nacimiento.slice(8).localeCompare(b.fecha_nacimiento.slice(8)));
+  const aniv = act.filter(t => t.fecha_ingreso && t.fecha_ingreso.slice(5, 7) === mm && anio - Number(t.fecha_ingreso.slice(0, 4)) >= 1).sort((a, b) => a.fecha_ingreso.slice(8).localeCompare(b.fecha_ingreso.slice(8)));
+  const sinNac = act.filter(t => !t.fecha_nacimiento).length, sinIng = act.filter(t => !t.fecha_ingreso).length;
+  const estPrueba = t => { const d = diasEntre(hoy, finPrueba(t)) - 1;
+    return d < 0 ? `<span class="badge">Ya pasó (hace ${-d} día${d === -1 ? '' : 's'})</span>` : d === 0 ? '<span class="badge mal">Vence HOY</span>' : d <= 7 ? `<span class="badge mal">Vence en ${d} día${d === 1 ? '' : 's'}</span>` : `<span class="badge abierta">Faltan ${d} días</span>`; };
+  c.innerHTML = `<div class="adm-barra"><label class="campo" style="margin:0"><span>Mes</span><input type="month" id="av-mes" class="txt" value="${mes}"></label>
+      <p>Período de prueba (29 días desde el ingreso), cumpleañeros y aniversarios de todo el grupo (tiendas, fábrica y administración).</p></div>
+    <section class="graf"><h4>⏳ Períodos de prueba</h4>
+      <table class="tabla-simple"><thead><tr><th>Trabajador</th><th>Centro</th><th>Cargo</th><th>Ingresó</th><th>Termina la prueba</th><th>Estado</th></tr></thead><tbody>
+      ${prueba.map(t => `<tr><td>${esc(nomNombre(t))}</td><td>${esc(t.centro || '')}</td><td>${esc(t.cargo || '')}</td><td>${fechaCorta(t.fecha_ingreso)}</td><td><b>${fechaLarga(finPrueba(t))}</b></td><td>${estPrueba(t)}</td></tr>`).join('')
+        || '<tr><td colspan="6" class="vacio">Nadie está en período de prueba.</td></tr>'}</tbody></table>
+      <p class="ayuda">Antes de que termine la prueba hay que decidir si el trabajador sigue. Salen los que están en prueba y los que terminaron hace menos de 15 días.</p></section>
+    <section class="graf"><h4>🎂 Cumpleañeros de ${MESES_NOM[Number(mm) - 1]}</h4>
+      <table class="tabla-simple"><thead><tr><th>Día</th><th>Trabajador</th><th>Centro</th><th>Cumple</th><th>Teléfono</th></tr></thead><tbody>
+      ${cumple.map(t => `<tr class="${t.fecha_nacimiento.slice(5) === hoy.slice(5) ? 'resaltada' : ''}"><td><b>${t.fecha_nacimiento.slice(8)}</b>${t.fecha_nacimiento.slice(5) === hoy.slice(5) ? ' 🎉 hoy' : ''}</td><td>${esc(nomNombre(t))}</td><td>${esc(t.centro || '')}</td>
+        <td>${edad(t.fecha_nacimiento, anio)} años</td><td>${esc(t.telefono || '')}</td></tr>`).join('') || '<tr><td colspan="5" class="vacio">Nadie cumple años este mes.</td></tr>'}</tbody></table>
+      ${sinNac ? `<p class="ayuda">${sinNac} trabajador${sinNac > 1 ? 'es' : ''} sin fecha de nacimiento (se carga en Trabajadores → Editar).</p>` : ''}</section>
+    <section class="graf"><h4>🏅 Aniversarios en la empresa (${MESES_NOM[Number(mm) - 1]})</h4>
+      <table class="tabla-simple"><thead><tr><th>Día</th><th>Trabajador</th><th>Centro</th><th>Ingresó</th><th>Cumple</th></tr></thead><tbody>
+      ${aniv.map(t => { const a = anio - Number(t.fecha_ingreso.slice(0, 4)); return `<tr><td><b>${t.fecha_ingreso.slice(8)}</b></td><td>${esc(nomNombre(t))}</td><td>${esc(t.centro || '')}</td><td>${fechaLarga(t.fecha_ingreso)}</td><td><b>${a} año${a > 1 ? 's' : ''}</b> en la empresa</td></tr>`; }).join('')
+        || '<tr><td colspan="5" class="vacio">Nadie cumple años de servicio este mes.</td></tr>'}</tbody></table>
+      ${sinIng ? `<p class="ayuda">${sinIng} trabajador${sinIng > 1 ? 'es' : ''} sin fecha de ingreso.</p>` : ''}</section>
+    <section class="graf" id="av-rank"><h4>⭐ Posibles empleados del mes (evaluación diaria de ${MESES_NOM[Number(mm) - 1]})</h4><p class="vacio">Calculando…</p></section>`;
+  c.querySelector('#av-mes').onchange = e => { if (e.target.value) { NOM.mesAv = e.target.value; pintarNomina(); } };
+  let rk = [];
+  try { rk = DEMO ? rankingDemo(mes) : await rpc('pos_eval_ranking', { p_mes: mes + '-01' }); } catch (e) { rk = []; }
+  const box = c.querySelector('#av-rank'); if (!box) return;
+  rk = rk.map(x => ({ ...x, pct: Number(x.pct), dias: Number(x.dias) }));
+  box.innerHTML = `<h4>⭐ Posibles empleados del mes (evaluación diaria de ${MESES_NOM[Number(mm) - 1]})</h4>
+    <p class="ayuda">Promedio del % de la evaluación diaria de cada persona en el mes, en todas las tiendas y la fábrica. Las <b>2 primeras</b> llevan estrella. Si empatan, gana quien tiene más días evaluados.</p>
+    <table class="tabla-simple num"><thead><tr><th>#</th><th>Trabajador</th><th>Centro</th><th>Cargo</th><th class="der">Días evaluados</th><th class="der">% promedio</th></tr></thead><tbody>
+    ${rk.map((x, i) => `<tr class="${i < 2 ? 'resaltada' : ''}"><td>${i < 2 ? '⭐' : i + 1}</td><td>${i < 2 ? '<b>' : ''}${esc(x.nombre)}${i < 2 ? '</b>' : ''}</td><td>${esc(x.centro || '')}</td><td>${esc(x.cargo || '')}</td>
+      <td class="der">${x.dias}</td><td class="der"><span class="badge ${colorPct(x.pct)}">${pctTxt(x.pct)}</span></td></tr>`).join('') || '<tr><td colspan="6" class="vacio">Todavía no hay evaluaciones este mes.</td></tr>'}</tbody></table>`;
+}
+function rankingDemo(mes) {
+  nomSembrarDemo(); if (typeof bonSembrarDemo === 'function') bonSembrarDemo();
+  const ev = (DX.bon?.dias || []).filter(e => (e.fecha || '').slice(0, 7) === mes), m = new Map();
+  ev.forEach(e => { const x = m.get(e.trabajador_id) || { s: 0, n: 0 }; x.s += Number(e.pct); x.n++; m.set(e.trabajador_id, x); });
+  return [...m.entries()].map(([id, x]) => { const t = NOMD.trabajadores.find(z => z.id === id) || {}; return { id, nombre: nomNombre(t), centro: t.centro, cargo: t.cargo, dias: x.n, pct: x.s / x.n }; })
+    .sort((a, b) => b.pct - a.pct || b.dias - a.dias);
+}
+// ---- Contrato de trabajo (Word) desde la plantilla de Katherine ----
+function letrasNum(n) {
+  n = Math.floor(n); if (n === 0) return 'Cero';
+  const U = ['', 'Uno', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve', 'Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciseis', 'Diecisiete', 'Dieciocho', 'Diecinueve',
+    'Veinte', 'Veintiuno', 'Veintidos', 'Veintitres', 'Veinticuatro', 'Veinticinco', 'Veintiseis', 'Veintisiete', 'Veintiocho', 'Veintinueve'];
+  const D = ['', '', '', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa'];
+  const C = ['', 'Ciento', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos'];
+  const menor1000 = x => { if (x === 100) return 'Cien'; const c = Math.floor(x / 100), r = x % 100; let s = C[c];
+    if (r) s += (s ? ' ' : '') + (r < 30 ? U[r] : D[Math.floor(r / 10)] + (r % 10 ? ' y ' + U[r % 10] : '')); return s; };
+  const mill = Math.floor(n / 1e6), miles = Math.floor((n % 1e6) / 1000), resto = n % 1000, partes = [];
+  if (mill) partes.push(mill === 1 ? 'Un Millón' : menor1000(mill).replace(/Uno$/, 'Un') + ' Millones');
+  if (miles) partes.push(miles === 1 ? 'Mil' : menor1000(miles).replace(/Uno$/, 'Un') + ' Mil');
+  if (resto) partes.push(menor1000(resto));
+  return partes.join(' ');
+}
+const sueldoLetras = n => `${letrasNum(n)} Bolivares con ${String(Math.round((n % 1) * 100)).padStart(2, '0')}/100`;
+async function abrirContrato(t) {
+  const ents = NOMD.entidades || [], cargos = NOMD.cargos || [], cfg = NOMD.config || {};
+  const descDe = c => (cargos.find(x => x.cargo.toLowerCase() === String(c || '').trim().toLowerCase()) || {}).descripcion || '';
+  const ing = t.fecha_ingreso || hoyVE();
+  const r = abrirModal(`<form id="f-contrato"><div class="modal-cab"><h3 class="titulo">📄 Contrato de trabajo · ${esc(nomNombre(t))}</h3>
+      <p>Contrato por tiempo indeterminado con período de prueba de 29 días (el formato de Gestión de Gente). Revisa los datos; lo que cambies aquí solo va al contrato.</p></div>
+    <div class="modal-cuerpo"><div id="cn-error" class="mensaje-error oculto"></div>
+      <label class="campo"><span>Empresa (razón social de la tienda) *</span><select id="cn-ent" class="sel">${ents.map(e => `<option value="${e.id}" ${t.entidad_id === e.id ? 'selected' : ''}>${esc(e.nombre)}${e.registro ? '' : ' (sin datos de registro)'}</option>`).join('')}</select></label>
+      <div class="dos-campos"><label class="campo"><span>Apellidos *</span><input id="cn-ape" class="txt" value="${esc((t.apellidos || '').toUpperCase())}"></label><label class="campo"><span>Nombres *</span><input id="cn-nom" class="txt" value="${esc((t.nombres || '').toUpperCase())}"></label></div>
+      <div class="dos-campos"><label class="campo"><span>Cédula *</span><input id="cn-ci" class="txt" value="${esc(t.cedula || '')}"></label>
+        <label class="campo"><span>Estado civil *</span><select id="cn-civil" class="sel">${ESTADOS_CIVILES.map(x => `<option ${(t.estado_civil || 'Soltero') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label></div>
+      <label class="campo"><span>Dirección completa *</span><input id="cn-dir" class="txt" value="${esc(t.direccion || '')}"></label>
+      <div class="dos-campos"><label class="campo"><span>Cargo *</span><input id="cn-cargo" class="txt" list="cn-cargos" value="${esc(t.cargo || 'Operador Integral')}"><datalist id="cn-cargos">${cargos.map(x => `<option value="${esc(x.cargo)}">`).join('')}</datalist></label>
+        <label class="campo"><span>Fecha de ingreso *</span><input id="cn-ing" type="date" class="txt" value="${ing}"></label></div>
+      <label class="campo"><span>Qué hace en el cargo (cláusula QUINTA) *</span><textarea id="cn-desc" class="txt" rows="4">${esc(descDe(t.cargo || 'Operador Integral'))}</textarea></label>
+      <label class="interruptor"><input type="checkbox" id="cn-guardar-desc"><span>Guardar este texto como la descripción del cargo (para los próximos contratos)</span></label>
+      <div class="dos-campos"><label class="campo"><span>Salario básico mensual (Bs.) *</span><input id="cn-sueldo" class="txt num" value="${fmt.format(Number(cfg.sueldo_minimo_bs || 130))}"></label>
+        <div class="campo"><span>En letras</span><b id="cn-letras"></b></div></div>
+      <p class="ayuda">La razón social, el registro, el RIF, el representante y la dirección de la sede salen de Nómina → Ajustes → Empresas.</p></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="cn-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">⬇️ Descargar contrato (Word)</button></div></form>`, 820);
+  const letras = () => { r.querySelector('#cn-letras').textContent = sueldoLetras(leerNum(r.querySelector('#cn-sueldo').value) || 0); };
+  letras(); r.querySelector('#cn-sueldo').oninput = letras;
+  r.querySelector('#cn-cargo').onchange = e => { const d = descDe(e.target.value); if (d) r.querySelector('#cn-desc').value = d; };
+  r.querySelector('#cn-x').onclick = cerrarModal;
+  r.querySelector('#f-contrato').onsubmit = async e => { e.preventDefault();
+    const err = m => { r.querySelector('#cn-error').textContent = m; r.querySelector('#cn-error').classList.remove('oculto'); };
+    const g = id => r.querySelector(id).value.trim(), en = ents.find(x => x.id === Number(g('#cn-ent')));
+    const f = g('#cn-ing'), sueldo = leerNum(g('#cn-sueldo')) || 0;
+    if (!en) return err('Elige la empresa'); if (!g('#cn-ape') || !g('#cn-nom') || !g('#cn-ci')) return err('Faltan nombre, apellido o cédula');
+    if (!g('#cn-dir')) return err('Falta la dirección'); if (!f) return err('Falta la fecha de ingreso'); if (!g('#cn-desc')) return err('Falta la descripción del cargo');
+    const vals = { SEDE: en.nombre, REGISTRO: en.registro || 'inscrita ante el Registro Mercantil', RIF: en.rif || '', REP: (en.representante || '').toUpperCase(), REP_CI: en.representante_ci || '',
+      REP_CARGO: en.representante_cargo || 'presidenta', APELLIDOS: g('#cn-ape').toUpperCase(), NOMBRES: g('#cn-nom').toUpperCase(), CI: g('#cn-ci'), ESTADO_CIVIL: g('#cn-civil'),
+      DIRECCION: g('#cn-dir').toUpperCase(), DIA: String(Number(f.slice(8))), MES: MESES_NOM[Number(f.slice(5, 7)) - 1], ANO: f.slice(0, 4), DIR_SEDE: en.direccion || '',
+      SUELDO_LETRAS: sueldoLetras(sueldo), SUELDO: fmt.format(sueldo).replace(/,00$/, '') + ' Bs', CARGO: g('#cn-cargo'), CARGO_DESC: g('#cn-desc'), CIUDAD: en.ciudad || 'Valencia, Estado Carabobo' };
+    vals.SUELDO = vals.SUELDO.replace(/ Bs$/, '');
+    const x = v => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    try {
+      const pl = await fetch('contrato-plantilla.json').then(z => { if (!z.ok) throw new Error('No se pudo bajar la plantilla del contrato'); return z.json(); });
+      const archivos = pl.archivos.map(a => a.t != null ? { nombre: a.n, texto: a.t.replace(/\{\{(\w+)\}\}/g, (m, k) => k in vals ? x(vals[k]) : m) }
+        : { nombre: a.n, datos: Uint8Array.from(atob(a.b), ch => ch.charCodeAt(0)) });
+      const blob = zipSinComprimir(archivos, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = `Contrato_${vals.APELLIDOS.split(' ')[0]}_${vals.NOMBRES.split(' ')[0]}.docx`.replace(/[^\wÁÉÍÓÚÑáéíóúñ._-]/g, ''); document.body.appendChild(a); a.click(); a.remove();
+      if (r.querySelector('#cn-guardar-desc').checked) { if (DEMO) { (DX.nom.cargos = DX.nom.cargos || []).push({ cargo: g('#cn-cargo'), descripcion: g('#cn-desc') }); guardarDemo(); }
+        else await rpc('pos_nom_cargo_guardar', { p_cargo: g('#cn-cargo'), p_descripcion: g('#cn-desc') }); }
+      cerrarModal(); toast('Contrato descargado'); if (!DEMO && r.querySelector('#cn-guardar-desc').checked) nomRefrescar();
+    } catch (z) { err(z.message); }
+  };
 }
 
 // ---- Ajustes ----
@@ -2987,11 +3124,18 @@ function pintarNomAjustes(c) {
     try { await rpc('pos_nom_config_guardar', { p }); toast('Ajustes guardados'); nomRefrescar(); } catch (x) { toast(x.message, true); } };
   const editarEnt = en => { const r = abrirModal(`<form id="f-ne"><div class="modal-cab"><h3 class="titulo">Empresa</h3></div><div class="modal-cuerpo">
       <label class="campo"><span>Razón social *</span><input id="e-n" class="txt" value="${esc(en?.nombre || '')}"></label><label class="campo"><span>RIF</span><input id="e-r" class="txt" value="${esc(en?.rif || '')}"></label>
-      <label class="campo"><span>Dirección</span><input id="e-d" class="txt" value="${esc(en?.direccion || '')}"></label></div>
+      <label class="campo"><span>Dirección (sede)</span><input id="e-d" class="txt" value="${esc(en?.direccion || '')}"></label>
+      <label class="campo"><span>Datos del registro (para el contrato)</span><input id="e-reg" class="txt" value="${esc(en?.registro || '')}" placeholder="inscrita ante el Registro Mercantil … bajo el número …, Tomo …"></label>
+      <div class="dos-campos"><label class="campo"><span>Representante (nombre completo)</span><input id="e-rep" class="txt" value="${esc(en?.representante || '')}"></label>
+        <label class="campo"><span>C.I. del representante</span><input id="e-rci" class="txt" value="${esc(en?.representante_ci || '')}"></label></div>
+      <div class="dos-campos"><label class="campo"><span>Su cargo</span><select id="e-rcar" class="sel">${['presidenta', 'presidente'].map(x => `<option ${en?.representante_cargo === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+        <label class="campo"><span>Ciudad donde se firma</span><input id="e-ciu" class="txt" value="${esc(en?.ciudad || '')}" placeholder="Valencia, Estado Carabobo"></label></div></div>
       <div class="modal-pie"><button type="button" class="btn btn-sec" id="e-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 560);
     r.querySelector('#e-x').onclick = cerrarModal;
     r.querySelector('#f-ne').onsubmit = async e => { e.preventDefault();
-      const p = { id: en?.id || null, nombre: limpiar(r.querySelector('#e-n').value), rif: limpiar(r.querySelector('#e-r').value), direccion: limpiar(r.querySelector('#e-d').value) };
+      const p = { id: en?.id || null, nombre: limpiar(r.querySelector('#e-n').value), rif: limpiar(r.querySelector('#e-r').value), direccion: limpiar(r.querySelector('#e-d').value),
+        registro: limpiar(r.querySelector('#e-reg').value), representante: limpiar(r.querySelector('#e-rep').value), representante_ci: limpiar(r.querySelector('#e-rci').value),
+        representante_cargo: r.querySelector('#e-rcar').value, ciudad: limpiar(r.querySelector('#e-ciu').value) };
       if (!p.nombre) return;
       if (DEMO) { if (en) Object.assign(DX.nom.entidades.find(x => x.id === en.id), p); else DX.nom.entidades.push({ ...p, id: nid() }); guardarDemo(); cerrarModal(); return pintarNomina(); }
       try { await rpc('pos_nom_entidad_guardar', { p }); cerrarModal(); nomRefrescar(); } catch (x) { toast(x.message, true); } }; };
@@ -3418,6 +3562,7 @@ function pintarBonResumen(k, c) {
   const sem = (f, l) => { const xs = f.detalle.filter(x => x.fecha >= l && x.fecha <= sumarDias(l, 6)); return xs.length ? xs.reduce((a, x) => a + Number(x.pct), 0) / xs.length : null; };
   const filas = R.filas, tot = key => r2(filas.reduce((a, f) => a + f[key], 0)), cerr = R.cerrado, pasado = BON.mes < mesVE();
   const grupos = [...new Set(filas.map(f => f.tienda_id))];
+  const estrellas = new Set(filas.filter(f => f.dias > 0).sort((a, b) => b.pct_mes - a.pct_mes || b.dias - a.dias).slice(0, 2).map(f => f.nombre + '|' + f.tienda_id));
   k.innerHTML = `<div class="adm-barra"><label class="campo" style="margin:0"><span>Mes</span><input type="month" id="br-mes" class="txt" value="${BON.mes}" max="${mesVE()}"></label>
       <p>Bono = <b>30 % gestión</b> (según el % de la evaluación diaria) + <b>70 % venta</b> (completo si la tienda llegó a su meta del mes; si no, nada).</p><span class="espacio"></span>
       ${cerr ? `<span class="badge ok">Cerrado · cuentas por pagar creadas</span>${S.perfil.rol === 'dueno' ? '<button class="btn btn-sec" id="br-reabrir">Reabrir</button>' : ''}`
@@ -3437,12 +3582,13 @@ function pintarBonResumen(k, c) {
       <table class="tabla-simple num"><thead><tr><th>Trabajador</th><th>Grupo</th>${semanas.map((l, i) => `<th class="der" title="Semana del ${fechaCorta(l)}">S${i + 1}</th>`).join('')}<th class="der">Días</th><th class="der">% mes</th>
         <th class="der">Gestión $</th><th class="der">Venta $</th><th class="der">Total $</th></tr></thead><tbody>
       ${grupos.map(g => { const fs = filas.filter(f => f.tienda_id === g);
-        return `<tr class="sep"><td colspan="${semanas.length + 7}"><b>${esc(tn(g))}</b></td></tr>` + fs.map(f => `<tr><td>${esc(f.nombre)}</td><td>${BON_GRUPOS[f.bono_grupo]}</td>
+        return `<tr class="sep"><td colspan="${semanas.length + 7}"><b>${esc(tn(g))}</b></td></tr>` + fs.map(f => `<tr class="${estrellas.has(f.nombre + '|' + f.tienda_id) ? 'resaltada' : ''}"><td>${estrellas.has(f.nombre + '|' + f.tienda_id) ? '⭐ <b>' + esc(f.nombre) + '</b>' : esc(f.nombre)}</td><td>${BON_GRUPOS[f.bono_grupo]}</td>
           ${semanas.map(l => { const v = sem(f, l); return `<td class="der">${v == null ? '—' : `<span class="badge ${colorPct(v)}">${pctTxt(v)}</span>`}</td>`; }).join('')}
           <td class="der">${f.dias}</td><td class="der"><b>${f.dias ? pctTxt(f.pct_mes) : '—'}</b></td>
           <td class="der">${usd(f.gestion_usd)} <span class="ayuda">de ${usd(f.gestion_max)}</span></td><td class="der">${f.cumple_venta ? usd(f.venta_usd) + ' ✓' : `$0,00 <span class="ayuda">de ${usd(f.venta_max)}</span>`}</td>
           <td class="der"><b>${usd(f.total_usd)}</b></td></tr>`).join(''); }).join('') || `<tr><td colspan="${semanas.length + 7}" class="vacio">No hay trabajadores con bono. Asígnalos en "Montos y personas".</td></tr>`}
       <tr class="total"><td colspan="${semanas.length + 4}"><b>Total</b></td><td class="der"><b>${usd(tot('gestion_usd'))}</b></td><td class="der"><b>${usd(tot('venta_usd'))}</b></td><td class="der"><b>${usd(tot('total_usd'))}</b></td></tr></tbody></table>
+      <p class="ayuda">⭐ = las 2 personas con mejor % de evaluación del mes en todo el grupo (posibles empleados del mes).</p>
       <p class="ayuda">Al cerrar el mes se crean en cada tienda dos cuentas por pagar ("Bono de gestión" y "Bono de venta", tipos BONO GESTION y BONO MES del balance) que vencen el día 7 del mes siguiente. Después del cierre ya no se pueden cambiar las evaluaciones de ese mes.</p></section>`;
   k.querySelector('#br-mes').onchange = e => { if (!e.target.value) return; BON.mes = e.target.value; BON.res = null; pintarBonos(c); };
   k.querySelector('#br-copiar').onclick = () => copiarTexto(tsv(['Tienda', 'Trabajador', 'Grupo', ...semanas.map((l, i) => 'S' + (i + 1) + ' %'), 'Días', '% mes', 'Gestión $', 'Venta $', 'Total $'],
@@ -5254,9 +5400,9 @@ function pintarHacerPedido(c, t, ic, optsIns) {
 // ---- Excel (.xlsx) sin librerías (23/11/2026): zip sin compresión + hojas XML. hojas = [{nombre, filas:[[...]], anchos?:[n]}]; la fila 0 va en negrita
 function crc32x(b) { const t = crc32x.t || (crc32x.t = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; }));
   let c = ~0; for (let i = 0; i < b.length; i++) c = t[(c ^ b[i]) & 255] ^ (c >>> 8); return (~c) >>> 0; }
-function zipSinComprimir(archivos) {
+function zipSinComprimir(archivos, tipo) {
   const enc = new TextEncoder(), partes = [], central = []; let off = 0;
-  for (const f of archivos) { const n = enc.encode(f.nombre), d = enc.encode(f.texto), crc = crc32x(d);
+  for (const f of archivos) { const n = enc.encode(f.nombre), d = f.datos || enc.encode(f.texto), crc = crc32x(d);
     const h = new DataView(new ArrayBuffer(30)); h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(12, 0x21, true);
     h.setUint32(14, crc, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true); h.setUint16(26, n.length, true); partes.push(new Uint8Array(h.buffer), n, d);
     const c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(14, 0x21, true);
@@ -5264,7 +5410,7 @@ function zipSinComprimir(archivos) {
     off += 30 + n.length + d.length; }
   const tam = central.reduce((a, x) => a + x.length, 0), e = new DataView(new ArrayBuffer(22));
   e.setUint32(0, 0x06054b50, true); e.setUint16(8, archivos.length, true); e.setUint16(10, archivos.length, true); e.setUint32(12, tam, true); e.setUint32(16, off, true);
-  return new Blob([...partes, ...central, new Uint8Array(e.buffer)], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  return new Blob([...partes, ...central, new Uint8Array(e.buffer)], { type: tipo || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }
 function descargarExcel(archivo, hojas) {
   const x = v => String(v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
