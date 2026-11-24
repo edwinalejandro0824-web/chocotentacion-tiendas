@@ -1,6 +1,6 @@
 // Service worker: guarda la página para que abra rápido y se pueda instalar.
 // Las ventas y los datos SIEMPRE van a la base de datos (no se guardan aquí).
-const CACHE = 'choco-v64';
+const CACHE = 'choco-v65';
 const BASE = ['./', './index.html', './admin.html', './manifest.webmanifest', './manifest-admin.webmanifest', './icono-caja-192.png', './icono-caja-512.png', './icono-admin-192.png', './icono-admin-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

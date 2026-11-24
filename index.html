@@ -228,7 +228,8 @@
   .adm-prod{background:var(--papel);border:1.5px solid var(--linea);border-radius:12px;padding:12px 14px;margin-bottom:8px}
   .adm-prod.sucio,.adm-op.sucio{border-color:#F2B705}
   .adm-prod.inactivo{opacity:.6}
-  .adm-fila{display:grid;grid-template-columns:minmax(0,1fr) 180px 170px auto;gap:10px;align-items:center}
+  .adm-fila{display:grid;grid-template-columns:minmax(0,1fr) 170px 150px auto auto auto;gap:10px;align-items:center}
+  @media (max-width:900px){.adm-fila{grid-template-columns:1fr 1fr}}
   .adm-fila input,.adm-fila select,.adm-var input,.adm-op input,select.sel{padding:9px 11px;border:1.5px solid var(--linea);border-radius:9px;outline:none;font:inherit;min-width:0;width:100%}
   .adm-fila input:focus,.adm-var input:focus,.adm-op input:focus{border-color:var(--naranja)}
   .adm-nombre{font-weight:600}
@@ -2015,6 +2016,18 @@ const apiAdmin = {
     const { error } = await sb.rpc('pos_admin_quitar_categoria', { p_clave: A.clave, p_categoria: id });
     if (error) throw new Error(error.message);
   },
+  async productoGrupos(productoId, grupos) {   // etapa 32: qué opciones lleva un producto ya creado
+    if (DEMO) { DEMO_DATA.producto_grupos = DEMO_DATA.producto_grupos.filter(g => g.producto_id !== productoId).concat(grupos.map(g => ({ producto_id: productoId, permite_extras: true, ...g }))); guardarDemo(); return; }
+    const { error } = await sb.rpc('pos_admin_producto_grupos', { p_clave: A.clave, p_producto: productoId, p_grupos: grupos });
+    if (error) throw new Error(error.message);
+  },
+  async guardarGrupo(g) {   // etapa 32: crear o renombrar un grupo de opciones
+    if (DEMO) { const n = (g.nombre || '').trim(); if (!n) throw new Error('Escribe el nombre del grupo');
+      if (DEMO_DATA.grupos.some(x => x.id !== g.id && x.nombre.toLowerCase() === n.toLowerCase())) throw new Error('Ya existe un grupo llamado "' + n + '"');
+      if (g.id) DEMO_DATA.grupos.find(x => x.id === g.id).nombre = n; else DEMO_DATA.grupos.push({ id: nuevoId(DEMO_DATA.grupos), nombre: n }); guardarDemo(); return; }
+    const { error } = await sb.rpc('pos_admin_guardar_grupo', { p_clave: A.clave, p: g });
+    if (error) throw new Error(error.message);
+  },
   async crearCategoria(nombre, color) {
     if (DEMO) {
       if (DEMO_DATA.categorias.some(c => c.nombre.toLowerCase() === nombre.toLowerCase())) throw new Error('Ya existe una categoría con ese nombre');
@@ -2235,8 +2248,11 @@ function pintarAdmProductos() {
           <input class="adm-nombre" value="${esc(p.nombre)}" aria-label="Nombre del producto">
           <select class="adm-cat-sel" aria-label="Categoría">${cats.map(x => `<option value="${x.id}" ${x.id === p.categoria_id ? 'selected' : ''}>${esc(x.nombre)}</option>`).join('')}</select>
           <label class="interruptor"><input type="checkbox" class="adm-activo" ${p.activo ? 'checked' : ''}><span>${p.activo ? 'En el menú' : 'Quitado del menú'}</span></label>
+          <button class="btn btn-sec adm-ops-prod" type="button" title="Qué se escoge o se agrega al venderlo">⚙️ Opciones</button>
+          ${puedeTab('inventario') ? '<button class="btn btn-sec adm-receta" type="button" title="Qué insumos descuenta">🧾 Receta</button>' : '<span></span>'}
           <button class="btn btn-primario adm-guardar" disabled>Guardar</button>
         </div>
+        <div class="adm-ops-resumen ayuda">${esc(resumenGruposProd(p.id))}</div>
         <div class="adm-vars">
           ${vars.map(v => `<div class="adm-var" data-id="${v.id}">
               <input class="v-nombre" value="${esc(v.nombre)}" aria-label="Tamaño o sabor">
@@ -2245,6 +2261,8 @@ function pintarAdmProductos() {
           <button class="link adm-mas-var">+ tamaño o sabor</button>
         </div>`;
       const btn = card.querySelector('.adm-guardar');
+      card.querySelector('.adm-ops-prod').onclick = () => editarGruposProducto(p);
+      if (card.querySelector('.adm-receta')) card.querySelector('.adm-receta').onclick = () => { INV.sub = 'recetas'; INV.prod = p.id; A.tab = 'inventario'; pintarAdmin(); };
       const sucio = () => { btn.disabled = false; card.classList.add('sucio'); };
       card.querySelectorAll('input,select').forEach(el => el.addEventListener('input', sucio));
       card.querySelector('.adm-activo').addEventListener('change', e => { e.target.nextElementSibling.textContent = e.target.checked ? 'En el menú' : 'Quitado del menú'; sucio(); });
@@ -2282,6 +2300,33 @@ function pintarAdmProductos() {
   if ($('adm-copiar')) $('adm-copiar').onchange = e => { const id = Number(e.target.value); e.target.value = '';
     if (id && confirm(`¿Poner en ${S.tienda.nombre} los mismos precios que tiene ${S.tiendas.find(t => t.id === id).nombre}? Los precios actuales de ${S.tienda.nombre} se reemplazan.`)) copiarPreciosDesde(id); };
   $('adm-nueva-cat').onclick = modalNuevaCategoria;
+}
+
+// Etapa 32: la líder cambia qué opciones lleva un producto (sirope a elección, toppings incluidos, sabores…)
+function resumenGruposProd(pid) {
+  const D = A.d, gs = (D.producto_grupos || []).filter(g => g.producto_id === pid).sort((a, b) => a.orden - b.orden);
+  if (!gs.length) return 'Sin opciones al venderlo';
+  return gs.map(g => { const n = D.grupos.find(x => x.id === g.grupo_id)?.nombre || 'Grupo';
+    return n + (g.incluidas ? ` (${g.incluidas} incluido${g.incluidas > 1 ? 's' : ''}${Number(g.valor_incluido_usd) ? ' hasta $' + precioTxt(Number(g.valor_incluido_usd)) : ''})` : ' (se cobra)') + (g.obligatorio ? ' · obligatorio' : ''); }).join(' · ');
+}
+function editarGruposProducto(p) {
+  const D = A.d, act = new Map((D.producto_grupos || []).filter(g => g.producto_id === p.id).map(g => [g.grupo_id, g]));
+  const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">Opciones de ${esc(p.nombre)}</h3><p>Marca lo que la cajera puede escoger o agregar al venderlo.</p></div><div class="modal-cuerpo">
+    <p class="ayuda"><b>Incluidas</b>: cuántas van sin cobrar (ej. 1 topping o 2 siropes). <b>Hasta $</b>: lo incluido cubre hasta ese precio; si escogen uno más caro se cobra la diferencia (0 = cualquiera). <b>Obligatorio</b>: no deja cobrar sin escoger. Lo que pase de las incluidas se cobra a su precio.</p>
+    <table class="tabla-simple"><thead><tr><th>Grupo</th><th class="centro">Lleva</th><th>Incluidas</th><th>Hasta $</th><th class="centro">Obligatorio</th></tr></thead><tbody>
+    ${D.grupos.map(g => { const x = act.get(g.id); return `<tr data-g="${g.id}"><td>${esc(g.nombre)}</td><td class="centro"><input type="checkbox" class="gp-on" ${x ? 'checked' : ''}></td>
+      <td><input class="txt num gp-inc" style="width:60px" inputmode="numeric" value="${x ? x.incluidas : 0}"></td>
+      <td><input class="txt num gp-val" style="width:70px" inputmode="decimal" value="${x ? precioTxt(Number(x.valor_incluido_usd || 0)) : '0'}"></td>
+      <td class="centro"><input type="checkbox" class="gp-obl" ${x?.obligatorio ? 'checked' : ''}></td></tr>`; }).join('')}</tbody></table>
+    <p class="ayuda">¿Falta un grupo (ej. "Sabor del helado")? Créalo en la pestaña Toppings y sabores con "+ Grupo nuevo".</p></div>
+    <div class="modal-pie"><button class="btn btn-sec" id="gp-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario" id="gp-ok">Guardar</button></div>`, 640);
+  r.querySelector('#gp-x').onclick = cerrarModal;
+  r.querySelector('#gp-ok').onclick = async () => {
+    const grupos = [...r.querySelectorAll('tr[data-g]')].filter(tr => tr.querySelector('.gp-on').checked).map((tr, i) => {
+      const gid = Number(tr.dataset.g), viejo = act.get(gid);
+      return { grupo_id: gid, incluidas: Math.max(0, Math.round(leerNum(tr.querySelector('.gp-inc').value) || 0)), valor_incluido_usd: Math.max(0, leerNum(tr.querySelector('.gp-val').value) || 0),
+        obligatorio: tr.querySelector('.gp-obl').checked, permite_extras: true, orden: viejo?.orden ?? (i + 1) }; });
+    try { await apiAdmin.productoGrupos(p.id, grupos); cerrarModal(); toast('Opciones guardadas'); await recargarAdmin(); } catch (e) { toast(e.message, true); } };
 }
 
 function modalNuevoProducto() {
@@ -2368,7 +2413,9 @@ function pintarAdmOpciones() {
   for (const g of D.grupos) {
     const ops = D.opciones.filter(o => o.grupo_id === g.id).sort((a, b) => (disp(b) - disp(a)) || a.orden - b.orden);
     const sec = document.createElement('section'); sec.className = 'adm-cat';
-    sec.innerHTML = `<h3>${esc(g.nombre === 'Topping' ? 'Toppings' : g.nombre === 'Sirope' ? 'Siropes' : g.nombre)}</h3><div class="adm-ops"></div>`;
+    sec.innerHTML = `<h3>${esc(g.nombre === 'Topping' ? 'Toppings' : g.nombre === 'Sirope' ? 'Siropes' : g.nombre)} <button class="link chico gr-ren" type="button">✏️ Cambiar nombre</button></h3><div class="adm-ops"></div>`;
+    sec.querySelector('.gr-ren').onclick = async () => { const n = prompt('Nuevo nombre del grupo:', g.nombre); if (!n || n.trim() === g.nombre) return;
+      try { await apiAdmin.guardarGrupo({ id: g.id, nombre: n.trim() }); toast('Nombre cambiado'); await recargarAdmin(); } catch (e) { toast(e.message, true); } };
     const lista = sec.querySelector('.adm-ops');
     const fila = (o) => {
       const div = document.createElement('div'); div.className = 'adm-op' + (o && !disp(o) ? ' inactivo' : '') + (o ? '' : ' nueva');
@@ -2394,6 +2441,11 @@ function pintarAdmOpciones() {
     ops.forEach(fila); fila(null);
     cont.appendChild(sec);
   }
+  const nuevo = document.createElement('div'); nuevo.className = 'adm-barra';
+  nuevo.innerHTML = `<button class="btn btn-sec" id="gr-nuevo">+ Grupo nuevo (ej. "Sabor del helado")</button><span class="ayuda">Después, en Productos → ⚙️ Opciones, marcas a qué productos se le pregunta.</span>`;
+  cont.appendChild(nuevo);
+  $('gr-nuevo').onclick = async () => { const n = prompt('Nombre del grupo nuevo (ej. Sabor del helado):'); if (!n || !n.trim()) return;
+    try { await apiAdmin.guardarGrupo({ id: null, nombre: n.trim() }); toast('Grupo creado: agrégale las opciones'); await recargarAdmin(); } catch (e) { toast(e.message, true); } };
 }
 
 
@@ -5856,7 +5908,7 @@ const PERM_KEYS = PERMISOS.flatMap(g => g[1]).map(([k]) => k);
 const ROLES_EQUIPO = ['encargada', 'cajera', 'gerente', 'produccion', 'nomina', 'mercadeo', 'contadora'];
 // Lo que trae cada rol "de fábrica" (igual que pos_permisos_base en el servidor)
 function permBase(rol) {
-  const si = { encargada: k => !['portienda', 'compras_aprobar', 'nomina', 'bonos', 'postulaciones'].includes(k), gerente: k => !['nomina', 'bonos'].includes(k),
+  const si = { encargada: k => !['compras_aprobar', 'nomina', 'bonos', 'postulaciones'].includes(k), gerente: k => !['nomina', 'bonos'].includes(k),
     cajera: k => ['anular', 'productos', 'opciones', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
     produccion: k => ['sin_clave', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
     nomina: k => ['nomina', 'bonos', 'postulaciones', 'solpe'].includes(k), mercadeo: k => k === 'solpe',
