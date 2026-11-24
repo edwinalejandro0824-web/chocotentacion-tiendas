@@ -539,9 +539,9 @@
       <div class="bloque-cliente" id="bloque-cliente">
         <div class="cli-cab"><b>Datos del cliente</b><span id="cli-estado" class="cli-estado"></span></div>
         <div class="cli-grid">
+          <input id="cli-cedula" placeholder="Cédula * (primero)" autocomplete="off" aria-label="Cédula del cliente">
           <input id="cli-nombre" placeholder="Nombre *" autocomplete="off" aria-label="Nombre del cliente">
           <input id="cli-apellido" placeholder="Apellido *" autocomplete="off" aria-label="Apellido del cliente">
-          <input id="cli-cedula" placeholder="Cédula *" autocomplete="off" aria-label="Cédula del cliente">
           <input id="cli-telefono" placeholder="Teléfono *" autocomplete="off" inputmode="tel" aria-label="Teléfono del cliente">
           <input id="cli-zona" class="ancho-total" placeholder="Zona donde vive *" autocomplete="off" aria-label="Zona donde vive el cliente">
         </div>
@@ -1203,7 +1203,7 @@ $('cli-cedula').addEventListener('blur', buscarClientePorCedula);
    se mueve el foco; si ya no falta nada, deja el foco en el botón Cobrar (que solo
    abre la pantalla de pago). Se usa .onkeydown, que reemplaza, y no addEventListener,
    que se acumula: así fue como el 15/11 se duplicaron ventas en el Sambil. */
-const ORDEN_CLIENTE = ['cli-nombre', 'cli-apellido', 'cli-cedula', 'cli-telefono', 'cli-zona'];
+const ORDEN_CLIENTE = ['cli-cedula', 'cli-nombre', 'cli-apellido', 'cli-telefono', 'cli-zona'];   // 24/11/2026: la cédula PRIMERO, así si ya está registrado se llena solo
 function irASiguienteCampoCliente(desde) {
   const faltan = new Set(faltantesCliente().map(f => f[0]));
   const i = ORDEN_CLIENTE.indexOf(desde);
@@ -1217,7 +1217,9 @@ for (const id of ORDEN_CLIENTE) {
   $(id).onkeydown = e => {
     if (e.key !== 'Enter') return;
     e.preventDefault(); e.stopPropagation();   // que no llegue a ningún otro lado
-    tocados.add(id); revisarCobrar();
+    tocados.add(id);
+    if (id === 'cli-cedula') { clearTimeout(buscarTimer); Promise.resolve(buscarClientePorCedula()).catch(() => {}).then(() => { revisarCobrar(); irASiguienteCampoCliente(id); }); return; }
+    revisarCobrar();
     irASiguienteCampoCliente(id);
   };
 }
@@ -2211,16 +2213,10 @@ function pintarAdmin() {
   if (DEMO || !CARGA[A.tab]) return f();
   const cont = $('adm-contenido'), tab = A.tab;
   if (!cont.querySelector('.cargando-tab')) cont.insertAdjacentHTML('afterbegin', '<div class="vacio cargando-tab">Cargando…</div>');
-  CARGA[tab]().then(() => { if (A.tab === tab) { f(); avisoCajasOcultas(tab); } })
+  CARGA[tab]().then(() => { if (A.tab === tab) f(); })
     .catch(e => { if (A.tab === tab) cont.innerHTML = `<div class="mensaje-error">No se pudo cargar: ${esc(e.message)}</div>`; });
 }
 
-// Etapa 34 (24/11/2026): las ventas de una caja abierta no salen en Panel/Reportes/Cierres sin la función 'ventas_abiertas'
-function avisoCajasOcultas(tab) {
-  const o = REAL.cajasOcultas || [];
-  if (!['panel', 'reportes', 'cierres'].includes(tab) || !o.length) return;
-  $('adm-contenido').insertAdjacentHTML('afterbegin', `<div class="mensaje-error" style="background:#fff7e6;color:#8a5a00;border-color:#f3d19c">🔒 Las ventas de la caja abierta (${o.map(x => esc(x.tienda) + ' #' + esc(x.numero)).join(', ')}) no se muestran aquí hasta que se cierre. Solo el dueño o el gerente pueden verlas antes.</div>`);
-}
 const precioTxt = n => n == null ? '' : fmt.format(n);
 function leerPrecio(inp) {
   const s = inp.value.trim();
@@ -3646,7 +3642,7 @@ async function cargarVentasReal(desde, hasta, forzar = false) {
     d.ventas.filter(v => v.estado === 'anulada').forEach(v => DX.anulaciones.push({ venta_id: v.id, tienda_id: t.id, fecha: v.anulada_en, numero: v.numero,
       total_usd: num(v.total_usd), motivo: v.motivo_anulacion || '', detalle: '', autorizo: '', cajero: v.usuario || '' }));
   }
-  REAL.cajasOcultas = res.filter(x => x.d.caja_abierta_oculta).map(x => ({ tienda: x.t.nombre, numero: x.d.caja_abierta_oculta }));
+  REAL.turnosAbiertos = res.flatMap(x => (x.d.turnos_abiertos || []).map(t => ({ ...t, tienda_id: x.t.id })));
   DX.gastos = (res[0]?.d.gastos || []).map(g => ({ ...g, monto_usd: num(g.monto_usd) }));
   DEMO_VENTAS.sort((a, b) => a.fecha < b.fecha ? -1 : 1);
   REAL.ventasRango = clave;
@@ -5926,7 +5922,7 @@ const PERMISOS = [
   ['Caja', [['anular', 'Anular ventas']]],
   ['Administrar', [['sin_clave', 'Entra a Administrar con su propio usuario (sin pedirle la clave de administrador)'], ['panel', 'Panel (ventas y números de la tienda)'], ['productos', 'Productos: cambiar nombres, tamaños y precios, y quitarlos del menú'],
     ['opciones', 'Toppings y sabores'], ['portienda', 'Qué vende cada tienda (productos y materia prima)'], ['cierres', 'Cierres de caja'],
-    ['gastos', 'Gastos y pagos (presupuesto, plan de pagos, facturas y proveedores)'], ['clientes', 'Clientes'], ['reportes', 'Reportes'], ['ventas_abiertas', 'Ver las ventas de una caja que sigue ABIERTA (si no, se ven al cerrarla)'],
+    ['gastos', 'Gastos y pagos (presupuesto, plan de pagos, facturas y proveedores)'], ['clientes', 'Clientes'], ['reportes', 'Reportes'], ['ventas_abiertas', 'Ver en el Reporte general las ventas de una caja que sigue ABIERTA (si no, salen al cerrarla)'],
     ['evaluacion', 'Evaluar al equipo de su tienda'], ['cajas', 'Registrar o quitar la computadora de la caja']]],
   ['Compras', [['inv_pedidos', 'Hacer pedidos de materia prima'], ['compras_aprobar', 'Aprobar pedidos y ver el consolidado de todas las tiendas'], ['solpe', 'Hacer solicitudes de pago']]],
   ['Inventario', [['inventario', 'Ver existencias y movimientos'], ['inv_recibir', 'Recibir mercancía'], ['inv_mermas', 'Registrar mermas'], ['inv_conteo', 'Conteo físico (ajuste de inventario)'],
@@ -6142,10 +6138,18 @@ function rangoReporte(r) {
   if (r === 'mes_pasado') { const fin = sumarDias(mes1, -1); return [fin.slice(0, 8) + '01', fin]; }
   return [REP.desde, REP.hasta];
 }
+// Etapa 34 (24/11/2026, dueño): el Reporte general NO muestra las ventas de una caja que sigue abierta
+// (salen al cerrarla), salvo el dueño o quien tenga 'ventas_abiertas' (gerente). Panel y lo demás no cambian.
+function cajasAbiertasOcultas(tid) {
+  if (S.perfil?.rol === 'dueno' || puede('ventas_abiertas')) return [];
+  if (DEMO) return S.turno && S.turno.tienda_id === tid ? [{ id: S.turno.id, numero: S.turno.numero }] : [];
+  return (REAL.turnosAbiertos || []).filter(t => t.tienda_id === tid);
+}
 function datosReporteGeneral(tid) {
-  const vs = DEMO_VENTAS.filter(v => v.tienda_id === tid && v.estado !== 'anulada' && diaVE(v.fecha) >= REP.desde && diaVE(v.fecha) <= REP.hasta)
-    .sort((a, b) => a.fecha < b.fecha ? -1 : 1);
-  const anuladas = DEMO_VENTAS.filter(v => v.tienda_id === tid && v.estado === 'anulada' && diaVE(v.fecha) >= REP.desde && diaVE(v.fecha) <= REP.hasta).length;
+  const ocultas = cajasAbiertasOcultas(tid), fuera = new Set(ocultas.map(t => t.id));
+  const enRango = v => v.tienda_id === tid && diaVE(v.fecha) >= REP.desde && diaVE(v.fecha) <= REP.hasta && !fuera.has(v.turno_id);
+  const vs = DEMO_VENTAS.filter(v => enRango(v) && v.estado !== 'anulada').sort((a, b) => a.fecha < b.fecha ? -1 : 1);
+  const anuladas = DEMO_VENTAS.filter(v => enRango(v) && v.estado === 'anulada').length;
   const filas = vs.map(v => {
     const neto = r2(v.total_usd), iva = r2(v.iva_usd), bruto = r2(v.base_usd + (v.descuento_usd || 0)), desc = r2(v.descuento_usd || 0);
     const costo = r2(costoVenta(v)), base = r2(v.base_usd), util = r2(base - costo);
@@ -6200,6 +6204,7 @@ function pintarReporteGeneral(cont, tipos) {
       <select id="rg-rango" class="sel corto" aria-label="Período">${rangos.map(([k, n]) => `<option value="${k}" ${REP.rango === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
       ${REP.rango === 'otro' ? `<label class="rango">Desde <input type="date" id="rp-desde" class="txt corto" value="${REP.desde}"></label><label class="rango">Hasta <input type="date" id="rp-hasta" class="txt corto" value="${REP.hasta}"></label>` : ''}
       <span class="espacio"></span><button class="btn btn-sec" id="rg-copiar">Copiar para Excel</button><button class="btn btn-primario" id="rg-imprimir">Imprimir o guardar PDF</button></div>
+    ${(() => { const o = cajasAbiertasOcultas(S.tienda.id); return o.length ? `<div class="mensaje-error" style="background:#fff7e6;color:#8a5a00;border-color:#f3d19c">🔒 Las ventas de la caja abierta #${o.map(t => esc(t.numero)).join(', #')} no salen en este reporte hasta que se cierre la caja. Antes solo las ven el dueño o el gerente.</div>` : ''; })()}
     ${htmlReporteGeneral(d)}`;
   $('rp-tipo').onchange = e => { REP.tipo = e.target.value; pintarAdmReportes(); };
   $('rg-rango').onchange = e => { REP.rango = e.target.value; if (REP.rango !== 'otro') [REP.desde, REP.hasta] = rangoReporte(REP.rango); pintarAdmin(); };
