@@ -685,6 +685,13 @@ const api = {
       document.head.appendChild(s);
     });
     sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // 24/11/2026: si la sesión se cae (se cerró en otro lado o venció el token) la pantalla NO sigue como si nada:
+    // cualquier llamada sin permiso o el aviso de "sesión cerrada" muestra un cartel para volver a entrar.
+    const _rpc = sb.rpc.bind(sb);
+    sb.rpc = (...a) => { const q = _rpc(...a), then = q.then.bind(q);
+      q.then = (ok, mal) => then(r => { if (r?.error && /permission denied for function|JWT|not authenticated/i.test(r.error.message || '')) revisarSesionPerdida(); return r; }).then(ok, mal);
+      return q; };
+    sb.auth.onAuthStateChange(ev => { if (ev === 'SIGNED_OUT' && !window.__saliendo) revisarSesionPerdida(); });
   },
   async sesion() {
     if (DEMO) return { demo: true };
@@ -725,7 +732,7 @@ const api = {
     await sb.auth.refreshSession();
     await this.registrarDispositivo();
   },
-  async salir() { if (!DEMO) await sb.auth.signOut(); },
+  async salir() { if (!DEMO) { window.__saliendo = true; await sb.auth.signOut(); } },
   async perfil() {
     if (DEMO) return perfilDemo();
     const { data: u } = await sb.auth.getUser();
@@ -3589,6 +3596,19 @@ const DEMO_KEY = 'pos_demo_v2';
 const DX = { sec: 1, salidas: [], anulaciones: [], insumos: [], recetas: {}, movs: [], gastos: [], proveedores: [], facturas: [], pedidos: [], produccion: {}, cxp: [], cxpFijos: [], balanceTipos: [],
              usuarios: [], usuarioActual: null, base: false, historia: false };
 const nid = () => DX.sec++;
+
+async function revisarSesionPerdida() {
+  if (DEMO || window.__saliendo || document.getElementById('sesion-perdida')) return;
+  try { const { data } = await sb.auth.getSession(); if (data?.session) return; } catch (e) {}
+  const d = document.createElement('div'); d.id = 'sesion-perdida';
+  d.style.cssText = 'position:fixed;inset:0;background:rgba(30,15,10,.75);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  d.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:460px;padding:24px;text-align:center;font-family:inherit">
+    <h2 style="margin:0 0 8px">Se cerró la sesión en este equipo</h2>
+    <p style="margin:0 0 6px">Vuelve a entrar con tu usuario y clave. <b>La caja sigue abierta</b> y lo vendido está guardado.</p>
+    <p style="margin:0 0 16px;color:#7a5a4a">Si estabas cobrando una venta, márcala de nuevo después de entrar.</p>
+    <button class="btn btn-primario" style="width:100%" onclick="location.reload()">Entrar de nuevo</button></div>`;
+  document.body.appendChild(d);
+}
 
 /* ---------- VERSIÓN REAL: leer y guardar en la base de datos ---------- */
 async function rpc(nombre, args = {}) {
