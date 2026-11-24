@@ -3650,7 +3650,7 @@ async function cargarVentasReal(desde, hasta, forzar = false) {
 async function cargarInventarioReal() {
   const d = await rpc('pos_inv_datos', { p_clave: A.clave, p_tienda: S.tienda.id, p_movs: 2000 });
   DX.insumos = d.insumos.map(i => ({ id: i.id, nombre: i.nombre, unidad: i.unidad, costo_usd: num(i.costo_usd), minimo: num(i.minimo),
-    activo: i.activo, clase_costo: i.clase_costo, etapa: i.etapa, proveedor_id: i.proveedor_id ?? null, iva_exento: !!i.iva_exento, stock: { [S.tienda.id]: num(i.cantidad) } }));
+    activo: i.activo, clase_costo: i.clase_costo, etapa: i.etapa, proveedor_id: i.proveedor_id ?? null, iva_exento: !!i.iva_exento, compra_factor: num(i.compra_factor) || 1, compra_presentacion: i.compra_presentacion || '', stock: { [S.tienda.id]: num(i.cantidad) } }));
   DX.produccion = {}; Object.entries(d.produccion || {}).forEach(([k, ls]) => { DX.produccion[k] = ls.map(l => ({ insumo_id: l.insumo_id, cantidad: num(l.cantidad) })); });
   try { const rq = await sb.from('pos_opcion_reemplazos').select('opcion_id,insumo_de,insumo_a'); DX.reemplazos = rq.data || []; } catch (e) { DX.reemplazos = []; }
   DX.recetas = {};
@@ -3684,7 +3684,8 @@ const CARGA = {
     await Promise.all([cargarProveedoresReal(), cargarCxpReal(), cargarPresupuestoReal(), cargarVentasReal(m, fin < hoyVE() ? fin : hoyVE())]);
     if (PROV.vista === 'plan') await cargarPlanReal(); },
   portienda: async () => { PT.d = await rpc('pos_portienda_datos', {}); },
-  compras: async () => { if (!(puede('inv_pedidos') || puede('compras_aprobar'))) return;   // solo solicitudes de pago: no necesita inventario (Mercadeo)
+  compras: async () => { try { ENT = await rpc('pos_entidades_basico', {}); } catch (e) { }
+    if (!(puede('inv_pedidos') || puede('compras_aprobar'))) return;   // solo solicitudes de pago: no necesita inventario (Mercadeo)
     // sin 'gastos'/'inventario' no se pueden leer las facturas de proveedores (Fabiana, 23/11): los proveedores salen de pos_inv_datos
     await cargarInventarioReal(); await Promise.all([cargarPedidosReal(), (puede('gastos') || puede('inventario')) ? cargarProveedoresReal() : null]); await cargarPresupuestoCompras(); },
   clientes: () => cargarClientesReal(),
@@ -4445,6 +4446,8 @@ function pintarAdmInventario() {
         <label class="campo"><span>Inventario de</span><select id="ie-etapa" class="sel">${Object.entries(ETAPAS).map(([k, n]) => `<option value="${k}" ${etapaDe(i) === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
         <label class="campo"><span>Tipo de costo (para el balance)</span><select id="ie-clase" class="sel"><option value="directo">Material directo (lo que se come o se bebe)</option><option value="desechable" ${claseCosto(i) === 'desechable' ? 'selected' : ''}>Desechable (vasos, envases, servilletas…)</option></select></label>
         <label class="campo"><span>IVA al comprarlo</span><select id="ie-iva" class="sel"><option value="0">Gravable (paga IVA 16 %)</option><option value="1" ${i?.iva_exento ? 'selected' : ''}>Exento (no paga IVA)</option></select></label>
+        <div class="dos-campos"><label class="campo"><span>Se compra por (presentación)</span><input id="ie-pres" class="txt" value="${esc(i?.compra_presentacion || '')}" placeholder="Ej. Caja 480 und, Bolsa 500 g"></label>
+          <label class="campo"><span>¿Cuántas ${esc(i?.unidad || 'unidades')} trae?</span><input id="ie-fac" class="txt num" value="${i?.compra_factor > 1 ? fmtCant(i.compra_factor) : ''}" placeholder="Ej. 480 o 500 (vacío = 1)"></label></div>
         <label class="campo"><span>Proveedor habitual (para armar los pedidos)</span><select id="ie-prov" class="sel"><option value="">— Ninguno —</option>${(DX.proveedores || []).map(p => `<option value="${p.id}" ${i?.proveedor_id === p.id ? 'selected' : ''}>${esc(p.nombre)}${p.condicion === 'contado' ? ' (contado)' : ''}</option>`).join('')}</select></label>
         ${i ? `<label class="interruptor"><input type="checkbox" id="ie-activo" checked><span>En uso</span></label>` : ''}</div>
         <div class="modal-pie"><button type="button" class="btn btn-sec" id="ie-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 480);
@@ -4454,9 +4457,11 @@ function pintarAdmInventario() {
         const err = m => { r.querySelector('#ie-error').textContent = m; r.querySelector('#ie-error').classList.remove('oculto'); };
         if (nombre.length < 2) return err('Escribe el nombre'); if (!(min >= 0)) return err('Revisa el mínimo'); if (!(costo >= 0)) return err('Revisa el costo');
         if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
-          await rpc('pos_inv_guardar_insumo', { p_clave: A.clave, p_tienda: t, p: { id: i?.id || null, nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, iva_exento: r.querySelector('#ie-iva').value === '1', activo: i ? r.querySelector('#ie-activo').checked : true } });
+          await rpc('pos_inv_guardar_insumo', { p_clave: A.clave, p_tienda: t, p: { id: i?.id || null, nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, iva_exento: r.querySelector('#ie-iva').value === '1', activo: i ? r.querySelector('#ie-activo').checked : true,
+            compra_presentacion: limpiar(r.querySelector('#ie-pres').value) || null, compra_factor: leerNum(r.querySelector('#ie-fac').value) > 0 ? leerNum(r.querySelector('#ie-fac').value) : 1 } });
           cerrarModal(); toast('Insumo guardado'); refrescarAdmin(); }, err);
-        if (i) Object.assign(i, { nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, iva_exento: r.querySelector('#ie-iva').value === '1', activo: r.querySelector('#ie-activo').checked });
+        if (i) Object.assign(i, { nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, iva_exento: r.querySelector('#ie-iva').value === '1', activo: r.querySelector('#ie-activo').checked,
+          compra_presentacion: limpiar(r.querySelector('#ie-pres').value), compra_factor: leerNum(r.querySelector('#ie-fac').value) > 0 ? leerNum(r.querySelector('#ie-fac').value) : 1 });
         else DX.insumos.push({ id: nid(), nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, iva_exento: r.querySelector('#ie-iva').value === '1', stock: {} });
         guardarDemo(); cerrarModal(); toast('Insumo guardado'); pintarAdmInventario(); pintarChipStock(); };
     };
@@ -5147,6 +5152,10 @@ function pintarPedidos(ic, t, optsIns) {
   pintarPedidosLista(c, t);
 }
 
+// Presentación de compra (24/11/2026, Excel de requisición): 1 presentación = compra_factor unidades del insumo (ej. Caja 480 und, 500 g)
+const presIns = id => { const i = DX.insumos.find(x => x.id === Number(id)); return { f: i?.compra_factor > 0 ? i.compra_factor : 1, p: i?.compra_presentacion || '', u: i?.unidad || '', i }; };
+const enPres = (id, cant) => { const x = presIns(id); return x.f > 1 ? `${fmtCant(Math.round(cant / x.f * 100) / 100)} × ${x.p}` : `${fmtCant(cant)} ${x.u}${x.p && x.p.length < 40 ? ' (' + x.p + ')' : ''}`; };
+const precioPres = id => { const x = presIns(id); return r2(Number(costoInsumo(id) || 0) * x.f); };
 function pintarHacerPedido(c, t, ic, optsIns) {
   const hoy = hoyVE();
   const ins = DX.insumos.filter(i => i.activo !== false && insEnTienda(i, t) && etapaDe(i) === 'materia_prima').sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -5169,18 +5178,18 @@ function pintarHacerPedido(c, t, ic, optsIns) {
   if (cubre && !PDV.sugerido?.[t]) {   // primera vez: llenar Necesito y Pedir con la proyección
     (PDV.sugerido = PDV.sugerido || {})[t] = true;
     ins.forEach(i => { const g = gasto[i.id]; if (!(g > 0) || PDV.nec[i.id] != null) return; const nec = Math.ceil(g * 100) / 100;
-      PDV.nec[i.id] = nec; const falta = Math.max(0, Math.round((nec - Math.max(stockDe(i, t), 0)) * 100) / 100); if (falta > 0) PDV.cant[i.id] = falta; });
+      PDV.nec[i.id] = nec; const f = presIns(i.id).f, falta = Math.max(0, nec - Math.max(stockDe(i, t), 0)); if (falta > 0.0001) PDV.cant[i.id] = f > 1 ? Math.ceil(falta / f - 0.0001) * f : Math.round(falta * 100) / 100; });
   }
   c.innerHTML = `<section class="graf presu-compras" id="pd-presu"></section>
     <div class="adm-barra"><p>${cubre ? `<b>Necesito</b> ya viene lleno con lo que el sistema calcula que se gasta en una semana, según lo vendido${cons.dias < 7 ? ` (esta tienda lleva ${fmtCant(cons.dias)} día(s) vendiendo, así que se proyectó a 7)` : ' los últimos 7 días'}. <b>Pedir</b> = Necesito − lo que <b>hay</b>. Puedes cambiar cualquiera de las dos; lo que quede en blanco no se pide.` : `Todavía no hay ventas para calcular el consumo: en <b>Necesito</b> pon cuánto vas a usar en la semana y el sistema calcula cuánto <b>pedir</b> restando lo que <b>hay</b>. Lo que dejes en blanco no se pide.`} El dueño junta los pedidos de todas las tiendas y compra por proveedor.</p></div>
     <div class="adm-barra"><input id="pd-q" class="txt" placeholder="Buscar insumo o proveedor…" value="${esc(PDV.q)}" style="max-width:320px">
       <label class="interruptor" style="margin:0"><input type="checkbox" id="pd-bajo" ${PDV.bajo ? 'checked' : ''}><span>Solo lo que está por agotarse</span></label></div>
-    <table class="tabla-simple num"><thead><tr><th>Insumo</th><th>Proveedor</th><th class="der">Hay</th>${cubre ? '<th class="der" title="Lo que el sistema calcula que se gasta en 7 días según lo vendido">Gasta en la semana</th>' : ''}<th class="der">Mínimo</th><th class="der">Necesito</th><th class="der">Pedir</th></tr></thead><tbody>
+    <table class="tabla-simple num"><thead><tr><th>Insumo</th><th>Proveedor</th><th class="der">Hay</th>${cubre ? '<th class="der" title="Lo que el sistema calcula que se gasta en 7 días según lo vendido">Gasta en la semana</th>' : ''}<th class="der">Mínimo</th><th class="der">Necesito</th><th class="der">Pedir <small>(en presentación de compra)</small></th></tr></thead><tbody>
     ${vis.map(i => { const s = stockDe(i, t), bajo = s <= i.minimo, p = provDe(i.proveedor_id);
       return `<tr><td>${esc(i.nombre)}</td><td>${p ? esc(p.nombre) : '<span class="ayuda">—</span>'}</td>
         <td class="der ${s <= 0 ? 'rojo' : ''}">${fmtCant(Math.max(s, 0))} ${esc(i.unidad)}</td>${cubre ? `<td class="der">${gasto[i.id] ? fmtCant(gasto[i.id]) : '—'}</td>` : ''}<td class="der">${bajo && i.minimo ? `<span class="badge abierta">${fmtCant(i.minimo)}</span>` : fmtCant(i.minimo)}</td>
         <td class="der"><input class="txt num pd-n" data-i="${i.id}" data-hay="${Math.max(s, 0)}" inputmode="decimal" value="${PDV.nec[i.id] ? fmtCant(PDV.nec[i.id]) : ''}" placeholder="${esc(i.unidad)}" style="max-width:110px"></td>
-        <td class="der"><input class="txt num pd-c" data-i="${i.id}" inputmode="decimal" value="${PDV.cant[i.id] ? fmtCant(PDV.cant[i.id]) : ''}" placeholder="${esc(i.unidad)}" style="max-width:110px"></td></tr>`; }).join('')
+        <td class="der">${(() => { const x = presIns(i.id); return `<input class="txt num pd-c" data-i="${i.id}" data-f="${x.f}" inputmode="decimal" value="${PDV.cant[i.id] ? fmtCant(Math.round(PDV.cant[i.id] / x.f * 100) / 100) : ''}" placeholder="${esc(x.f > 1 ? x.p : i.unidad)}" title="${esc(x.p ? 'Se compra por: ' + x.p : '')}" style="max-width:110px">${x.f > 1 ? `<div class="ayuda" style="font-size:11px">${esc(x.p)}</div>` : ''}`; })()}</td></tr>`; }).join('')
       || `<tr><td colspan="${cubre ? 7 : 6}" class="vacio">No hay insumos con ese filtro.</td></tr>`}</tbody></table>
     <section class="graf"><div class="campo"><span>¿En cuántos días tiene que llegar? *</span><div class="pd-dias">${[2, 4, 5, 7, 15].map(d => `<button type="button" class="sub-tab ${PDV.dias === d ? 'activa' : ''}" data-d="${d}">${d} días</button>`).join('')}
         <input id="pd-otro" class="txt num" inputmode="numeric" placeholder="Otro" style="width:80px" value="${PDV.dias && ![2, 4, 5, 7, 15].includes(PDV.dias) ? PDV.dias : ''}"></div>
@@ -5210,10 +5219,11 @@ function pintarHacerPedido(c, t, ic, optsIns) {
   c.querySelector('#pd-q').oninput = e => { PDV.q = e.target.value; redibujar(); };
   c.querySelector('#pd-bajo').onchange = e => { PDV.bajo = e.target.checked; pintarHacerPedido(c, t, ic, optsIns); };
   c.querySelectorAll('.pd-n').forEach(x => x.oninput = () => { const id = x.dataset.i, v = leerNum(x.value), pc = c.querySelector(`.pd-c[data-i="${id}"]`);
-    if (v > 0) { PDV.nec[id] = v; const falta = Math.max(0, Math.round((v - Number(x.dataset.hay)) * 1000) / 1000); pc.value = falta ? fmtCant(falta) : ''; if (falta) PDV.cant[id] = falta; else delete PDV.cant[id]; }
+    if (v > 0) { PDV.nec[id] = v; const f = Number(pc.dataset.f) || 1, falta0 = Math.max(0, v - Number(x.dataset.hay)), packs = f > 1 ? Math.ceil(falta0 / f - 0.0001) : Math.round(falta0 * 1000) / 1000;
+      pc.value = packs > 0 ? fmtCant(packs) : ''; if (packs > 0) PDV.cant[id] = f > 1 ? packs * f : packs; else delete PDV.cant[id]; }
     else { delete PDV.nec[id]; delete PDV.cant[id]; pc.value = ''; }
     c.querySelector('#pd-n').textContent = n(); pintarPresu(); });
-  c.querySelectorAll('.pd-c').forEach(x => x.oninput = () => { const v = leerNum(x.value); if (v > 0) PDV.cant[x.dataset.i] = v; else delete PDV.cant[x.dataset.i]; c.querySelector('#pd-n').textContent = n(); pintarPresu(); });
+  c.querySelectorAll('.pd-c').forEach(x => x.oninput = () => { const v = leerNum(x.value), f = Number(x.dataset.f) || 1; if (v > 0) PDV.cant[x.dataset.i] = Math.round(v * f * 1000) / 1000; else delete PDV.cant[x.dataset.i]; c.querySelector('#pd-n').textContent = n(); pintarPresu(); });
   c.querySelectorAll('[data-d]').forEach(b => b.onclick = () => { PDV.dias = Number(b.dataset.d); pintarHacerPedido(c, t, ic, optsIns); });
   c.querySelector('#pd-otro').onchange = e => { const v = parseInt(soloDigitos(e.target.value), 10); PDV.dias = v > 0 ? v : null; pintarHacerPedido(c, t, ic, optsIns); };
   c.querySelector('#pd-nota').oninput = e => PDV.nota = e.target.value;
@@ -5284,16 +5294,18 @@ function pintarConsolidado(c, ic, t, optsIns) {
     if (!grupos.has(pid)) grupos.set(pid, new Map()); const g = grupos.get(pid);
     const x = g.get(it.insumo_id) || { nombre: it.nombre, unidad: it.unidad, total: 0, por: {} };
     x.total += Number(it.cantidad); x.por[p.tienda_id] = (x.por[p.tienda_id] || 0) + Number(it.cantidad); g.set(it.insumo_id, x); }));
-  const sep = x => tiendas.filter(([id]) => x.por[id]).map(([id, n]) => `${n} ${fmtCant(x.por[id])}`).join(' · ');
+  grupos.forEach(g => g.forEach((x, iid) => { x.id = iid; }));
+  const pk = (x, v) => { const f = presIns(x.id).f; return fmtCant(Math.round(v / f * 100) / 100); };
+  const sep = x => tiendas.filter(([id]) => x.por[id]).map(([id, n]) => `${n} ${pk(x, x.por[id])}`).join(' · ');
   const tabla = g => `<table class="tabla-simple num"><thead><tr><th>Insumo</th><th class="der">Total</th>${tiendas.map(([, n]) => `<th class="der">${esc(n)}</th>`).join('')}</tr></thead><tbody>
-    ${[...g.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(x => `<tr><td>${esc(x.nombre)}</td><td class="der"><b>${fmtCant(x.total)} ${esc(x.unidad)}</b></td>
-      ${tiendas.map(([id]) => `<td class="der">${x.por[id] ? fmtCant(x.por[id]) : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    ${[...g.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(x => `<tr><td>${esc(x.nombre)}</td><td class="der"><b>${esc(enPres(x.id, x.total))}</b></td>
+      ${tiendas.map(([id]) => `<td class="der">${x.por[id] ? pk(x, x.por[id]) : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   const ids = [...grupos.keys()], credito = ids.filter(id => id && provDe(id)?.condicion !== 'contado'), contado = ids.filter(id => id && provDe(id)?.condicion === 'contado');
   const msgProv = id => { const p = provDe(id), g = grupos.get(id);
     return `Buenos días${p?.nombre ? ', ' + p.nombre : ''}. Le escribimos de ${NEGOCIO_NOMBRE} para hacerle un pedido:\n` +
-      [...g.values()].map(x => `• ${x.nombre}: ${fmtCant(x.total)} ${x.unidad}`).join('\n') + `\n\nPor favor confírmenos disponibilidad, precio y cuándo lo pueden entregar. ¡Gracias!`; };
+      [...g.values()].map(x => `• ${x.nombre}: ${enPres(x.id, x.total)}`).join('\n') + `\n\nPor favor confírmenos disponibilidad, precio y cuándo lo pueden entregar. ¡Gracias!`; };
   const textoMoto = () => `*Compra de contado · ${NEGOCIO_NOMBRE}* (${fechaLarga(hoyVE())})\n` + contado.map(id => { const p = provDe(id);
-    return `\n*${p.nombre}*${p.telefono ? ' · ' + p.telefono : ''}\n` + [...grupos.get(id).values()].map(x => `• ${x.nombre}: ${fmtCant(x.total)} ${x.unidad}  →  ${sep(x)}`).join('\n'); }).join('\n')
+    return `\n*${p.nombre}*${p.telefono ? ' · ' + p.telefono : ''}\n` + [...grupos.get(id).values()].map(x => `• ${x.nombre}: ${enPres(x.id, x.total)}  →  ${sep(x)}`).join('\n'); }).join('\n')
     + `\n\nAl llegar, separar por tienda como dice cada renglón.`;
   c.innerHTML = `<div class="adm-barra"><p>Todo lo que piden las tiendas, junto y separado por proveedor. <b>Crédito:</b> se le escribe al proveedor. <b>Contado:</b> la lista va al autorizado que compra y paga en el momento; luego se separa por tienda.</p>
       <span class="espacio"></span><label class="interruptor" style="margin:0"><input type="checkbox" id="cs-camino" ${PDV.conCamino ? 'checked' : ''}><span>Incluir los que ya van en camino</span></label>${peds.length ? '<button class="btn btn-primario" id="cs-xlsx">⬇️ Descargar Excel</button>' : ''}</div>
@@ -5303,6 +5315,7 @@ function pintarConsolidado(c, ic, t, optsIns) {
       return `<section class="graf"><div class="adm-barra"><h4 style="margin:0">${esc(p.nombre)}</h4>${condProv(p)}<span class="ayuda">${esc(p.telefono || 'sin teléfono')}</span><span class="espacio"></span>
         <button class="btn btn-sec" data-cp="${id}">Copiar mensaje</button>${telWa(p.telefono) ? `<a class="btn btn-primario" target="_blank" href="https://wa.me/${telWa(p.telefono)}?text=${encodeURIComponent(msgProv(id))}">WhatsApp al proveedor</a>` : ''}</div>${tabla(grupos.get(id))}</section>`; }).join('')}` : ''}
     ${contado.length ? `<h4>💵 De contado: lista para el autorizado</h4><section class="graf"><div class="adm-barra"><span class="espacio"></span><button class="btn btn-sec" id="cs-moto-imp">Imprimir</button><button class="btn btn-primario" id="cs-moto">Copiar lista para WhatsApp</button></div>
+      <div class="adm-barra"><b>🧾 Guía de despacho para cada tienda:</b>${tiendas.map(([id, n]) => contado.some(pid => [...grupos.get(pid).values()].some(x => x.por[id])) ? `<button class="btn btn-sec" data-guia="${id}">${esc(n)}</button>` : '').join('')}<span class="espacio"></span><button class="link" id="cs-guias">Guías anteriores</button></div>
       ${contado.map(id => `<h4 style="margin:10px 0 4px">${esc(provDe(id).nombre)} <span class="ayuda">${esc(provDe(id).telefono || '')}</span></h4>${tabla(grupos.get(id))}`).join('')}</section>` : ''}
     ${grupos.has(0) ? `<h4>⚠️ Sin proveedor asignado</h4><section class="graf"><p class="ayuda">Asígnales su proveedor en Existencias → Editar insumo (o se asigna solo la primera vez que se reciben con factura).</p>${tabla(grupos.get(0))}</section>` : ''}
     ${peds.some(p => p.estado !== 'en_camino') ? `<div class="adm-barra"><span class="espacio"></span><button class="btn btn-primario" id="cs-camino-todo">Aprobar todos y marcar en camino</button></div>` : ''}`;
@@ -5329,11 +5342,17 @@ function pintarConsolidado(c, ic, t, optsIns) {
     for (const id of orden) { const g = [...grupos.get(id).entries()];
       h3.push([id ? provDe(id)?.nombre || '' : 'Sin proveedor asignado', condTxt(id), id ? provDe(id)?.telefono || '' : '', g.length, n2(g.reduce((a, [iid, it]) => a + it.total * cu(iid), 0))]); }
     descargarExcel(`Consolidado_pedidos_${hoyVE()}.xlsx`, [
+      hojaRequisicionConsolidada(grupos, tiendas, orden),
       { nombre: 'Consolidado', filas: h1, anchos: [24, 14, 14, 30, 8, 12, ...tiendas.map(() => 12), 12, 12, 40] },
       { nombre: 'Pedidos por tienda', filas: h2, anchos: [14, 9, 12, 18, 11, 14, 22, 30, 10, 8, 12, 12, 30] },
       { nombre: 'Por proveedor', filas: h3, anchos: [26, 16, 14, 10, 14] }]);
   };
   c.querySelectorAll('[data-cp]').forEach(b => b.onclick = () => copiarTexto(msgProv(Number(b.dataset.cp))));
+  if (c.querySelector('#cs-guias')) c.querySelector('#cs-guias').onclick = verGuias;
+  c.querySelectorAll('[data-guia]').forEach(b => b.onclick = () => { const tid = Number(b.dataset.guia), ls = [];
+    contado.forEach(pid => grupos.get(pid).forEach((x, iid) => { if (!x.por[tid]) return; const pr = presIns(iid);
+      ls.push({ insumo_id: iid, cantidad: Math.round(x.por[tid] / pr.f * 100) / 100, concepto: x.nombre + (pr.f > 1 ? ' (' + pr.p + ')' : ''), precio: precioPres(iid), exento: !!pr.i?.iva_exento }); }));
+    abrirGuia(tid, ls, peds.filter(p => p.tienda_id === tid).map(p => p.id)); });
   if (c.querySelector('#cs-moto')) { c.querySelector('#cs-moto').onclick = () => copiarTexto(textoMoto());
     c.querySelector('#cs-moto-imp').onclick = () => { const w = window.open('', '_blank'); if (!w) return toast('Permite las ventanas emergentes para imprimir', true);
       w.document.write(`<html><head><title>Compra de contado</title><style>body{font-family:system-ui,sans-serif;padding:20px}table{border-collapse:collapse;width:100%;margin-bottom:14px}td,th{border:1px solid #ccc;padding:5px 8px;text-align:left}th{background:#f4ece4}</style></head><body>
@@ -5349,6 +5368,126 @@ function pintarConsolidado(c, ic, t, optsIns) {
       if (DEMO) { guardarDemo(); repintarPedidos(); } else refrescarAdmin(); toast('Pedidos en camino'); }); };
 }
 
+
+// ===================== REQUISICIÓN DE MP Y GUÍA DE DESPACHO (24/11/2026, dueño) =====================
+// Formato de la hoja "PARA REQUISICION DE MP" que usan las tiendas y guía de despacho (lo de contado que la central compra y manda a cada tienda)
+let ENT = null;   // razones sociales: {entidades:[{id,nombre,rif,direccion}], tiendas:[{id,entidad_id}]}
+const REQ_ENCAB = { correo: 'Chocotentacion9@gmail.com', tlfs: '0414-4456656 / 0416-6427680', ig: '@Chocotentacion9' };
+const entDe = id => (ENT?.entidades || []).find(e => e.id === id);
+const entTienda = t => entDe((ENT?.tiendas || []).find(x => x.id === t)?.entidad_id) || { nombre: tiendaNombre(t), rif: '', direccion: '' };
+const entCentral = () => entDe(6) || (ENT?.entidades || [])[0] || { nombre: NEGOCIO_NOMBRE, rif: '', direccion: '' };
+const DIAS_SEM = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO'];
+const fechaMayus = d => new Date(d + 'T12:00:00Z').toLocaleDateString('es-VE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' }).toUpperCase().replace(/ DE (\d{4})$/, ' $1');
+// Requisición de una tienda en el formato de la hoja (todas las materias primas, con la cantidad pedida en presentaciones)
+async function descargarRequisicion(p) {
+  const t = p.tienda_id, fecha = p.creado_en ? diaVE(p.creado_en) : hoyVE(), lunes = lunesDe(fecha), ant = sumarDias(lunes, -7), fin = sumarDias(lunes, -1);
+  let ventas = {};
+  if (!DEMO) { try { ventas = await rpc('pos_ventas_por_dia', { p_tienda: t, p_desde: ant, p_hasta: fin }); } catch (e) { } }
+  else ventasEn(ant, fin, t).forEach(v => { const d = diaVE(v.fecha); ventas[d] = r2((ventas[d] || 0) + v.total_usd); });
+  const cant = new Map(p.items.map(i => [Number(i.insumo_id), Number(i.cantidad)]));
+  const ins = DX.insumos.filter(i => (i.activo !== false && etapaDe(i) === 'materia_prima' && insEnTienda(i, t)) || cant.has(i.id))
+    .sort((a, b) => (provDe(a.proveedor_id)?.nombre || 'ZZZ').localeCompare(provDe(b.proveedor_id)?.nombre || 'ZZZ') || a.nombre.localeCompare(b.nombre));
+  const e = entCentral(), pct = PRESC?.pct || 45, n2 = v => Math.round(Number(v || 0) * 100) / 100;
+  const f = [[e.nombre], [e.rif || ''], ['Correo: ' + REQ_ENCAB.correo], ['Tlfs: ' + REQ_ENCAB.tlfs], ['Ig: ' + REQ_ENCAB.ig], [], [fechaMayus(fecha)], [],
+    ['ESPECIFIQUE TIENDA', (p.tienda || tiendaNombre(t)).toUpperCase(), 'Pedido N° ' + p.id], []];
+  const t1 = ['REQUISICION DE MP TIENDAS']; t1._neg = true; f.push(t1);
+  const h = ['ITEMS', 'PROVEEDOR', 'PRODUCTO', 'PRESENTACIÓN', 'PRECIO $', 'CANT.', 'TOTAL $']; h._neg = true; f.push(h);
+  let total = 0;
+  ins.forEach((i, k) => { const x = presIns(i.id), q = cant.has(i.id) ? n2(cant.get(i.id) / x.f) : '', pr = precioPres(i.id), tot = q === '' ? '' : n2(q * pr); if (tot !== '') total += tot;
+    f.push([k + 1, provDe(i.proveedor_id)?.nombre || '', i.nombre.toUpperCase(), x.p || i.unidad, pr, q, tot]); });
+  const ft = ['', '', '', '', '', 'TOTAL', n2(total)]; ft._neg = true; f.push(ft, []);
+  const sem = DIAS_SEM.map((d, k) => [d, fechaCorta(sumarDias(ant, k)), n2(ventas[sumarDias(ant, k)] || 0)]), totV = n2(sem.reduce((a, x) => a + x[2], 0));
+  const r1 = ['REQUISICIÓN DE MP', '', 'MONTO $', `${pct}% MP SEMANA`, n2(totV * pct / 100), 'NO PUEDEN EXCEDERSE']; r1._neg = true; f.push(r1);
+  f.push(['VENTAS DE LA SEMANA', `${fechaCorta(ant)} AL ${fechaCorta(fin)}`], ...sem, (() => { const x = ['TOTAL VENTAS', '', totV]; x._neg = true; return x; })(),
+    [], ['ESTA REQUISICIÓN', '', n2(total), total > totV * pct / 100 && totV > 0 ? 'SE PASA DEL ' + pct + ' %' : 'DENTRO DEL ' + pct + ' %']);
+  descargarExcel(`Requisicion_MP_${(p.tienda || tiendaNombre(t)).replace(/\W+/g, '_')}_${fecha}.xlsx`, [{ nombre: 'SOLICITUD MP', filas: f, anchos: [12, 34, 46, 22, 12, 10, 12] }]);
+}
+// Hoja "Requisición consolidada" para el Excel del consolidado: mismo formato, una columna de cantidad por tienda
+function hojaRequisicionConsolidada(grupos, tiendas, orden) {
+  const e = entCentral(), n2 = v => Math.round(Number(v || 0) * 100) / 100, f = [[e.nombre], [e.rif || ''], ['Correo: ' + REQ_ENCAB.correo], ['Tlfs: ' + REQ_ENCAB.tlfs], ['Ig: ' + REQ_ENCAB.ig], [], [fechaMayus(hoyVE())], []];
+  const t1 = ['REQUISICION DE MP TIENDAS · CONSOLIDADO']; t1._neg = true; f.push(t1);
+  const h = ['ITEMS', 'PROVEEDOR', 'CONDICIÓN', 'PRODUCTO', 'PRESENTACIÓN', 'PRECIO $', ...tiendas.map(([, n]) => 'CANT. ' + n.toUpperCase()), 'CANT. TOTAL', 'TOTAL $']; h._neg = true; f.push(h);
+  let k = 0, gran = 0;
+  for (const id of orden) { let sub = 0;
+    for (const [iid, it] of [...grupos.get(id).entries()].sort((a, b) => a[1].nombre.localeCompare(b[1].nombre))) {
+      const x = presIns(iid), pr = precioPres(iid), tq = n2(it.total / x.f), tot = n2(tq * pr); sub += tot;
+      f.push([++k, id ? provDe(id)?.nombre || '' : 'SIN PROVEEDOR', !id ? '' : provDe(id)?.condicion === 'contado' ? 'Contado' : 'Crédito', it.nombre.toUpperCase(), x.p || it.unidad, pr,
+        ...tiendas.map(([tid]) => it.por[tid] ? n2(it.por[tid] / x.f) : ''), tq, tot]); }
+    const s1 = ['', 'Subtotal ' + (id ? provDe(id)?.nombre || '' : 'sin proveedor'), '', '', '', '', ...tiendas.map(() => ''), '', n2(sub)]; s1._neg = true; f.push(s1); gran += sub; }
+  const ft = ['', 'TOTAL', '', '', '', '', ...tiendas.map(() => ''), '', n2(gran)]; ft._neg = true; f.push(ft);
+  return { nombre: 'Requisición consolidada', filas: f, anchos: [8, 28, 10, 40, 20, 10, ...tiendas.map(() => 12), 11, 12] };
+}
+// ---- Guía de despacho ----
+function abrirGuia(t, lineas, pedidos) {
+  const ents = ENT?.entidades || [], rec = entTienda(t);
+  const G = { emisor: entCentral().id, lineas: lineas.map(l => ({ ...l })), forma: 'Efectivo', obs: '' };
+  const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">🧾 Guía de despacho · ${esc(tiendaNombre(t))}</h3>
+      <p>Lo de contado que la central compró y le manda a la tienda. Revisa cantidades y precios; al guardar toma el siguiente número y se imprime.</p></div>
+    <div class="modal-cuerpo"><div id="gd-error" class="mensaje-error oculto"></div>
+      <div class="dos-campos"><label class="campo"><span>Sale de (emite)</span><select id="gd-em" class="sel">${ents.map(e => `<option value="${e.id}" ${e.id === G.emisor ? 'selected' : ''}>${esc(e.nombre)}</option>`).join('') || `<option value="">${esc(NEGOCIO_NOMBRE)}</option>`}</select></label>
+        <div class="campo"><span>Para (razón social de la tienda)</span><b>${esc(rec.nombre)}</b><span class="ayuda">${esc(rec.rif || '')}</span></div></div>
+      <table class="tabla-simple num"><thead><tr><th class="der">Cantidad</th><th>Concepto o descripción</th><th class="der">Precio unitario $</th><th>Exento</th><th class="der">Total $</th><th></th></tr></thead><tbody id="gd-l"></tbody></table>
+      <button class="link" id="gd-mas">+ Agregar renglón</button>
+      <div class="dos-campos"><label class="campo"><span>Forma de pago</span><select id="gd-fp" class="sel">${['Efectivo', 'Transferencia', 'Pago Móvil', 'Otro'].map(x => `<option>${x}</option>`).join('')}</select></label>
+        <label class="campo"><span>Observaciones</span><input id="gd-obs" class="txt"></label></div>
+      <div id="gd-tot" class="kpis kpis-chico"></div></div>
+    <div class="modal-pie"><button class="btn btn-sec" id="gd-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario" id="gd-ok">Guardar e imprimir</button></div>`, 900);
+  const pintar = () => {
+    r.querySelector('#gd-l').innerHTML = G.lineas.map((l, k) => `<tr><td class="der"><input class="txt num gd-c" data-k="${k}" value="${fmtCant(l.cantidad)}" style="max-width:80px"></td>
+      <td><input class="txt gd-d" data-k="${k}" value="${esc(l.concepto)}"></td><td class="der"><input class="txt num gd-p" data-k="${k}" value="${fmt.format(l.precio)}" style="max-width:100px"></td>
+      <td><input type="checkbox" class="gd-e" data-k="${k}" ${l.exento ? 'checked' : ''}></td><td class="der">${usd(r2(l.cantidad * l.precio))}</td><td><button class="link rojo" data-q="${k}">✕</button></td></tr>`).join('');
+    const ex = r2(G.lineas.filter(l => l.exento).reduce((a, l) => a + l.cantidad * l.precio, 0)), base = r2(G.lineas.filter(l => !l.exento).reduce((a, l) => a + l.cantidad * l.precio, 0));
+    r.querySelector('#gd-tot').innerHTML = `<div><span>Total exento</span><b class="num">${usd(ex)}</b></div><div><span>Base imponible</span><b class="num">${usd(base)}</b></div>
+      <div><span>IVA 16 %</span><b class="num">${usd(r2(base * 0.16))}</b></div><div><span>Total a pagar</span><b class="num">${usd(r2(ex + base * 1.16))}</b></div>`;
+    const leer = (cls, campo, fn) => r.querySelectorAll(cls).forEach(x => x.onchange = () => { G.lineas[x.dataset.k][campo] = fn(x); pintar(); });
+    leer('.gd-c', 'cantidad', x => leerNum(x.value) || 0); leer('.gd-p', 'precio', x => leerNum(x.value) || 0); leer('.gd-d', 'concepto', x => limpiar(x.value)); leer('.gd-e', 'exento', x => x.checked);
+    r.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { G.lineas.splice(Number(b.dataset.q), 1); pintar(); });
+  };
+  pintar();
+  r.querySelector('#gd-mas').onclick = () => { G.lineas.push({ cantidad: 1, concepto: '', precio: 0, exento: false }); pintar(); };
+  r.querySelector('#gd-x').onclick = cerrarModal;
+  r.querySelector('#gd-ok').onclick = () => { const err = m => { r.querySelector('#gd-error').textContent = m; r.querySelector('#gd-error').classList.remove('oculto'); };
+    const det = G.lineas.filter(l => l.cantidad > 0 && l.concepto); if (!det.length) return err('La guía no tiene renglones con cantidad');
+    const p = { tienda_id: t, emisor_id: Number(r.querySelector('#gd-em').value) || null, detalle: det, forma_pago: r.querySelector('#gd-fp').value, observaciones: limpiar(r.querySelector('#gd-obs').value) || null, pedidos };
+    if (DEMO) { DX.guias = DX.guias || []; const ex = r2(det.filter(l => l.exento).reduce((a, l) => a + l.cantidad * l.precio, 0)), b = r2(det.filter(l => !l.exento).reduce((a, l) => a + l.cantidad * l.precio, 0));
+      const g = { ...p, id: nid(), numero: DX.guias.length + 1, fecha: hoyVE(), detalle: det.map(l => ({ ...l, total: r2(l.cantidad * l.precio) })), exento_usd: ex, base_usd: b, iva_usd: r2(b * 0.16), total_usd: r2(ex + b * 1.16) };
+      DX.guias.unshift(g); guardarDemo(); cerrarModal(); return imprimirGuia(g); }
+    guardando(r.querySelector('#gd-ok'), async () => { const g = await rpc('pos_guia_crear', { p }); cerrarModal(); toast('Guía N° ' + String(g.numero).padStart(6, '0') + ' guardada'); imprimirGuia(g); }, err); };
+}
+function imprimirGuia(g) {
+  const em = entDe(g.emisor_id) || entCentral(), rc = entDe(g.receptor_id) || entTienda(g.tienda_id), [a, m, d] = g.fecha.split('-'), num = String(g.numero).padStart(6, '0');
+  const w = window.open('', '_blank'); if (!w) return toast('Permite las ventanas emergentes para imprimir', true);
+  const logo = LOGO_DOC ? `<img src="${new URL(LOGO_DOC, location.href).href}" style="height:62px">` : '';
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Guía de despacho ${num}</title><style>
+    @page{size:letter;margin:12mm} body{font:12px Arial,sans-serif;color:#222} .cab{display:flex;gap:14px;align-items:center;border-bottom:2px solid #5a2d1a;padding-bottom:8px}
+    .cab h1{font-size:20px;margin:0;color:#5a2d1a} .cab p{margin:2px 0} .tit{display:flex;justify-content:space-between;align-items:center;margin:10px 0}
+    .tit b{font-size:16px} .num{color:#B3261E;font-size:20px;font-weight:bold} .fecha td{border:1px solid #333;padding:3px 10px;text-align:center}
+    table.d{width:100%;border-collapse:collapse;margin-top:8px} table.d td,table.d th{border:1px solid #333;padding:4px 6px} table.d th{background:#f3ebe3;font-size:11px} table.d th:nth-child(1){width:10%} table.d th:nth-child(3),table.d th:nth-child(4){width:14%}
+    .r{text-align:right} .pie{display:flex;justify-content:space-between;gap:14px;margin-top:10px} .tot td{border:1px solid #333;padding:4px 8px} .firma{margin-top:40px;display:flex;justify-content:space-around}
+    .firma div{border-top:1px solid #333;width:40%;text-align:center;padding-top:4px}</style></head><body>
+    <div class="cab">${logo}<div><h1>${esc(em.nombre)}</h1><p>RIF: ${esc(em.rif || '')}</p><p>${esc(em.direccion || '')}</p></div></div>
+    <div class="tit"><b>GUÍA DE DESPACHO</b><span class="num">N° ${num}</span><table class="fecha"><tr><td>Día</td><td>Mes</td><td>Año</td></tr><tr><td>${d}</td><td>${m}</td><td>${a}</td></tr></table></div>
+    <p><b>Nombre o razón social:</b> ${esc(rc.nombre)}<br><b>Domicilio fiscal:</b> ${esc(rc.direccion || tiendaNombre(g.tienda_id))}<br><b>RIF:</b> ${esc(rc.rif || '')} &nbsp; · &nbsp; <b>Condiciones de pago:</b> Contado</p>
+    <table class="d"><thead><tr><th class="r">Cantidad</th><th>Concepto o descripción</th><th class="r">Precio unitario</th><th class="r">Total</th></tr></thead><tbody>
+    ${g.detalle.map(l => `<tr><td class="r">${fmtCant(Number(l.cantidad))}</td><td>${esc(l.concepto)}${l.exento ? ' (Exento)' : ''}</td><td class="r">${usd(Number(l.precio))}</td><td class="r">${usd(Number(l.total))}${l.exento ? ' (E)' : ''}</td></tr>`).join('')}</tbody></table>
+    <div class="pie"><div><p><b>Forma de pago:</b> ${esc(g.forma_pago || '')}</p><p><b>Observaciones:</b> ${esc(g.observaciones || '')}</p></div>
+      <table class="tot"><tr><td>TOTAL EXENTO</td><td class="r">${usd(Number(g.exento_usd))}</td></tr><tr><td>BASE IMPONIBLE</td><td class="r">${usd(Number(g.base_usd))}</td></tr>
+        <tr><td>I.V.A. 16 %</td><td class="r">${usd(Number(g.iva_usd))}</td></tr><tr><td><b>TOTAL A PAGAR</b></td><td class="r"><b>${usd(Number(g.total_usd))}</b></td></tr></table></div>
+    <div class="firma"><div>Entregado por</div><div>Recibido por (tienda)</div></div></body></html>`);
+  w.document.close(); w.focus(); setTimeout(() => w.print(), 400);
+}
+async function verGuias() {
+  let gs = [];
+  try { gs = DEMO ? (DX.guias || []) : await rpc('pos_guias_lista', { p_tienda: null }); } catch (e) { return toast(e.message, true); }
+  const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">🧾 Guías de despacho</h3></div><div class="modal-cuerpo">
+    <table class="tabla-simple num"><thead><tr><th>N°</th><th>Fecha</th><th>Tienda</th><th class="der">Renglones</th><th class="der">Total</th><th></th></tr></thead><tbody>
+    ${gs.map(g => `<tr><td>${String(g.numero).padStart(6, '0')}</td><td>${fechaCorta(g.fecha)}</td><td>${esc(tiendaNombre(g.tienda_id))}</td><td class="der">${g.detalle.length}</td><td class="der">${usd(Number(g.total_usd))}</td>
+      <td><button class="link" data-g="${g.id}">Reimprimir</button></td></tr>`).join('') || '<tr><td colspan="6" class="vacio">Todavía no hay guías.</td></tr>'}</tbody></table></div>
+    <div class="modal-pie"><span class="espacio"></span><button class="btn btn-primario" id="gl-x">Cerrar</button></div>`, 760);
+  r.querySelector('#gl-x').onclick = cerrarModal;
+  r.querySelectorAll('[data-g]').forEach(b => b.onclick = () => imprimirGuia(gs.find(g => g.id === Number(b.dataset.g))));
+}
+
 function pintarPedidosLista(ic, t) {
   const dueno = puede('compras_aprobar'), hoy = hoyVE();
   const lista = (DX.pedidos || []).filter(p => dueno || p.tienda_id === t);
@@ -5362,9 +5501,9 @@ function pintarPedidosLista(ic, t) {
       const abierto = ['pendiente', 'aprobado', 'en_camino'].includes(p.estado);
       return `<article class="pedido ${abierto ? '' : 'cerrado'}"><header><b>Pedido N° ${p.id}</b>${dueno ? ` · ${esc(p.tienda || '')}` : ''}<span class="espacio"></span><span class="badge ${cl}">${en}</span></header>
         <p class="ayuda">Lo pidió ${esc(p.solicitante || '—')} el ${fechaLarga(diaVE(p.creado_en))} · Lo necesita para el ${cuando(p)} · Valor aprox. <b>${usd(p.total_usd ?? valorPedido(p.items))}</b></p>
-        <ul>${p.items.map(i => `<li><span>${esc(i.nombre)}</span><b class="num">${fmtCant(i.cantidad)} ${esc(i.unidad)}</b></li>`).join('')}</ul>
+        <ul>${p.items.map(i => `<li><span>${esc(i.nombre)}</span><b class="num">${esc(enPres(i.insumo_id, Number(i.cantidad)))}</b></li>`).join('')}</ul>
         ${p.nota ? `<p class="ayuda">Nota: ${esc(p.nota)}</p>` : ''}${p.respuesta ? `<p class="ayuda">Respuesta: ${esc(p.respuesta)}</p>` : ''}
-        <footer><button class="link" data-wa="${p.id}">Copiar para WhatsApp</button><span class="espacio"></span>
+        <footer><button class="link" data-wa="${p.id}">Copiar para WhatsApp</button><button class="link" data-req="${p.id}">⬇️ Requisición (Excel)</button><span class="espacio"></span>
           ${abierto && dueno && p.estado === 'pendiente' ? `<button class="btn btn-sec" data-est="rechazado" data-id="${p.id}">Rechazar</button><button class="btn btn-sec" data-est="aprobado" data-id="${p.id}">Aprobar</button>` : ''}
           ${abierto && dueno && p.estado === 'aprobado' ? `<button class="btn btn-sec" data-est="en_camino" data-id="${p.id}">Marcar en camino</button>` : ''}
           ${abierto && !dueno && p.estado === 'pendiente' ? `<button class="btn btn-sec" data-est="cancelado" data-id="${p.id}">Cancelar</button>` : ''}
@@ -5380,6 +5519,7 @@ function pintarPedidosLista(ic, t) {
   ic.querySelectorAll('[data-est]').forEach(b => b.onclick = () => cambiar(lista.find(p => p.id === Number(b.dataset.id)), b.dataset.est));
   ic.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => { INV.pedido = lista.find(p => p.id === Number(b.dataset.rec)); INV.sub = 'recibir';
     const tab = document.querySelector('.adm-tab[data-tab="inventario"]'); if (A.tab !== 'inventario' && tab && !tab.classList.contains('oculto')) tab.click(); else pintarAdmInventario(); });
+  ic.querySelectorAll('[data-req]').forEach(b => b.onclick = () => descargarRequisicion(lista.find(x => x.id === Number(b.dataset.req))));
   ic.querySelectorAll('[data-wa]').forEach(b => b.onclick = () => { const p = lista.find(x => x.id === Number(b.dataset.wa));
     copiarTexto(`*Pedido N° ${p.id} · ${p.tienda || S.tienda.nombre}*\nPara el ${fechaLarga(p.para_fecha)}\n` + p.items.map(i => `• ${i.nombre}: ${fmtCant(i.cantidad)} ${i.unidad}`).join('\n') + (p.nota ? `\nNota: ${p.nota}` : '')); });
 }
