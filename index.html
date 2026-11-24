@@ -3824,7 +3824,7 @@ function sembrarHistoriaReal() {
 function usuarioDemo() { return DX.usuarios.find(u => u.id === DX.usuarioActual && u.activo) || DX.usuarios.find(u => u.rol === 'dueno'); }
 function perfilDemo() { const u = usuarioDemo(); return { nombre: u.nombre + ' ' + u.apellido, rol: u.rol }; }
 function tiendasDemo() { const u = usuarioDemo(); return DEMO_DATA.tiendas.filter(t => u.rol === 'dueno' || u.tiendas.includes(t.id)); }
-const ROLES = { dueno: 'Dueño', encargada: 'Líder', cajera: 'Cajero', gerente: 'Gerente', produccion: 'Producción', nomina: 'Gestión gente', mercadeo: 'Mercadeo' };
+const ROLES = { dueno: 'Dueño', encargada: 'Líder', cajera: 'Cajero', gerente: 'Gerente', produccion: 'Producción', nomina: 'Gestión gente', mercadeo: 'Mercadeo', contadora: 'Contadora' };
 function pintarPildoraDemo() {
   if (!DEMO) return;
   let p = $('pildora-demo');
@@ -5662,7 +5662,7 @@ async function pintarSolpe(c) {
         monto_usd: r2(leerNum(r.querySelector('#sp-monto').value)), fecha_tope: r.querySelector('#sp-f').value, tipo_gasto_id: r.querySelector('#sp-tipo').value || null };
       if (p.descripcion.length < 3) return err('Escribe qué hay que pagar'); if (!(p.monto_usd > 0)) return err('Escribe el monto'); if (!p.fecha_tope) return err('Escribe la fecha tope');
       guardando(r.querySelector('.btn-primario'), async () => {
-        if (DEMO) DX.solpe.push({ ...p, id: nid(), solicitante_nombre: `${S.perfil.nombre || ''}`.trim(), area: { encargada: 'Tienda', nomina: 'Gestión de Gente', mercadeo: 'Mercadeo' }[S.perfil.rol] || 'Dueño', estado: 'pendiente', creado_en: new Date().toISOString() }), guardarDemo();
+        if (DEMO) DX.solpe.push({ ...p, id: nid(), solicitante_nombre: `${S.perfil.nombre || ''}`.trim(), area: { encargada: 'Tienda', nomina: 'Gestión de Gente', mercadeo: 'Mercadeo', contadora: 'Contabilidad' }[S.perfil.rol] || 'Dueño', estado: 'pendiente', creado_en: new Date().toISOString() }), guardarDemo();
         else await rpc('pos_solpe_crear', { p });
         cerrarModal(); toast('Solicitud enviada al dueño'); SOL.filtro = 'pendiente'; rec(); }, err); };
   };
@@ -5807,13 +5807,14 @@ const PERMISOS = [
     ['inv_produccion', 'Producción (galletas)'], ['inv_editar', 'Crear y editar insumos y recetas']]],
   ['Gestión de gente', [['nomina', 'Nómina, trabajadores, liquidaciones y constancias'], ['bonos', 'Bonos y evaluación de líderes y gerentes'], ['postulaciones', 'Postulaciones de empleo']]]];
 const PERM_KEYS = PERMISOS.flatMap(g => g[1]).map(([k]) => k);
-const ROLES_EQUIPO = ['encargada', 'cajera', 'gerente', 'produccion', 'nomina', 'mercadeo'];
+const ROLES_EQUIPO = ['encargada', 'cajera', 'gerente', 'produccion', 'nomina', 'mercadeo', 'contadora'];
 // Lo que trae cada rol "de fábrica" (igual que pos_permisos_base en el servidor)
 function permBase(rol) {
   const si = { encargada: k => !['portienda', 'compras_aprobar', 'nomina', 'bonos', 'postulaciones'].includes(k), gerente: k => !['nomina', 'bonos'].includes(k),
     cajera: k => ['anular', 'productos', 'opciones', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
     produccion: k => ['sin_clave', 'inventario', 'inv_recibir', 'inv_mermas', 'inv_conteo', 'inv_pedidos', 'inv_produccion', 'inv_editar'].includes(k),
-    nomina: k => ['nomina', 'bonos', 'postulaciones', 'solpe'].includes(k), mercadeo: k => k === 'solpe' }[rol];
+    nomina: k => ['nomina', 'bonos', 'postulaciones', 'solpe'].includes(k), mercadeo: k => k === 'solpe',
+    contadora: k => ['sin_clave', 'panel', 'cierres', 'gastos', 'reportes', 'solpe'].includes(k) }[rol];
   return si ? Object.fromEntries(PERM_KEYS.map(k => [k, si(k)])) : null;
 }
 let ROL_PERM = {};   // lo que el dueño marcó para cada rol (real: pos_roles_permisos; demo: DX.rolPermisos)
@@ -5836,7 +5837,7 @@ const INV_PERM = { existencias: 'inventario', movs: 'inventario', recibir: 'inv_
   conteo: 'inv_conteo', recetas: 'inventario', bloqueos: 'inventario' };
 const reemDe = pz => pz.clave[0] === 'o' ? (DX.reemplazos || []).find(x => x.opcion_id === Number(pz.clave.slice(1))) : null;
 const nomIns = id => DX.insumos.find(i => i.id === id)?.nombre || ('Insumo ' + id);
-const esRolSinCaja = () => ['nomina', 'mercadeo'].includes(S.perfil?.rol);   // nunca venden
+const esRolSinCaja = () => ['nomina', 'mercadeo', 'contadora'].includes(S.perfil?.rol);   // nunca venden
 const soloVistaNomina = () => esRolSinCaja() && !Object.keys(TAB_PERM).some(t => t !== 'nomina' && t !== 'compras' && puedeTab(t)) && !puede('inv_pedidos') && !puede('compras_aprobar');
 const tieneAdmin = () => S.perfil?.rol === 'dueno' || Object.keys(TAB_PERM).some(puedeTab);
 
@@ -5962,7 +5963,8 @@ function pintarUsuariosPersonas(cont) {
       <label class="campo"><span>${u ? 'Nueva contraseña (déjala vacía para no cambiarla)' : 'Contraseña * (mínimo 6)'}</span><input id="us-clave" class="txt" type="password" autocomplete="new-password"></label>
       <label class="campo"><span>Rol *</span><select id="us-rol" class="sel">${[['cajera', 'Cajero: vende, abre y cierra su caja'], ['encargada', 'Líder: lleva la tienda (inventario, compras, cierres, equipo)'],
         ['gerente', 'Gerente: todo lo de las tiendas que le asignes, y aprueba pedidos'], ['produccion', 'Producción: inventario y producción'],
-        ['nomina', 'Gestión gente: nómina, bonos y postulaciones (no necesita tienda)'], ['mercadeo', 'Mercadeo: solicitudes de pago (no necesita tienda)']]
+        ['nomina', 'Gestión gente: nómina, bonos y postulaciones (no necesita tienda)'], ['mercadeo', 'Mercadeo: solicitudes de pago (no necesita tienda)'],
+        ['contadora', 'Contadora: ve gastos, pagos, cierres y reportes de las tiendas que marques (nunca vende)']]
         .map(([k, n]) => `<option value="${k}" ${u?.rol === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <div class="campo"><span>Tiendas *</span><div class="opciones">${(DEMO ? DEMO_DATA.tiendas : S.tiendas).map(t => `<label class="op"><input type="checkbox" class="us-t" value="${t.id}" ${u?.tiendas.includes(t.id) || (!u && t.id === S.tienda.id) ? 'checked' : ''}> ${esc(t.nombre)}</label>`).join('')}</div></div>
       ${u ? `<label class="interruptor"><input type="checkbox" id="us-activo" ${u.activo ? 'checked' : ''}><span>Activo</span></label>` : ''}</div>
