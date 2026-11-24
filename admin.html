@@ -3676,7 +3676,7 @@ async function cargarClientesReal() {
 // Qué hay que cargar antes de pintar cada pestaña (solo versión real)
 const CARGA = {
   nomina: async () => { NOM.raiz = 'admin'; if (puede('nomina')) await cargarNominaReal(); },
-  panel: () => cargarVentasReal(sumarDias(hoyVE(), -62), hoyVE()),
+  panel: () => { PANEL.ckey = null; return cargarVentasReal(sumarDias(hoyVE(), -62), hoyVE()); },
   inventario: async () => { await cargarInventarioReal(); await Promise.all([cargarPedidosReal(), cargarProveedoresReal()]); },
   gastos: () => { const m = (GAS.mes || mesVE()) + '-01', fin = sumarDias(sumarDias(m, 32).slice(0, 7) + '-01', -1);
     return cargarVentasReal(sumarDias(m, -1).slice(0, 8) + '01', fin < hoyVE() ? fin : hoyVE()); },
@@ -4250,7 +4250,21 @@ function pintarAdmPanel() {
   const bajos = insumosBajos(tid || S.tienda.id), hoy = hoyVE();
   const facturasVencidas = DX.facturas.filter(f => saldoFactura(f) > 0.009 && f.vence < hoy && (!tid || f.tienda_id === tid));
   const porTienda = (DEMO ? DEMO_DATA.tiendas : S.tiendas).map(t => { const x = ventasEn(desde, hasta, t.id), tt = DEMO_TURNOS.filter(z => z.estado === 'cerrado' && z.tienda_id === t.id && diaVE(z.cerrado_en) >= desde && diaVE(z.cerrado_en) <= hasta);
-    const tot = x.reduce((a, v) => a + v.total_usd, 0); return { t, tot, n: x.length, ticket: x.length ? tot / x.length : 0, dif: tt.reduce((a, z) => a + difCajaUsd(z), 0) }; });
+    const tot = x.reduce((a, v) => a + v.total_usd, 0), b = x.reduce((a, v) => a + v.base_usd, 0), c = x.reduce((a, v) => a + costoVenta(v), 0);
+    return { t, tot, n: x.length, ticket: x.length ? tot / x.length : 0, dif: tt.reduce((a, z) => a + difCajaUsd(z), 0), base: b, costo: c, pct: b > 0 ? c * 100 / b : null }; });
+  // % de costo de materia prima por producto (24/11/2026, dueño): costo real de la venta repartido por la receta de cada producto
+  const ckey = desde + '|' + hasta;
+  if (PANEL.ckey !== ckey) { PANEL.ckey = ckey; PANEL.costos = null;
+    if (DEMO) { const m = new Map(); DEMO_VENTAS.filter(v => v.estado !== 'anulada' && diaVE(v.fecha) >= desde && diaVE(v.fecha) <= hasta).forEach(v => v.items.forEach(i => {
+        const k = v.tienda_id + '|' + i.producto, x = m.get(k) || { producto: i.producto, tienda_id: v.tienda_id, cant: 0, venta_usd: 0, base_usd: 0, costo_usd: 0 };
+        x.cant += i.cantidad; x.venta_usd += i.total; x.base_usd += i.total / 1.16; x.costo_usd += costoItem(i); m.set(k, x); })); PANEL.costos = [...m.values()]; }
+    else rpc('pos_costo_productos', { p_tienda: null, p_desde: desde, p_hasta: hasta }).then(r => { if (PANEL.ckey === ckey) { PANEL.costos = r.map(x => ({ ...x, cant: num(x.cant), venta_usd: num(x.venta_usd), base_usd: num(x.base_usd), costo_usd: num(x.costo_usd) })); if (A.tab === 'panel') pintarAdmPanel(); } })
+      .catch(e => { PANEL.costos = []; PANEL.costosError = e.message; }); }
+  const cprod = (() => { if (!PANEL.costos) return null; const m = new Map();
+    PANEL.costos.filter(x => !tid || x.tienda_id === tid).forEach(x => { const y = m.get(x.producto) || { producto: x.producto, cant: 0, venta: 0, base: 0, costo: 0 };
+      y.cant += x.cant; y.venta += x.venta_usd; y.base += x.base_usd; y.costo += x.costo_usd; m.set(x.producto, y); });
+    return [...m.values()].map(y => ({ ...y, pct: y.base > 0 ? y.costo * 100 / y.base : null })).sort((a, b) => b.venta - a.venta); })();
+  const pctMP = base > 0 ? costo * 100 / base : null, colMP = p => p == null ? '' : p <= 35 ? 'ok' : p <= 45 ? 'abierta' : 'mal';
   cont.innerHTML = `
     <div class="adm-barra"><p>${DEMO ? 'Datos de ejemplo del demo: 3 semanas de ventas del Sambil, más lo que vendas tú.' : 'Resumen de ventas, costos y caja. Elige el período y la tienda.'}</p><span class="espacio"></span>
       <select id="pn-periodo" class="sel corto">${[['hoy', 'Hoy'], ['7', 'Últimos 7 días'], ['mes', 'Este mes'], ['30', 'Últimos 30 días']].map(([k, n]) => `<option value="${k}" ${PANEL.periodo === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
@@ -4259,6 +4273,7 @@ function pintarAdmPanel() {
       <div class="kpi"><span>Ventas</span><b class="num">${usd(total)}</b><i>${vs.length} ventas · ${fechaCorta(desde)} al ${fechaCorta(hasta)}</i></div>
       <div class="kpi"><span>Ticket promedio</span><b class="num">${usd(ticket)}</b><i>por venta</i></div>
       <div class="kpi"><span>Clientes</span><b class="num">${clientes.size}</b><i>${nuevos} nuevo${nuevos === 1 ? '' : 's'}</i></div>
+      <div class="kpi"><span>Costo de materia prima</span><b class="num">${pctMP == null ? '—' : fmt.format(r2(pctMP)) + ' %'}</b><i>${usd(costo)} de ${usd(base)} vendido sin IVA</i></div>
       <div class="kpi"><span>Utilidad estimada</span><b class="num ${utilidad < 0 ? 'rojo' : ''}">${usd(utilidad)}</b><i>ventas sin IVA ${usd(base)} − costo ${usd(costo)} − gastos ${usd(gastos)}</i></div>
       <div class="kpi"><span>Diferencias de caja</span><b class="num ${dif < -0.009 ? 'rojo' : ''}">${dif < -0.009 ? '−' : dif > 0.009 ? '+' : ''}${usd(Math.abs(dif))}</b><i>${turnosMal} de ${turnos.length} cierres con diferencia</i></div>
     </div>
@@ -4272,10 +4287,21 @@ function pintarAdmPanel() {
       <section class="graf"><h4>Productos que más venden</h4>${barrasH(topProd, { etiqueta: 200 })}</section>
       <section class="graf"><h4>Cómo pagan <small>neto de vueltos, en dólares</small></h4>${barrasH(porPago, { etiqueta: 140 })}</section>
     </div>
-    <section class="graf"><h4>Las 4 tiendas</h4><table class="tabla-simple num"><thead><tr><th>Tienda</th><th class="der">Ventas</th><th class="der">N° ventas</th><th class="der">Ticket promedio</th><th class="der">Diferencias de caja</th></tr></thead><tbody>
-      ${porTienda.map(x => `<tr><td>${esc(x.t.nombre)}</td><td class="der">${x.n ? usd(x.tot) : '—'}</td><td class="der">${x.n || '—'}</td><td class="der">${x.n ? usd(x.ticket) : '—'}</td><td class="der ${x.dif < -0.009 ? 'rojo' : ''}">${x.n ? usd(x.dif) : 'Todavía no usa el sistema'}</td></tr>`).join('')}
-    </tbody></table></section>`;
+    <section class="graf"><h4>Las tiendas</h4><table class="tabla-simple num"><thead><tr><th>Tienda</th><th class="der">Ventas</th><th class="der">N° ventas</th><th class="der">Ticket promedio</th><th class="der">Venta sin IVA</th><th class="der">Costo materia prima</th><th class="der">% costo MP</th><th class="der">Diferencias de caja</th></tr></thead><tbody>
+      ${porTienda.map(x => `<tr><td>${esc(x.t.nombre)}</td><td class="der">${x.n ? usd(x.tot) : '—'}</td><td class="der">${x.n || '—'}</td><td class="der">${x.n ? usd(x.ticket) : '—'}</td>
+        <td class="der">${x.n ? usd(x.base) : '—'}</td><td class="der">${x.n ? usd(x.costo) : '—'}</td><td class="der">${x.pct == null ? '—' : `<span class="badge ${colMP(x.pct)}">${fmt.format(r2(x.pct))} %</span>`}</td>
+        <td class="der ${x.dif < -0.009 ? 'rojo' : ''}">${x.n ? usd(x.dif) : 'Todavía no usa el sistema'}</td></tr>`).join('')}
+    </tbody></table></section>
+    <section class="graf"><h4>Costo de materia prima por producto <small>${tid ? esc(tiendaNombre(tid) || '') : 'todas las tiendas'} · ${fechaCorta(desde)} al ${fechaCorta(hasta)} · verde hasta 35 %, naranja hasta 45 %, rojo más</small></h4>
+      ${cprod == null ? '<p class="vacio">Calculando el costo de cada producto…</p>' : `<div class="adm-barra" style="margin:0 0 6px"><span class="espacio"></span><button class="btn btn-sec" id="pn-cmp-copiar">Copiar para Excel</button></div>
+      <table class="tabla-simple num"><thead><tr><th>Producto</th><th class="der">Unidades</th><th class="der">Venta sin IVA</th><th class="der">Costo materia prima</th><th class="der">Costo por unidad</th><th class="der">% costo MP</th></tr></thead><tbody>
+      ${cprod.map(y => `<tr><td>${esc(y.producto)}</td><td class="der">${fmtCant(y.cant)}</td><td class="der">${usd(y.base)}</td><td class="der">${usd(y.costo)}</td><td class="der">${y.cant ? usd(y.costo / y.cant) : '—'}</td>
+        <td class="der">${y.pct == null ? '—' : `<span class="badge ${colMP(y.pct)}">${fmt.format(r2(y.pct))} %</span>`}</td></tr>`).join('') || '<tr><td colspan="6" class="vacio">No hay ventas en el período.</td></tr>'}
+      ${cprod.length ? (() => { const b = cprod.reduce((a, y) => a + y.base, 0), c = cprod.reduce((a, y) => a + y.costo, 0); return `<tr class="total"><td><b>Total</b></td><td></td><td class="der"><b>${usd(b)}</b></td><td class="der"><b>${usd(c)}</b></td><td></td><td class="der"><b>${b > 0 ? fmt.format(r2(c * 100 / b)) + ' %' : '—'}</b></td></tr>`; })() : ''}
+      </tbody></table><p class="ayuda">El costo es lo que de verdad descontó el inventario en cada venta, repartido entre los productos según su receta. Si un producto sale muy alto o muy bajo, revisa su receta o el costo de sus insumos.</p>`}</section>`;
   $('pn-periodo').onchange = e => { PANEL.periodo = e.target.value; pintarAdmPanel(); };
+  if ($('pn-cmp-copiar')) $('pn-cmp-copiar').onclick = () => copiarTexto(tsv(['Producto', 'Unidades', 'Venta sin IVA $', 'Costo materia prima $', 'Costo por unidad $', '% costo MP'],
+    cprod.map(y => [y.producto, y.cant, numXls(y.base), numXls(y.costo), numXls(y.cant ? y.costo / y.cant : 0), y.pct == null ? '' : numXls(y.pct)])));
   $('pn-tienda').onchange = e => { PANEL.tienda = Number(e.target.value); pintarAdmPanel(); };
 }
 
