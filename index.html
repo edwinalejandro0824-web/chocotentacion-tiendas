@@ -2692,7 +2692,7 @@ function pintarNomPeriodo(c) {
   c.querySelectorAll('[data-desc]').forEach(b => b.onclick = () => editarDescuentos(lineas.find(x => x.id === Number(b.dataset.desc)), () => pintarNomPeriodo(c)));
   c.querySelectorAll('[data-rec]').forEach(b => b.onclick = () => { const l = lineas.find(x => x.id === Number(b.dataset.rec)); nomImprimir([nomReciboHTML(l.t, p, l.datos, l.calculo)], 'Recibo ' + nomNombre(l.t)); });
   $('nm-recibos').onclick = () => nomImprimir(lineas.map(l => nomReciboHTML(l.t, p, l.datos, l.calculo)), 'Recibos de nómina');
-  $('nm-relacion').onclick = () => nomImprimir([nomRelacionHTML(p, lineas)], 'Relación de nómina', true);
+  $('nm-relacion').onclick = () => nomRelacionElegir(p, lineas);
   $('nm-xls').onclick = () => copiarTexto(['Centro\tTrabajador\tCédula\tCargo\tDías pagados\tHoras\tHoras extra\tSueldo ley Bs\tIVSS\tRPE\tFAOV\tNeto ley Bs\tCestaticket $\tComplemento $\tTraslado $\tBono fijo $\tHoras extra $\tOtros $\tDescuentos $\tCuenta jurídica Bs\tCuenta personal $\tTotal $\tTotal Bs',
     ...lineas.map(l => { const k = l.calculo; return [l.t.centro, nomNombre(l.t), l.t.cedula, l.t.cargo, k.dias_pagados ?? k.dias_trabajados, k.horas_total, k.horas_extra || 0, k.sueldo_bs || 0, k.ivss || 0, k.rpe || 0, k.faov || 0, k.ley_neto_bs,
       k.ticket_usd, k.complemento || k.pago_destajo || 0, k.traslado, k.bono_fijo, k.pago_extra || 0, k.otros, k.descuentos, k.juridica_bs || 0, k.complementarios_usd, k.total_usd, k.total_bs]
@@ -2761,7 +2761,7 @@ function nomImprimir(partes, titulo, horizontal) {
     h2{font-size:14px;margin:0} h3{font-size:12px;margin:8px 0 3px;border-bottom:1px solid #ccc} table{width:100%;border-collapse:collapse} td,th{padding:2px 4px;text-align:left;vertical-align:top}
     th{background:#f1ebe4;font-size:10px} .der{text-align:right} .tot td{font-weight:bold;border-top:1px solid #333} .cab{display:flex;justify-content:space-between;gap:10px}
     .grande{font-size:13px;font-weight:bold} .firma{margin-top:22px;display:flex;justify-content:space-between} .nota{color:#666;font-size:10px}
-    .rel td,.rel th{border-bottom:1px solid #ddd;font-size:10px} .logo-doc{text-align:center;margin:0 0 6px} .logo-doc img{height:52px}</style></head><body>${partes.join('')}<script>window.onload=()=>window.print()<\/script></body></html>`);
+    .rel td,.rel th{border-bottom:1px solid #ddd;font-size:8.5px;padding:2px 3px} .rel th{white-space:normal} .centro{text-align:center} body>div:last-child{page-break-after:auto!important} .logo-doc{text-align:center;margin:0 0 6px} .logo-doc img{height:52px}</style></head><body>${partes.join('')}<script>window.onload=()=>window.print()<\/script></body></html>`);
   w.document.close();
 }
 function nomReciboHTML(t, p, d, k) {
@@ -2776,9 +2776,9 @@ function nomReciboHTML(t, p, d, k) {
       <tr class="tot"><td>Neto a pagar de ley</td><td></td><td></td><td class="der">Bs. ${b(k.ley_neto_bs)}</td></tr></table>
     <h3>2. Cestaticket (no forma parte del salario)</h3><table>${fila(`Cestaticket $${b(NOMD.config.cestaticket_usd)} al mes`, k.dias_pagados, '$' + b(k.ticket_usd), 'Bs. ' + b(k.ticket_bs))}</table>`}
     <h3>${k.tipo === 'destajo' ? '' : '3. '}Pagos complementarios ($)</h3><table>
-      ${k.tipo === 'destajo' ? '' : `<tr><td>Bono complemento de alimentación</td><td></td><td class="der">${b(k.complemento)}</td></tr>`}
-      ${k.traslado ? `<tr><td>Bono traslado</td><td></td><td class="der">${b(k.traslado)}</td></tr>` : ''}
-      ${k.pago_extra ? `<tr><td>Horas extras (${fmtCant(k.horas_extra)} h × $${b(k.tarifa_extra)})</td><td></td><td class="der">${b(k.pago_extra)}</td></tr>` : ''}
+      ${k.tipo === 'destajo' ? '' : `<tr><td>PAGO COMPLEMENTO ALIMENTACION</td><td></td><td class="der">${b(k.complemento)}</td></tr>`}
+      ${k.traslado ? `<tr><td>BONO TRASLADOS (ASISTENCIAS)</td><td></td><td class="der">${b(k.traslado)}</td></tr>` : ''}
+      ${k.pago_extra ? `<tr><td>BONO GUERRA ECONOMICA (HORAS EXTRAS)</td><td></td><td class="der">${b(k.pago_extra)}</td></tr>` : ''}
       ${k.bono_fijo ? `<tr><td>Complemento fijo</td><td></td><td class="der">${b(k.bono_fijo)}</td></tr>` : ''}${conceptos(d.otros)}
       ${(d.descuentos || []).length || k.desc_retardo ? `<tr><td colspan="3"><b>Descuentos</b></td></tr>${conceptos(d.descuentos, '−')}${k.desc_retardo ? `<tr><td>Retardos (${d.retardo_min} min)</td><td></td><td class="der">−${b(k.desc_retardo)}</td></tr>` : ''}` : ''}
       ${k.faltas ? `<tr><td colspan="3" class="nota">Ausencias: ${k.faltas} día(s) no pagados</td></tr>` : ''}
@@ -2786,17 +2786,63 @@ function nomReciboHTML(t, p, d, k) {
     <p class="grande">TOTAL A RECIBIR: $${b(k.total_usd)} (Bs. ${b(k.total_bs)})</p>
     <div class="firma"><span>Recibí conforme: ______________________</span><span>C.I.: ______________</span></div></div>`;
 }
-function nomRelacionHTML(p, lineas) {
-  const b = n => fmt.format(n || 0), T = k => lineas.reduce((a, l) => a + (l.calculo?.[k] || 0), 0);
-  return `<h2>Relación de nómina · ${NOM_GRUPO_CORTO[p.grupo]} · ${fechaLarga(p.desde)} al ${fechaLarga(p.hasta)}</h2><p>Fecha de pago ${fechaLarga(p.fecha_pago)} · Tasa BCV ${b(p.tasa)}</p>
-    <table class="rel"><thead><tr><th>Centro</th><th>Trabajador</th><th>C.I.</th><th class="der">Días</th><th class="der">H. extra</th><th class="der">Neto ley Bs</th><th class="der">Cestaticket Bs</th><th class="der">Cuenta jurídica Bs</th>
-      <th class="der">Complemento $</th><th class="der">Traslado $</th><th class="der">H. extra $</th><th class="der">Otros $</th><th class="der">Desc. $</th><th class="der">Cuenta personal $</th><th class="der">Total $</th></tr></thead><tbody>
-    ${lineas.map(l => { const k = l.calculo; return `<tr><td>${esc(l.t.centro || '')}</td><td>${esc(nomNombre(l.t))}</td><td>${esc(l.t.cedula)}</td><td class="der">${k.dias_pagados ?? k.dias_trabajados}</td><td class="der">${fmtCant(k.horas_extra || 0)}</td>
-      <td class="der">${b(k.ley_neto_bs)}</td><td class="der">${b(k.ticket_bs)}</td><td class="der">${b(k.juridica_bs)}</td><td class="der">${b(k.complemento || k.pago_destajo)}</td><td class="der">${b(k.traslado)}</td>
-      <td class="der">${b(k.pago_extra)}</td><td class="der">${b((k.otros || 0) + (k.bono_fijo || 0))}</td><td class="der">${b(k.descuentos)}</td><td class="der">${b(k.complementarios_usd)}</td><td class="der"><b>${b(k.total_usd)}</b></td></tr>`; }).join('')}
-    <tr class="tot"><td colspan="5">TOTALES</td><td class="der">${b(T('ley_neto_bs'))}</td><td class="der">${b(T('ticket_bs'))}</td><td class="der">${b(T('juridica_bs'))}</td><td class="der">${b(T('complemento') + T('pago_destajo'))}</td><td class="der">${b(T('traslado'))}</td>
-      <td class="der">${b(T('pago_extra'))}</td><td class="der">${b(T('otros') + T('bono_fijo'))}</td><td class="der">${b(T('descuentos'))}</td><td class="der">${b(T('complementarios_usd'))}</td><td class="der">${b(T('total_usd'))}</td></tr></tbody></table>
-    <p>Cuenta personal en Bs: ${b(T('complementarios_usd') * p.tasa)} · Total en Bs: ${b(T('total_bs'))}</p>`;
+// Relación de pago (23/11/2026, Katherine + Gladys): $ y Bs lado a lado, desglose con los títulos EXACTOS de su Excel
+// y por tienda (consolidado, una tienda, o cada tienda por separado; Excel con una hoja por tienda).
+const NOM_DESGLOSE = ['SUELDO LEY SEMANAL EN BS', 'TICKET LEY SEMANAL EN BS', 'PAGO COMPLEMENTO ALIMENTACION', 'BONO TRASLADOS (ASISTENCIAS)', 'BONO GUERRA ECONOMICA (HORAS EXTRAS)'];
+function nomPago(k, tasa) {
+  const bs = x => r2((x || 0) * tasa), comp = k.complemento || k.pago_destajo || 0, otros = (k.otros || 0);
+  const personalBs = bs(k.complementarios_usd), traslBs = bs((k.traslado || 0) + otros), guerraBs = bs(k.pago_extra);
+  const juridica = r2(k.juridica_bs || 0);
+  return { dias: k.dias_pagados ?? k.dias_trabajados, hx: k.horas_extra || 0, ley: k.ley_neto_bs || 0, ticket: k.ticket_bs || 0, juridica,
+    comp, compBs: bs(comp), trasl: k.traslado || 0, traslBs: bs(k.traslado), extra: k.pago_extra || 0, extraBs: guerraBs,
+    otros: otros + (k.bono_fijo || 0), otrosBs: bs(otros + (k.bono_fijo || 0)), desc: k.descuentos || 0, descBs: bs(k.descuentos),
+    personal: k.complementarios_usd || 0, personalBs, totalUsd: k.total_usd || 0, totalBs: r2(juridica + personalBs),
+    d: [k.ley_neto_bs || 0, k.ticket_bs || 0, r2(personalBs - traslBs - guerraBs), traslBs, guerraBs] };
+}
+function nomRelacionHTML(p, lineas, titulo) {
+  const b = n => fmt.format(n || 0), filas = lineas.map(l => ({ l, x: nomPago(l.calculo, p.tasa) }));
+  const S = f => filas.reduce((a, r) => a + (typeof f === 'function' ? f(r.x) : r.x[f]), 0);
+  const cols = ['ley', 'ticket', 'juridica', 'comp', 'compBs', 'trasl', 'traslBs', 'extra', 'extraBs', 'otros', 'otrosBs', 'desc', 'descBs', 'personal', 'personalBs', 'totalUsd', 'totalBs'];
+  const nombre = r => `<td>${esc(r.l.t.centro || '')}</td><td>${esc(nomNombre(r.l.t))}</td><td>${esc(r.l.t.cedula)}</td>`;
+  return `<div style="page-break-after:always"><h2>Relación de nómina · ${NOM_GRUPO_CORTO[p.grupo]} · ${esc(titulo || 'Todas las tiendas')} · ${fechaLarga(p.desde)} al ${fechaLarga(p.hasta)}</h2>
+    <p>Fecha de pago ${fechaLarga(p.fecha_pago)} · Tasa BCV ${b(p.tasa)} · ${filas.length} trabajadores</p>
+    <table class="rel"><thead><tr><th colspan="5"></th><th colspan="3" class="centro">CUENTA JURÍDICA (Bs)</th><th colspan="12" class="centro">CUENTA PERSONAL</th><th colspan="2" class="centro">TOTAL</th></tr>
+      <tr><th>Centro</th><th>Trabajador</th><th>C.I.</th><th class="der">Días</th><th class="der">H. extra</th><th class="der">Neto ley Bs</th><th class="der">Cestaticket Bs</th><th class="der">Total Bs</th>
+      <th class="der">Complemento $</th><th class="der">Complemento Bs</th><th class="der">Traslado $</th><th class="der">Traslado Bs</th><th class="der">Bono guerra $</th><th class="der">Bono guerra Bs</th>
+      <th class="der">Otros $</th><th class="der">Otros Bs</th><th class="der">Desc. $</th><th class="der">Desc. Bs</th><th class="der">Total $</th><th class="der">Total Bs</th><th class="der">Total $</th><th class="der">Total Bs</th></tr></thead><tbody>
+    ${filas.map(r => `<tr>${nombre(r)}<td class="der">${r.x.dias}</td><td class="der">${fmtCant(r.x.hx)}</td>${cols.map(c => `<td class="der">${['totalUsd', 'totalBs', 'juridica', 'personal', 'personalBs'].includes(c) ? `<b>${b(r.x[c])}</b>` : b(r.x[c])}</td>`).join('')}</tr>`).join('')}
+    <tr class="tot"><td colspan="5">TOTALES</td>${cols.map(c => `<td class="der">${b(S(c))}</td>`).join('')}</tr></tbody></table>
+    <p class="grande">Cuenta jurídica: Bs. ${b(S('juridica'))} · Cuenta personal: $${b(S('personal'))} = Bs. ${b(S('personalBs'))} · TOTAL: $${b(S('totalUsd'))} = Bs. ${b(S('totalBs'))}</p>
+    <h3>Desglose de pagos (Bs)</h3>
+    <table class="rel"><thead><tr><th>Centro</th><th>Trabajador</th><th>C.I.</th>${NOM_DESGLOSE.map(t => `<th class="der">${t}</th>`).join('')}<th class="der">TOTAL A PAGAR EN BS</th></tr></thead><tbody>
+    ${filas.map(r => `<tr>${nombre(r)}${r.x.d.map(v => `<td class="der">${b(v)}</td>`).join('')}<td class="der"><b>${b(r.x.totalBs)}</b></td></tr>`).join('')}
+    <tr class="tot"><td colspan="3">TOTALES</td>${NOM_DESGLOSE.map((_, i) => `<td class="der">${b(S(x => x.d[i]))}</td>`).join('')}<td class="der">${b(S('totalBs'))}</td></tr></tbody></table></div>`;
+}
+function nomCentros(lineas) { return [...new Set(lineas.map(l => l.t.centro || 'Sin centro'))].sort(); }
+function nomRelacionElegir(p, lineas) {
+  const centros = nomCentros(lineas), de = c => lineas.filter(l => (l.t.centro || 'Sin centro') === c);
+  const r = abrirModal(`<div class="modal-cab"><h3 class="titulo">Relación de pago</h3><p>${NOM_GRUPO_CORTO[p.grupo]} · ${fechaLarga(p.desde)} al ${fechaLarga(p.hasta)}</p></div><div class="modal-cuerpo">
+    <p class="ayuda">Imprimir o guardar en PDF:</p><div class="opciones" style="flex-wrap:wrap;gap:8px">
+      <button class="btn btn-primario" data-rc="__todas">Todas juntas (consolidado)</button><button class="btn btn-sec" data-rc="__cada">Cada tienda por separado</button>
+      ${centros.map(c => `<button class="btn btn-sec" data-rc="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <p class="ayuda" style="margin-top:14px">Excel: una hoja con todo y una hoja por cada tienda, con sus totales.</p>
+    <button class="btn btn-sec" id="rc-xlsx">⬇️ Descargar Excel</button></div>
+    <div class="modal-pie"><span class="espacio"></span><button class="btn btn-sec" id="rc-x">Cerrar</button></div>`, 560);
+  r.querySelector('#rc-x').onclick = cerrarModal;
+  r.querySelectorAll('[data-rc]').forEach(btn => btn.onclick = () => { const c = btn.dataset.rc;
+    const partes = c === '__todas' ? [nomRelacionHTML(p, lineas, 'Todas las tiendas')] : c === '__cada' ? centros.map(x => nomRelacionHTML(p, de(x), x)) : [nomRelacionHTML(p, de(c), c)];
+    nomImprimir(partes, 'Relación de nómina' + (c.startsWith('__') ? '' : ' ' + c), true); });
+  r.querySelector('#rc-xlsx').onclick = () => {
+    const cab = ['Centro', 'Trabajador', 'Cédula', 'Días', 'H. extra', 'Neto ley Bs', 'Cestaticket Bs', 'Cuenta jurídica Bs', 'Complemento $', 'Complemento Bs', 'Traslado $', 'Traslado Bs',
+      'Bono guerra $', 'Bono guerra Bs', 'Otros $', 'Otros Bs', 'Descuentos $', 'Descuentos Bs', 'Cuenta personal $', 'Cuenta personal Bs', 'Total $', 'Total Bs', ...NOM_DESGLOSE, 'TOTAL A PAGAR EN BS'];
+    const cols = ['dias', 'hx', 'ley', 'ticket', 'juridica', 'comp', 'compBs', 'trasl', 'traslBs', 'extra', 'extraBs', 'otros', 'otrosBs', 'desc', 'descBs', 'personal', 'personalBs', 'totalUsd', 'totalBs'];
+    const hoja = (nombre, ls) => { const xs = ls.map(l => ({ l, x: nomPago(l.calculo, p.tasa) }));
+      const fila = ({ l, x }) => [l.t.centro || '', nomNombre(l.t), l.t.cedula, ...cols.map(c => r2(x[c])), ...x.d.map(r2), r2(x.totalBs)];
+      const tot = ['TOTALES', '', '', '', r2(xs.reduce((a, r) => a + r.x.hx, 0)), ...cols.slice(2).map(c => r2(xs.reduce((a, r) => a + r.x[c], 0))),
+        ...NOM_DESGLOSE.map((_, i) => r2(xs.reduce((a, r) => a + r.x.d[i], 0))), r2(xs.reduce((a, r) => a + r.x.totalBs, 0))]; tot._neg = true;
+      return { nombre, filas: [cab, ...xs.map(fila), tot], anchos: [12, 32, 12, 6, 8, ...cab.slice(5).map(() => 15)] }; };
+    descargarExcel(`Relacion_nomina_${NOM_GRUPO_CORTO[p.grupo]}_${p.desde}_al_${p.hasta}.xlsx`.replace(/\s+/g, '_'),
+      [hoja('Todas las tiendas', lineas), ...centros.map(c => hoja(c, de(c)))]); };
 }
 
 // ---- Trabajadores ----
