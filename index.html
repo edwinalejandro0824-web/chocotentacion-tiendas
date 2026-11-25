@@ -6677,6 +6677,7 @@ async function pintarAdmCajas() {
       En cualquier otro equipo (teléfonos, otras computadoras) se entra directo a Administración. Mientras la tienda no tenga ninguna caja registrada, se puede vender desde cualquier equipo.</p></div>
     <section class="graf"><h4>Este equipo</h4>
       ${estaEsCaja ? `<p><span class="badge ok">✓ Este equipo ES caja de ${esc(t.nombre)}</span></p>`
+        : MODO_ADMIN ? `<p class="mensaje-error">Estás en el ícono de <b>Administración</b> (azul). Una caja <b>no</b> se registra desde aquí: si lo haces, la caja de verdad queda bloqueada. Abre el ícono verde <b>"ChocoTentación Caja"</b> (el de vender) en la computadora de la tienda y regístrala desde ahí.</p>`
         : `<p>Este equipo <b>no</b> es caja de ${esc(t.nombre)}. Regístralo <b>solo</b> si es la computadora de la tienda donde se factura (la que tiene la tiquera), y desde el mismo acceso con el que venden ("ChocoTentacion Caja").</p>
            <div class="adm-barra"><input id="cj-nombre" class="txt" value="Caja ${esc(t.nombre)}" style="max-width:280px"><button class="btn btn-primario" id="cj-reg">Registrar este equipo como caja de ${esc(t.nombre)}</button></div>`}</section>
     <section class="graf"><h4>Cajas registradas de ${esc(t.nombre)} (${lista.length})</h4>
@@ -6684,7 +6685,7 @@ async function pintarAdmCajas() {
         ${lista.map(c => `<tr><td>${esc(c.nombre || 'Caja')}</td><td>${fechaCorta(String(c.creado_en).slice(0, 10))}</td><td>${esc(c.creado_por || '')}</td><td><button class="link rojo" data-cq="${c.id}">Quitar</button></td></tr>`).join('')}</tbody></table>`
         : '<p class="vacio">Ninguna todavía: por ahora se puede vender desde cualquier equipo.</p>'}</section>`;
   const reg = $('cj-reg');
-  if (reg) reg.onclick = () => { if (!confirm(`¿Registrar ESTE equipo como caja de ${t.nombre}? Desde ese momento solo se podrá vender en las cajas registradas.`)) return;
+  if (reg) reg.onclick = () => { if (!confirm(`¿Registrar ESTE equipo como caja de ${t.nombre}?\n\nHazlo SOLO si estás en el ícono verde "ChocoTentación Caja" de la computadora donde se factura. Desde ese momento solo se podrá vender aquí; en cualquier otra ventana o equipo saldrá "Este equipo no es la caja".`)) return;
     guardando(reg, async () => {
       const nombre = limpiar($('cj-nombre').value) || 'Caja';
       if (DEMO) { DX.cajasDemoLista = DX.cajasDemoLista || []; DX.cajasDemoLista.push({ id: nid(), tienda_id: t.id, nombre, creado_en: new Date().toISOString(), creado_por: S.perfil.nombre });
