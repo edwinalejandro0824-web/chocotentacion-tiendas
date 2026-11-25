@@ -2197,7 +2197,7 @@ async function entrarAdmin() {
   $('btn-admin').classList.add('oculto');
   $('selector-tienda').disabled = true;
   A.tiendaInicial = S.tienda.id;
-  pintarSelectorTiendaAdmin();
+  await pintarSelectorTiendaAdmin();
   document.querySelectorAll('.adm-tab').forEach(b => b.classList.toggle('oculto',
     !!((b.dataset.mod && !MOD) || (b.dataset.rol && !b.dataset.rol.split(' ').includes(S.perfil.rol)) || !puedeTab(b.dataset.tab))));
   A.tab = [...document.querySelectorAll('.adm-tab:not(.oculto)')][0]?.dataset.tab || 'productos';
@@ -2205,13 +2205,16 @@ async function entrarAdmin() {
 }
 
 // Cualquiera con varias tiendas (dueño, contadora, gerente): cambia de tienda sin salir de Administrar
-function pintarSelectorTiendaAdmin() {
-  const el = $('adm-tienda'), varias = (S.tiendas || []).length > 1;   // dueño, contadora, gerente… cualquiera con varias tiendas (24/11/2026)
+// 25/11/2026 (Gladys/contadora): también salen las sedes sin caja (La Fábrica) que tenga el usuario, para ver sus gastos y pagos
+async function pintarSelectorTiendaAdmin() {
+  const sinCaja = (await cargarTiendasSinCaja()).filter(x => !(S.tiendas || []).some(t => t.id === x.id));
+  const todas = [...(S.tiendas || []), ...sinCaja];
+  const el = $('adm-tienda'), varias = todas.length > 1;   // dueño, contadora, gerente… cualquiera con varias tiendas (24/11/2026)
   if (!varias) { el.textContent = S.tienda.nombre; return; }
-  el.innerHTML = `<select id="adm-sel-tienda" class="sel corto" aria-label="Cambiar de tienda">${S.tiendas.map(t =>
-    `<option value="${t.id}" ${t.id === S.tienda.id ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select>`;
+  el.innerHTML = `<select id="adm-sel-tienda" class="sel corto" aria-label="Cambiar de tienda">${todas.map(t =>
+    `<option value="${t.id}" ${t.id === S.tienda.id ? 'selected' : ''}>${esc(t.nombre)}${sinCaja.includes(t) ? ' (sin caja)' : ''}</option>`).join('')}</select>`;
   $('adm-sel-tienda').onchange = async e => {
-    const t = S.tiendas.find(x => x.id === Number(e.target.value));
+    const t = todas.find(x => x.id === Number(e.target.value));
     if (!t || t.id === S.tienda.id) return;
     S.tienda = t; guardar('pos_tienda', String(t.id));
     PANEL.tienda = t.id; A.d = null; REAL.ventasRango = null;
@@ -2228,6 +2231,8 @@ async function salirAdmin() {
   $('vista-venta').classList.remove('oculto');
   $('btn-admin').classList.toggle('oculto', !tieneAdmin());
   $('selector-tienda').disabled = false;
+  // Una sede sin caja (La Fábrica) solo se ve en Administrar: al salir se vuelve a la tienda con la que entró
+  if (!(S.tiendas || []).some(t => t.id === S.tienda.id)) { const t0 = S.tiendas.find(t => t.id === A.tiendaInicial) || S.tiendas[0]; if (t0) S.tienda = t0; }
   if (MODO_ADMIN || !esCaja(S.tienda.id)) { if (A.tiendaInicial && A.tiendaInicial !== S.tienda.id) return entrarTienda(S.tienda); document.body.classList.add('sin-caja'); return; }
   // Si cambió de tienda dentro de Administrar, se carga completa (menú, caja, tasa, papel)
   if (A.tiendaInicial && A.tiendaInicial !== S.tienda.id) { S.carrito = []; await entrarTienda(S.tienda); return; }
@@ -4486,7 +4491,7 @@ const tiendaNombre = id => (S.tiendas || []).find(t => t.id === id)?.nombre || D
 async function cargarTiendasSinCaja() {
   if (S.tiendasSinCaja) return S.tiendasSinCaja;
   if (DEMO) return (S.tiendasSinCaja = [{ id: 5, nombre: 'La Fábrica' }]);
-  try { const { data } = await sb.from('pos_tiendas').select('id,nombre').eq('activa', false).order('id'); S.tiendasSinCaja = data || []; } catch (e) { S.tiendasSinCaja = []; }
+  try { const { data } = await sb.from('pos_tiendas').select('id,nombre,ciudad,meta_diaria_usd,iva_porcentaje,precios_incluyen_iva,ancho_papel_mm,usa_hc,modo_helado').eq('activa', false).order('id'); S.tiendasSinCaja = data || []; } catch (e) { S.tiendasSinCaja = []; }
   return S.tiendasSinCaja;
 }
 function ventasEn(desde, hasta, tiendaId) {
