@@ -4629,7 +4629,7 @@ function pintarAdmInventario() {
       <table class="tabla-simple num"><thead><tr><th>Insumo</th><th class="der">Hay</th><th class="der">Mínimo</th><th>Estado</th><th class="der">Costo por unidad</th><th class="der">Valor</th><th></th></tr></thead><tbody>
       ${visibles.length ? '' : '<tr><td colspan="7" class="vacio">No hay insumos con ese filtro.</td></tr>'}
       ${visibles.map(i => { const s = stockDe(i, t), est = s <= 0 ? '<span class="badge mal">Agotado</span>' : s <= i.minimo ? '<span class="badge abierta">Por agotarse</span>' : '<span class="badge ok">Bien</span>';
-        return `<tr><td>${esc(i.nombre)}${etapaDe(i) !== 'materia_prima' ? ` <span class="badge">${etapaDe(i) === 'en_proceso' ? 'En proceso' : 'Terminado'}</span>` : ''}</td><td class="der">${fmtCant(s)} ${esc(i.unidad)}</td><td class="der">${fmtCant(i.minimo)} ${esc(i.unidad)}</td><td>${est}</td>
+        return `<tr><td>${esc(i.nombre)}${etapaDe(i) !== 'materia_prima' ? ` <span class="badge">${etapaDe(i) === 'en_proceso' ? 'En proceso' : etapaDe(i) === 'suministro' ? '🧽 Limpieza/oficina' : 'Terminado'}</span>` : ''}</td><td class="der">${fmtCant(s)} ${esc(i.unidad)}</td><td class="der">${fmtCant(i.minimo)} ${esc(i.unidad)}</td><td>${est}</td>
           <td class="der">$${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(i.costo_usd)} / ${esc(i.unidad)}</td><td class="der">${usd(Math.max(s, 0) * i.costo_usd)}</td>
           <td><button class="link" data-e="${i.id}">Editar</button></td></tr>`; }).join('')}</tbody></table>
       ${(() => { const off = DX.insumos.filter(i => i.activo !== false && !insEnTienda(i, t) && (!q || i.nombre.toLowerCase().includes(q)));
@@ -4639,6 +4639,7 @@ function pintarAdmInventario() {
       if (!DEMO) return guardando(b, async () => { await rpc('pos_insumo_usar_aqui', { p_clave: A.clave, p_tienda: t, p_insumo: id }); toast('Listo: ahora se usa en ' + S.tienda.nombre); refrescarAdmin(); });
       DX.insumosOff[t] = (DX.insumosOff[t] || []).filter(x => x !== id); guardarDemo(); toast('Listo'); pintarAdmInventario(); });
     const editar = i => {
+      if (!DEMO && !(DX.balanceTipos || []).length && !S.partidas) { cargarPartidas().then(() => editar(i)); return; }
       const r = abrirModal(`<form id="f-ins"><div class="modal-cab"><h3 class="titulo">${i ? 'Editar insumo' : 'Nuevo insumo'}</h3></div><div class="modal-cuerpo">
         <div id="ie-error" class="mensaje-error oculto"></div>
         <label class="campo"><span>Nombre *</span><input id="ie-nombre" class="txt" value="${esc(i?.nombre || '')}"></label>
@@ -4646,6 +4647,7 @@ function pintarAdmInventario() {
         <label class="campo"><span>Mínimo para alerta *</span><input id="ie-min" class="txt num" value="${i ? fmtCant(i.minimo) : ''}"></label></div>
         <label class="campo"><span>Costo por unidad en dólares *</span><input id="ie-costo" class="txt num" value="${i ? i.costo_usd : ''}" placeholder="Ej. 0,004 por ml"></label>
         <label class="campo"><span>Inventario de</span><select id="ie-etapa" class="sel">${Object.entries(ETAPAS).map(([k, n]) => `<option value="${k}" ${etapaDe(i) === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="campo ${esSuministro(i) ? '' : 'oculto'}" id="ie-part-c"><span>Partida del balance (limpieza, oficina…)</span><select id="ie-part" class="sel"><option value="">Limpieza (por defecto)</option>${opcionesTipos(i?.tipo_gasto_id || null)}</select></label>
         <label class="campo"><span>Tipo de costo (para el balance)</span><select id="ie-clase" class="sel"><option value="directo">Material directo (lo que se come o se bebe)</option><option value="desechable" ${claseCosto(i) === 'desechable' ? 'selected' : ''}>Desechable (vasos, envases, servilletas…)</option></select></label>
         <label class="campo"><span>IVA al comprarlo</span><select id="ie-iva" class="sel"><option value="0">Gravable (paga IVA 16 %)</option><option value="1" ${i?.iva_exento ? 'selected' : ''}>Exento (no paga IVA)</option></select></label>
         <div class="dos-campos"><label class="campo"><span>Se compra por (presentación)</span><input id="ie-pres" class="txt" value="${esc(i?.compra_presentacion || '')}" placeholder="Ej. Caja 480 und, Bolsa 500 g"></label>
@@ -4654,15 +4656,16 @@ function pintarAdmInventario() {
         ${i ? `<label class="interruptor"><input type="checkbox" id="ie-activo" checked><span>En uso</span></label>` : ''}</div>
         <div class="modal-pie"><button type="button" class="btn btn-sec" id="ie-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 480);
       r.querySelector('#ie-x').onclick = cerrarModal;
+      r.querySelector('#ie-etapa').onchange = e => r.querySelector('#ie-part-c').classList.toggle('oculto', e.target.value !== 'suministro');
       r.querySelector('#f-ins').onsubmit = async e => { e.preventDefault();
         const nombre = limpiar(r.querySelector('#ie-nombre').value), min = leerNum(r.querySelector('#ie-min').value), costo = Number(String(r.querySelector('#ie-costo').value).replace(',', '.'));
         const err = m => { r.querySelector('#ie-error').textContent = m; r.querySelector('#ie-error').classList.remove('oculto'); };
         if (nombre.length < 2) return err('Escribe el nombre'); if (!(min >= 0)) return err('Revisa el mínimo'); if (!(costo >= 0)) return err('Revisa el costo');
         if (!DEMO) return guardando(r.querySelector('.btn-primario'), async () => {
-          await rpc('pos_inv_guardar_insumo', { p_clave: A.clave, p_tienda: t, p: { id: i?.id || null, nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, iva_exento: r.querySelector('#ie-iva').value === '1', activo: i ? r.querySelector('#ie-activo').checked : true,
+          await rpc('pos_inv_guardar_insumo', { p_clave: A.clave, p_tienda: t, p: { id: i?.id || null, nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, tipo_gasto_id: r.querySelector('#ie-etapa').value === 'suministro' ? (r.querySelector('#ie-part').value || null) : null, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, iva_exento: r.querySelector('#ie-iva').value === '1', activo: i ? r.querySelector('#ie-activo').checked : true,
             compra_presentacion: limpiar(r.querySelector('#ie-pres').value) || null, compra_factor: leerNum(r.querySelector('#ie-fac').value) > 0 ? leerNum(r.querySelector('#ie-fac').value) : 1 } });
           cerrarModal(); toast('Insumo guardado'); refrescarAdmin(); }, err);
-        if (i) Object.assign(i, { nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, iva_exento: r.querySelector('#ie-iva').value === '1', activo: r.querySelector('#ie-activo').checked,
+        if (i) Object.assign(i, { nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, tipo_gasto_id: r.querySelector('#ie-etapa').value === 'suministro' ? (r.querySelector('#ie-part').value || null) : null, proveedor_id: Number(r.querySelector('#ie-prov').value) || null, iva_exento: r.querySelector('#ie-iva').value === '1', activo: r.querySelector('#ie-activo').checked,
           compra_presentacion: limpiar(r.querySelector('#ie-pres').value), compra_factor: leerNum(r.querySelector('#ie-fac').value) > 0 ? leerNum(r.querySelector('#ie-fac').value) : 1 });
         else DX.insumos.push({ id: nid(), nombre, unidad: r.querySelector('#ie-unidad').value, minimo: min, costo_usd: costo, clase_costo: r.querySelector('#ie-clase').value, etapa: r.querySelector('#ie-etapa').value, iva_exento: r.querySelector('#ie-iva').value === '1', stock: {} });
         guardarDemo(); cerrarModal(); toast('Insumo guardado'); pintarAdmInventario(); pintarChipStock(); };
@@ -5034,11 +5037,14 @@ function pintarAdmGastos() {
 /* ---------- PROVEEDORES Y CUENTAS POR PAGAR ---------- */
 const saldoFactura = f => r2(f.monto_usd - (f.abonos || []).reduce((a, x) => a + x.monto_usd, 0));
 /* ---------- PRODUCCIÓN POR ETAPAS (etapa 9): materia prima → en proceso (bolitas congeladas) → terminado (horneadas) ---------- */
-const ETAPAS = { materia_prima: 'Materia prima', en_proceso: 'En proceso (congelado)', terminado: 'Producto terminado' };
+const ETAPAS = { materia_prima: 'Materia prima', en_proceso: 'En proceso (congelado)', terminado: 'Producto terminado', suministro: 'Limpieza, oficina y otros (no es MP)' };
+// 25/11/2026 (mamá del dueño + Sara): limpieza, oficina y otros NO son materia prima: pedido aparte, fuera del 45 % y al balance en su partida
+const esSuministro = i => etapaDe(i) === 'suministro';
+const tipoPedido = p => p.tipo || ((p.items || []).length && p.items.every(x => esSuministro(DX.insumos.find(i => i.id === Number(x.insumo_id)))) ? 'suministro' : 'mp');
 const etapaDe = i => i?.etapa || 'materia_prima';
 function pintarProduccion(ic, t, optsIns) {
   const prod = DX.produccion || {}, hoy = hoyVE();
-  const salidas = DX.insumos.filter(i => i.activo !== false && etapaDe(i) !== 'materia_prima');
+  const salidas = DX.insumos.filter(i => i.activo !== false && !['materia_prima', 'suministro'].includes(etapaDe(i)));
   const conReceta = salidas.filter(i => (prod[i.id] || []).length);
   const grupo = (et, t2) => { const xs = conReceta.filter(i => etapaDe(i) === et);
     return xs.length ? `<optgroup label="${t2}">${xs.map(i => `<option value="${i.id}" ${INV.prodSel === i.id ? 'selected' : ''}>${esc(i.nombre)}</option>`).join('')}</optgroup>` : ''; };
@@ -5462,10 +5468,13 @@ const enPres = (id, cant) => { const x = presIns(id); return x.f > 1 ? `${fmtCan
 const precioPres = id => { const x = presIns(id); return r2(Number(costoInsumo(id) || 0) * x.f); };
 function pintarHacerPedido(c, t, ic, optsIns) {
   const hoy = hoyVE();
-  const ins = DX.insumos.filter(i => i.activo !== false && insEnTienda(i, t) && etapaDe(i) === 'materia_prima').sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const esSum = PDV.tipo === 'suministro';
+  const ins = DX.insumos.filter(i => i.activo !== false && insEnTienda(i, t) && etapaDe(i) === (esSum ? 'suministro' : 'materia_prima')).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const idsTipo = new Set(ins.map(i => String(i.id)));
+  const cantTipo = () => Object.entries(PDV.cant).filter(([k, v]) => v > 0 && idsTipo.has(String(k)));
   const q = PDV.q.toLowerCase();
   const vis = ins.filter(i => (!q || i.nombre.toLowerCase().includes(q) || (provDe(i.proveedor_id)?.nombre || '').toLowerCase().includes(q)) && (!PDV.bajo || stockDe(i, t) <= i.minimo));
-  const n = () => Object.values(PDV.cant).filter(v => v > 0).length;
+  const n = () => cantTipo().length;
   const jefe = puede('compras_aprobar');
   // 24/11/2026 (Sara + Sra. Betsy): NECESITO = proyección del sistema = consumo de los últimos 7 días (ventas − anulaciones,
   // producción y mermas; si la tienda lleva menos de 7 días se proyecta a 7). Pedir = Necesito − Hay. Las dos casillas se pueden cambiar.
@@ -5484,7 +5493,9 @@ function pintarHacerPedido(c, t, ic, optsIns) {
   const pctR = PDV.pct || 100;
   const proy = i => { const g = gasto[i.id]; if (!(g > 0)) return 0; const f = presIns(i.id).f, falta = Math.max(0, g * pctR / 100 - Math.max(stockDe(i, t), 0));
     return falta > 0.0001 ? (f > 1 ? Math.ceil(falta / f - 0.0001) : Math.round(falta * 100) / 100) : 0; };
-  c.innerHTML = `<section class="graf presu-compras" id="pd-presu"></section>
+  c.innerHTML = `<nav class="sub-tabs prov-vistas"><button type="button" class="sub-tab ${esSum ? '' : 'activa'}" data-ptipo="mp">🥫 Materia prima</button><button type="button" class="sub-tab ${esSum ? 'activa' : ''}" data-ptipo="suministro">🧽 Limpieza, oficina y otros</button></nav>
+    ${esSum ? '<p class="ayuda">Esto <b>no es materia prima</b>: va en un pedido aparte, no cuenta en el presupuesto de compras de materia prima y en el balance va a su partida (limpieza, papelería…).</p>' : ''}
+    <section class="graf presu-compras" id="pd-presu"></section>
     <div class="adm-barra"><p>${cubre ? `<b>Proyección</b> (solo para guiarte): reponer lo que se gastó${cons.dias < 7 ? ` (esta tienda lleva ${fmtCant(cons.dias)} día(s) vendiendo, así que se proyectó a 7 días)` : ' en los últimos 7 días'} × el porcentaje de abajo, menos lo que <b>hay</b>, en presentaciones de compra. Tú decides: escribe en <b>Pedir</b> lo que vas a pedir (puedes tocar el número de la proyección para copiarlo). Lo que quede en blanco no se pide.` : `Todavía no hay ventas para calcular lo que se gasta: escribe en <b>Pedir</b> lo que vas a pedir. Lo que quede en blanco no se pide.`} El dueño junta los pedidos de todas las tiendas y compra por proveedor.</p></div>
     ${cubre ? `<div class="adm-barra"><b>Reponer:</b>${[100, 110, 120].map(x => `<button type="button" class="sub-tab ${pctR === x ? 'activa' : ''}" data-pct="${x}">${x} %</button>`).join('')}
       <input id="pd-pct" class="txt num" inputmode="numeric" placeholder="Otro %" style="width:90px" value="${[100, 110, 120].includes(pctR) ? '' : pctR}"><span class="ayuda">de lo gastado en la semana</span></div>` : ''}
@@ -5505,8 +5516,9 @@ function pintarHacerPedido(c, t, ic, optsIns) {
       <button class="btn btn-primario" id="pd-enviar">Enviar pedido (<span id="pd-n">${n()}</span> productos)</button></section>`;
   // Presupuesto: lo de esta semana no puede pasar del 45 % de lo vendido la semana anterior
   const pintarPresu = () => {
-    const b = PRESC, este = valorPedido(Object.entries(PDV.cant).filter(([, v]) => v > 0).map(([k, v]) => ({ insumo_id: Number(k), cantidad: v })));
+    const b = PRESC, este = valorPedido(cantTipo().map(([k, v]) => ({ insumo_id: Number(k), cantidad: v })));
     const box = c.querySelector('#pd-presu'), btn = c.querySelector('#pd-enviar');
+    if (esSum) { box.innerHTML = `<h4>🧽 Limpieza, oficina y otros</h4><p class="ayuda">Valor aprox. de este pedido: <b>${usd(este)}</b>. No cuenta en el presupuesto de materia prima.</p>`; btn.disabled = false; return; }
     if (!b) { box.innerHTML = '<p class="ayuda">No se pudo calcular el presupuesto de compras.</p>'; return; }
     if (!(b.venta_anterior > 0)) {   // 24/11/2026: tienda sin ventas la semana pasada (Express, 2.0) → sin límite esta semana
       box.innerHTML = `<h4>💰 Presupuesto de compras de la semana</h4><p class="ayuda">Esta tienda no tiene ventas de la semana pasada (${fechaCorta(b.desde)} al ${fechaCorta(b.hasta)}), así que esta semana <b>no hay límite</b>. Desde la semana que viene el pedido no podrá pasar del ${b.pct} % de lo vendido.</p>`;
@@ -5516,7 +5528,7 @@ function pintarHacerPedido(c, t, ic, optsIns) {
       <p class="ayuda">${b.pct} % de lo vendido del ${fechaCorta(b.desde)} al ${fechaCorta(b.hasta)} (${usd(b.venta_anterior)}).</p>
       <div class="kpis kpis-chico"><div><span>Presupuesto</span><b class="num">${usd(b.presupuesto)}</b></div><div><span>Ya pedido esta semana</span><b class="num">${usd(b.usado)}</b></div>
         <div><span>Este pedido</span><b class="num">${usd(este)}</b></div><div><span>${pasa ? 'Te pasas por' : 'Queda'}</span><b class="num ${pasa ? 'rojo' : ''}">${usd(Math.abs(queda))}</b></div></div>
-      ${b.usado > 0 ? `<p class="ayuda">“Ya pedido esta semana” son los pedidos de esta tienda desde el lunes ${fechaCorta(b.semana)} (menos los rechazados y cancelados): ${(DX.pedidos || []).filter(p => p.tienda_id === t && !['rechazado', 'cancelado'].includes(p.estado) && p.creado_en && diaVE(p.creado_en) >= b.semana).map(p => `<b>N° ${p.id}</b> del ${fechaCorta(diaVE(p.creado_en))} (${(ESTADO_PEDIDO[p.estado] || [p.estado])[0]}) ${usd(p.total_usd ?? valorPedido(p.items))}`).join(' · ') || usd(b.usado)}. El presupuesto es de toda la semana, no de cada pedido.</p>` : ''}
+      ${b.usado > 0 ? `<p class="ayuda">“Ya pedido esta semana” son los pedidos de esta tienda desde el lunes ${fechaCorta(b.semana)} (menos los rechazados y cancelados): ${(DX.pedidos || []).filter(p => p.tienda_id === t && tipoPedido(p) === 'mp' && !['rechazado', 'cancelado'].includes(p.estado) && p.creado_en && diaVE(p.creado_en) >= b.semana).map(p => `<b>N° ${p.id}</b> del ${fechaCorta(diaVE(p.creado_en))} (${(ESTADO_PEDIDO[p.estado] || [p.estado])[0]}) ${usd(p.total_usd ?? valorPedido(p.items))}`).join(' · ') || usd(b.usado)}. El presupuesto es de toda la semana, no de cada pedido.</p>` : ''}
       <div class="barra-presu"><i style="width:${pct.toFixed(1)}%" class="${pasa ? 'mal' : pct > 85 ? 'medio' : ''}"></i></div>
       ${pasa ? `<p class="mensaje-error">🚨 Este pedido se pasa del presupuesto por <b>${usd(-queda)}</b>. ${jefe ? 'Revísalo; como puedes aprobar pedidos, igual lo puedes enviar.' : 'Recorta cantidades hasta que quede dentro del presupuesto para poder enviarlo.'}</p>` : ''}`;
     btn.disabled = pasa && !jefe;
@@ -5525,6 +5537,7 @@ function pintarHacerPedido(c, t, ic, optsIns) {
   const redibujar = () => { const pos = c.querySelector('#pd-q').selectionStart; pintarHacerPedido(c, t, ic, optsIns); const qq = c.querySelector('#pd-q'); qq.focus(); qq.setSelectionRange(pos, pos); };
   c.querySelector('#pd-q').oninput = e => { PDV.q = e.target.value; redibujar(); };
   c.querySelector('#pd-bajo').onchange = e => { PDV.bajo = e.target.checked; pintarHacerPedido(c, t, ic, optsIns); };
+  c.querySelectorAll('[data-ptipo]').forEach(b => b.onclick = () => { PDV.tipo = b.dataset.ptipo; pintarHacerPedido(c, t, ic, optsIns); });
   c.querySelectorAll('[data-pct]').forEach(b => b.onclick = () => { PDV.pct = Number(b.dataset.pct); pintarHacerPedido(c, t, ic, optsIns); });
   if (c.querySelector('#pd-pct')) c.querySelector('#pd-pct').onchange = e => { const v = leerNum(e.target.value); if (v > 0) { PDV.pct = Math.round(v); pintarHacerPedido(c, t, ic, optsIns); } };
   c.querySelectorAll('.pd-usar').forEach(b => b.onclick = () => { const pc = c.querySelector(`.pd-c[data-i="${b.dataset.i}"]`); pc.value = fmtCant(Number(b.dataset.v)); pc.oninput(); });
@@ -5539,21 +5552,21 @@ function pintarHacerPedido(c, t, ic, optsIns) {
   c.querySelector('#pd-nota').oninput = e => PDV.nota = e.target.value;
   c.querySelector('#pd-enviar').onclick = () => {
     const err = m => { c.querySelector('#pd-error').textContent = m; c.querySelector('#pd-error').classList.remove('oculto'); };
-    const items = Object.entries(PDV.cant).filter(([, v]) => v > 0).map(([k, v]) => ({ insumo_id: Number(k), cantidad: v }));
+    const items = cantTipo().map(([k, v]) => ({ insumo_id: Number(k), cantidad: v }));
     if (!items.length) return err('Anota la cantidad de al menos un insumo');
     if (!PDV.dias || PDV.dias > 60) return err('Elige en cuántos días tiene que llegar');
     const este = valorPedido(items);
-    if (PRESC && PRESC.venta_anterior > 0 && este > PRESC.disponible + 0.009) { if (!jefe) return err(`Este pedido se pasa del presupuesto por ${usd(este - PRESC.disponible)}. Recorta para poder enviarlo.`);
+    if (!esSum && PRESC && PRESC.venta_anterior > 0 && este > PRESC.disponible + 0.009) { if (!jefe) return err(`Este pedido se pasa del presupuesto por ${usd(este - PRESC.disponible)}. Recorta para poder enviarlo.`);
       if (!confirm(`Este pedido se pasa del presupuesto de la semana por ${usd(este - PRESC.disponible)}. ¿Enviarlo igual?`)) return; }
     const nota = limpiar(PDV.nota), dias = PDV.dias;
-    const listo = msg => { PDV.cant = {}; PDV.nec = {}; PDV.sugerido = {}; PDV.consumo = {}; PDV.nota = ''; PDV.dias = null; PDV.vista = 'lista'; toast(msg); };
+    const listo = msg => { items.forEach(x => delete PDV.cant[x.insumo_id]); PDV.nec = {}; PDV.sugerido = {}; PDV.consumo = {}; PDV.nota = ''; PDV.dias = null; PDV.vista = 'lista'; toast(msg); };
     if (!DEMO) return guardando(c.querySelector('#pd-enviar'), async () => {
       const id = await rpc('pos_pedido_crear', { p_clave: A.clave, p_tienda: t, p: { dias, nota: nota || null, items } });
       listo(`Pedido N° ${id} enviado`); refrescarAdmin(); }, err);
     DX.pedidos = DX.pedidos || [];
     const u = DX.usuarios.find(x => x.id === DX.usuarioActual);
     DX.pedidos.unshift({ id: nid(), tienda_id: t, tienda: S.tienda.nombre, solicitante: u ? (u.nombre + ' ' + (u.apellido || '')).trim() : 'Encargada',
-      creado_en: new Date().toISOString(), para_fecha: sumarDias(hoyVE(), dias), nota, estado: 'pendiente', respuesta: null, factura_id: null,
+      creado_en: new Date().toISOString(), para_fecha: sumarDias(hoyVE(), dias), nota, estado: 'pendiente', respuesta: null, factura_id: null, tipo: esSum ? 'suministro' : 'mp',
       items: items.map(x => { const i = DX.insumos.find(z => z.id === x.insumo_id); return { ...x, nombre: i.nombre, unidad: i.unidad, proveedor_id: i.proveedor_id ?? null }; }) });
     DX.pedidos[0].total_usd = valorPedido(DX.pedidos[0].items);
     guardarDemo(); listo('Pedido enviado'); repintarPedidos();
@@ -5597,7 +5610,8 @@ function descargarExcel(archivo, hojas) {
 }
 function pintarConsolidado(c, ic, t, optsIns) {
   const incluye = PDV.conCamino ? ['pendiente', 'aprobado', 'en_camino'] : ['pendiente', 'aprobado'];
-  const peds = (DX.pedidos || []).filter(p => incluye.includes(p.estado));
+  const cTipo = PDV.ctipo || 'mp', nSum = (DX.pedidos || []).filter(p => incluye.includes(p.estado) && tipoPedido(p) === 'suministro').length;
+  const peds = (DX.pedidos || []).filter(p => incluye.includes(p.estado) && tipoPedido(p) === cTipo);
   const tiendas = [...new Map(peds.map(p => [p.tienda_id, p.tienda || tiendaNombre(p.tienda_id)])).entries()];
   const grupos = new Map();   // proveedor_id → Map(insumo_id → {nombre, unidad, total, por:{tienda:cant}})
   peds.forEach(p => p.items.forEach(it => { const pid = it.proveedor_id ?? DX.insumos.find(i => i.id === it.insumo_id)?.proveedor_id ?? 0;
@@ -5629,7 +5643,8 @@ function pintarConsolidado(c, ic, t, optsIns) {
   const textoMoto = () => `*Compra de contado · ${NEGOCIO_NOMBRE}* (${fechaLarga(hoyVE())})\n` + contado.map(id => { const p = provDe(id), g = grupos.get(id);
     return `\n══════════════\n🛒 *${p.nombre}*${p.telefono ? ' · ' + p.telefono : ''}\n` + porTiendaTxt(g, true) + totalTxt(g); }).join('\n')
     + `\n\nAl llegar, separar por tienda como dice cada bloque.`;
-  c.innerHTML = `<div class="adm-barra"><p>Todo lo que piden las tiendas, junto y separado por proveedor. <b>Crédito:</b> se le escribe al proveedor. <b>Contado:</b> la lista va al autorizado que compra y paga en el momento; luego se separa por tienda.</p>
+  c.innerHTML = `<nav class="sub-tabs prov-vistas"><button type="button" class="sub-tab ${cTipo === 'mp' ? 'activa' : ''}" data-ctipo="mp">🥫 Materia prima</button><button type="button" class="sub-tab ${cTipo === 'suministro' ? 'activa' : ''}" data-ctipo="suministro">🧽 Limpieza, oficina y otros${nSum ? ` (${nSum})` : ''}</button></nav>
+    <div class="adm-barra"><p>Todo lo que piden las tiendas, junto y separado por proveedor. <b>Crédito:</b> se le escribe al proveedor. <b>Contado:</b> la lista va al autorizado que compra y paga en el momento; luego se separa por tienda.</p>
       <span class="espacio"></span><label class="interruptor" style="margin:0"><input type="checkbox" id="cs-camino" ${PDV.conCamino ? 'checked' : ''}><span>Incluir los que ya van en camino</span></label>${peds.length ? '<button class="btn btn-primario" id="cs-xlsx">⬇️ Descargar Excel</button>' : ''}</div>
     <p class="ayuda">${peds.length} pedidos de ${tiendas.length} tiendas: ${tiendas.map(([id, n]) => `${esc(n)} (${peds.filter(p => p.tienda_id === id).map(p => puede('compras_aprobar') ? `<button class="link" data-csed="${p.id}" title="Corregir este pedido">N° ${p.id} ✏️</button>` : 'N° ' + p.id).join(', ')})`).join(' · ') || '—'}</p>
     ${peds.length ? '' : '<p class="vacio">No hay pedidos por comprar.</p>'}
@@ -5643,6 +5658,7 @@ function pintarConsolidado(c, ic, t, optsIns) {
       ${contado.map(id => `<h4 style="margin:10px 0 4px">${esc(provDe(id).nombre)} <span class="ayuda">${esc(provDe(id).telefono || '')}</span></h4>${tabla(grupos.get(id))}`).join('')}</section>` : ''}
     ${grupos.has(0) ? `<h4>⚠️ Sin proveedor asignado</h4><section class="graf"><p class="ayuda">Asígnales su proveedor en Existencias → Editar insumo (o se asigna solo la primera vez que se reciben con factura).</p>${tabla(grupos.get(0))}</section>` : ''}
     ${peds.some(p => p.estado !== 'en_camino') ? `<div class="adm-barra"><span class="espacio"></span><button class="btn btn-primario" id="cs-camino-todo">Aprobar todos y marcar en camino</button></div>` : ''}`;
+  c.querySelectorAll('[data-ctipo]').forEach(b => b.onclick = () => { PDV.ctipo = b.dataset.ctipo; pintarConsolidado(c, ic, t, optsIns); });
   c.querySelectorAll('[data-csed]').forEach(b => b.onclick = () => editarPedido(peds.find(p => p.id === Number(b.dataset.csed))));
   c.querySelector('#cs-camino').onchange = e => { PDV.conCamino = e.target.checked; pintarConsolidado(c, ic, t, optsIns); };
   const bx = c.querySelector('#cs-xlsx');
@@ -5711,22 +5727,25 @@ async function descargarRequisicion(p) {
   if (!DEMO) { try { ventas = await rpc('pos_ventas_por_dia', { p_tienda: t, p_desde: ant, p_hasta: fin }); } catch (e) { } }
   else ventasEn(ant, fin, t).forEach(v => { const d = diaVE(v.fecha); ventas[d] = r2((ventas[d] || 0) + v.total_usd); });
   const cant = new Map(p.items.map(i => [Number(i.insumo_id), Number(i.cantidad)]));
-  const ins = DX.insumos.filter(i => (i.activo !== false && etapaDe(i) === 'materia_prima' && insEnTienda(i, t)) || cant.has(i.id))
+  const sumP = tipoPedido(p) === 'suministro';
+  const ins = DX.insumos.filter(i => (i.activo !== false && etapaDe(i) === (sumP ? 'suministro' : 'materia_prima') && insEnTienda(i, t)) || cant.has(i.id))
     .sort((a, b) => (provDe(a.proveedor_id)?.nombre || 'ZZZ').localeCompare(provDe(b.proveedor_id)?.nombre || 'ZZZ') || a.nombre.localeCompare(b.nombre));
   const e = entCentral(), pct = PRESC?.pct || 45, n2 = v => Math.round(Number(v || 0) * 100) / 100;
   const f = [[e.nombre], [e.rif || ''], ['Correo: ' + REQ_ENCAB.correo], ['Tlfs: ' + REQ_ENCAB.tlfs], ['Ig: ' + REQ_ENCAB.ig], [], [fechaMayus(fecha)], [],
     ['ESPECIFIQUE TIENDA', (p.tienda || tiendaNombre(t)).toUpperCase(), 'Pedido N° ' + p.id], []];
-  const t1 = ['REQUISICION DE MP TIENDAS']; t1._neg = true; f.push(t1);
+  const t1 = [sumP ? 'REQUISICION DE LIMPIEZA, OFICINA Y OTROS (NO ES MP)' : 'REQUISICION DE MP TIENDAS']; t1._neg = true; f.push(t1);
   const h = ['ITEMS', 'PROVEEDOR', 'PRODUCTO', 'PRESENTACIÓN', 'PRECIO $', 'CANT.', 'TOTAL $']; h._neg = true; f.push(h);
   let total = 0;
   ins.forEach((i, k) => { const x = presIns(i.id), q = cant.has(i.id) ? n2(cant.get(i.id) / x.f) : '', pr = precioPres(i.id), tot = q === '' ? '' : n2(q * pr); if (tot !== '') total += tot;
     f.push([k + 1, provDe(i.proveedor_id)?.nombre || '', i.nombre.toUpperCase(), x.p || i.unidad, pr, q, tot]); });
   const ft = ['', '', '', '', '', 'TOTAL', n2(total)]; ft._neg = true; f.push(ft, []);
+  if (!sumP) {
   const sem = DIAS_SEM.map((d, k) => [d, fechaCorta(sumarDias(ant, k)), n2(ventas[sumarDias(ant, k)] || 0)]), totV = n2(sem.reduce((a, x) => a + x[2], 0));
   const r1 = ['REQUISICIÓN DE MP', '', 'MONTO $', `${pct}% MP SEMANA`, n2(totV * pct / 100), 'NO PUEDEN EXCEDERSE']; r1._neg = true; f.push(r1);
   f.push(['VENTAS DE LA SEMANA', `${fechaCorta(ant)} AL ${fechaCorta(fin)}`], ...sem, (() => { const x = ['TOTAL VENTAS', '', totV]; x._neg = true; return x; })(),
     [], ['ESTA REQUISICIÓN', '', n2(total), total > totV * pct / 100 && totV > 0 ? 'SE PASA DEL ' + pct + ' %' : 'DENTRO DEL ' + pct + ' %']);
-  descargarExcel(`Requisicion_MP_${(p.tienda || tiendaNombre(t)).replace(/\W+/g, '_')}_${fecha}.xlsx`, [{ nombre: 'SOLICITUD MP', filas: f, anchos: [12, 34, 46, 22, 12, 10, 12] }]);
+  }
+  descargarExcel(`Requisicion_${sumP ? 'Limpieza_oficina' : 'MP'}_${(p.tienda || tiendaNombre(t)).replace(/\W+/g, '_')}_${fecha}.xlsx`, [{ nombre: sumP ? 'SOLICITUD LIMPIEZA' : 'SOLICITUD MP', filas: f, anchos: [12, 34, 46, 22, 12, 10, 12] }]);
 }
 // Hoja "Requisición consolidada" para el Excel del consolidado: mismo formato, una columna de cantidad por tienda
 function hojaRequisicionConsolidada(grupos, tiendas, orden) {
@@ -5818,7 +5837,8 @@ async function verGuias() {
 // El dueño corrige un pedido aunque ya esté aprobado o en camino (consolidado): cantidades, quitar o agregar insumos, fecha y nota.
 function editarPedido(p) {
   let items = p.items.map(i => ({ insumo_id: Number(i.insumo_id), cantidad: Number(i.cantidad) }));
-  const insT = DX.insumos.filter(i => i.activo !== false && insEnTienda(i, p.tienda_id)).sort((a, b) => a.nombre.localeCompare(b.nombre));
+  const sumE = tipoPedido(p) === 'suministro';
+  const insT = DX.insumos.filter(i => i.activo !== false && insEnTienda(i, p.tienda_id) && (sumE ? esSuministro(i) : etapaDe(i) === 'materia_prima')).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const r = abrirModal(`<form id="f-edp"><div class="modal-cab"><h3 class="titulo">✏️ Corregir pedido N° ${p.id}</h3><p>${esc(p.tienda || tiendaNombre(p.tienda_id))} · ${(ESTADO_PEDIDO[p.estado] || [p.estado])[0]}. Se puede corregir aunque ya esté en el consolidado.</p></div>
     <div class="modal-cuerpo"><div id="edp-error" class="mensaje-error oculto"></div><div id="edp-lineas"></div>
       <div class="dos-campos"><label class="campo"><span>Agregar insumo</span><select id="edp-add" class="sel"><option value="">Elige…</option>${insT.map(i => `<option value="${i.id}">${esc(i.nombre)}</option>`).join('')}</select></label>
@@ -5863,7 +5883,7 @@ function pintarPedidosLista(ic, t) {
 </div>
     <div class="pedidos">${lista.map(p => { const [en, cl] = ESTADO_PEDIDO[p.estado] || [p.estado, ''];
       const abierto = ['pendiente', 'aprobado', 'en_camino'].includes(p.estado);
-      return `<article class="pedido ${abierto ? '' : 'cerrado'}"><header><b>Pedido N° ${p.id}</b>${dueno ? ` · ${esc(p.tienda || '')}` : ''}<span class="espacio"></span><span class="badge ${cl}">${en}</span></header>
+      return `<article class="pedido ${abierto ? '' : 'cerrado'}"><header><b>Pedido N° ${p.id}</b>${tipoPedido(p) === 'suministro' ? ' <span class="badge">🧽 Limpieza, oficina y otros</span>' : ''}${dueno ? ` · ${esc(p.tienda || '')}` : ''}<span class="espacio"></span><span class="badge ${cl}">${en}</span></header>
         <p class="ayuda">Lo pidió ${esc(p.solicitante || '—')} el ${fechaLarga(diaVE(p.creado_en))} · Lo necesita para el ${cuando(p)} · Valor aprox. <b>${usd(p.total_usd ?? valorPedido(p.items))}</b></p>
         <ul>${p.items.map(i => `<li><span>${esc(i.nombre)}</span><b class="num">${esc(enPres(i.insumo_id, Number(i.cantidad)))}</b></li>`).join('')}</ul>
         ${p.nota ? `<p class="ayuda">Nota: ${esc(p.nota)}</p>` : ''}${p.respuesta ? `<p class="ayuda">Respuesta: ${esc(p.respuesta)}</p>` : ''}
