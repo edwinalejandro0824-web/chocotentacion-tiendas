@@ -4575,16 +4575,16 @@ function pintarAdmPanel() {
     </tbody></table></section>
     <section class="graf"><h4>Costo de materia prima por producto <small>${tid ? esc(tiendaNombre(tid) || '') : 'todas las tiendas'} · ${fechaCorta(desde)} al ${fechaCorta(hasta)} · verde hasta 35 %, naranja hasta 45 %, rojo más</small></h4>
       ${cprod == null ? '<p class="vacio">Calculando el costo de cada producto…</p>' : `<div class="adm-barra" style="margin:0 0 6px"><span class="espacio"></span><button class="btn btn-sec" id="pn-cmp-copiar">Copiar para Excel</button></div>
-      <table class="tabla-simple num"><thead><tr><th>Producto</th><th class="der">Unidades</th><th class="der">Venta sin IVA</th><th class="der">Costo materia prima</th><th class="der">Costo por unidad</th><th class="der">% costo MP</th></tr></thead><tbody>
+      <table class="tabla-simple num"><thead><tr><th>Producto</th><th class="der">Unidades</th><th class="der">Venta sin IVA</th><th class="der">Costo materia prima</th><th class="der">Costo por unidad</th><th class="der">% costo MP</th><th class="der">Margen</th></tr></thead><tbody>
       ${cprod.map(y => `<tr><td>${esc(y.producto)}</td><td class="der">${fmtCant(y.cant)}</td><td class="der">${usd(y.base)}</td><td class="der">${usd(y.costo)}</td><td class="der">${y.cant ? usd(y.costo / y.cant) : '—'}</td>
-        <td class="der">${y.pct == null ? '—' : `<span class="badge ${colMP(y.pct)}">${fmt.format(r2(y.pct))} %</span>`}</td></tr>`).join('') || '<tr><td colspan="6" class="vacio">No hay ventas en el período.</td></tr>'}
-      ${cprod.length ? (() => { const b = cprod.reduce((a, y) => a + y.base, 0), c = cprod.reduce((a, y) => a + y.costo, 0); return `<tr class="total"><td><b>Total</b></td><td></td><td class="der"><b>${usd(b)}</b></td><td class="der"><b>${usd(c)}</b></td><td></td><td class="der"><b>${b > 0 ? fmt.format(r2(c * 100 / b)) + ' %' : '—'}</b></td></tr>`; })() : ''}
-      </tbody></table><p class="ayuda">El costo es lo que de verdad descontó el inventario en cada venta, repartido entre los productos según su receta. Si un producto sale muy alto o muy bajo, revisa su receta o el costo de sus insumos.</p>`}</section>`;
+        <td class="der">${y.pct == null ? '—' : `<span class="badge ${colMP(y.pct)}">${fmt.format(r2(y.pct))} %</span>`}</td><td class="der">${y.pct == null ? '—' : fmt.format(r2(100 - y.pct)) + ' %'}</td></tr>`).join('') || '<tr><td colspan="7" class="vacio">No hay ventas en el período.</td></tr>'}
+      ${cprod.length ? (() => { const b = cprod.reduce((a, y) => a + y.base, 0), c = cprod.reduce((a, y) => a + y.costo, 0); return `<tr class="total"><td><b>Total</b></td><td></td><td class="der"><b>${usd(b)}</b></td><td class="der"><b>${usd(c)}</b></td><td></td><td class="der"><b>${b > 0 ? fmt.format(r2(c * 100 / b)) + ' %' : '—'}</b></td><td class="der"><b>${b > 0 ? fmt.format(r2(100 - c * 100 / b)) + ' %' : '—'}</b></td></tr>`; })() : ''}
+      </tbody></table><p class="ayuda"><b>% costo MP + Margen = 100 %</b> (en Recetas y costos sale el margen). Aquí el costo es lo que de verdad descontó el inventario en cada venta —incluye los toppings y siropes que van incluidos en el precio—, por eso suele dar más que la receta sola. Si un producto sale muy alto o muy bajo, revisa su receta o el costo de sus insumos.</p>`}</section>`;
   $('pn-periodo').onchange = e => { PANEL.periodo = e.target.value; if (PANEL.periodo === 'otro' && !PANEL.desde) { PANEL.desde = desde; PANEL.hasta = hasta; } pintarAdmPanel(); };
   if ($('pn-desde')) { $('pn-desde').onchange = e => { if (e.target.value) { PANEL.desde = e.target.value; pintarAdmPanel(); } };
     $('pn-hasta').onchange = e => { if (e.target.value) { PANEL.hasta = e.target.value; pintarAdmPanel(); } }; }
-  if ($('pn-cmp-copiar')) $('pn-cmp-copiar').onclick = () => copiarTexto(tsv(['Producto', 'Unidades', 'Venta sin IVA $', 'Costo materia prima $', 'Costo por unidad $', '% costo MP'],
-    cprod.map(y => [y.producto, y.cant, numXls(y.base), numXls(y.costo), numXls(y.cant ? y.costo / y.cant : 0), y.pct == null ? '' : numXls(y.pct)])));
+  if ($('pn-cmp-copiar')) $('pn-cmp-copiar').onclick = () => copiarTexto(tsv(['Producto', 'Unidades', 'Venta sin IVA $', 'Costo materia prima $', 'Costo por unidad $', '% costo MP', 'Margen %'],
+    cprod.map(y => [y.producto, y.cant, numXls(y.base), numXls(y.costo), numXls(y.cant ? y.costo / y.cant : 0), y.pct == null ? '' : numXls(y.pct), y.pct == null ? '' : numXls(100 - y.pct)])));
   $('pn-tienda').onchange = e => { PANEL.tienda = Number(e.target.value); pintarAdmPanel(); };
 }
 
