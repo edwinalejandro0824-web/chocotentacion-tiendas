@@ -414,6 +414,8 @@
   .admin,.cuerpo{min-width:0}
   .adm-cab > div{min-width:0;flex:1}
   .adm-contenido{overflow-x:hidden}
+  /* 25/11/2026 (Gladys en el teléfono): en pantallas angostas se desplaza la PÁGINA entera, no solo el cuadrito de abajo (la barra y las pestañas se comían casi toda la pantalla) */
+  @media (max-width:760px){.adm-contenido table.tabla-simple{display:block;overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch} html,body{height:auto;min-height:100%;overflow-y:auto} #vista-app{height:auto;min-height:100vh;overflow:visible} .admin{min-height:auto} .adm-contenido{flex:none;overflow:visible;height:auto}}
   .rc-pie{display:flex;align-items:center;margin-top:8px}
   .dos-col{display:grid;grid-template-columns:1.4fr 1fr;gap:16px}
   .dos-col h4{margin:0 0 4px}
