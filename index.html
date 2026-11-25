@@ -401,7 +401,7 @@
   .tabla-simple tr.sep td{background:#F7EFE6;padding-top:8px} .texto-error{color:var(--error)}
   .permisos-u{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:6px 22px;background:#FBF6F0;border-radius:12px;padding:12px 14px} .permisos-u h4{margin:6px 0} .permisos-u .interruptor{display:flex;margin:4px 0} .permisos-u .cambiado span{font-weight:600}
   body.modo-admin #btn-preparar-caja, body.modo-admin #login-caja-nueva{display:none!important}
-  body.sin-caja #btn-ventas-turno, body.sin-caja #btn-salida, body.sin-caja #btn-cerrar-caja, body.sin-caja #chip-caja, body.sin-caja #btn-salir-admin, body.sin-caja #categorias, body.sin-caja aside.ticket, body.sin-caja #capa-caja{display:none!important} body.sin-caja .catalogo{grid-column:1/-1}
+  body.sin-caja #btn-ventas-turno, body.sin-caja #btn-salida, body.sin-caja #btn-hornear, body.sin-caja #btn-cerrar-caja, body.sin-caja #chip-caja, body.sin-caja #btn-salir-admin, body.sin-caja #categorias, body.sin-caja aside.ticket, body.sin-caja #capa-caja{display:none!important} body.sin-caja .catalogo{grid-column:1/-1}
   .ev-act{display:flex;gap:8px;align-items:center;padding:6px 2px;border-bottom:1px dashed var(--linea);font-size:15px;cursor:pointer} .ev-act span{flex:1} .ev-act input{width:20px;height:20px}
   @media (max-width:700px){.rec-cab{display:none}.fila-rec{grid-template-columns:1fr 1fr;border-bottom:1px solid var(--linea);padding-bottom:6px}.fila-rec .mv-ins{grid-column:1/-1}}
   .rec-cab{font-size:12px;color:var(--suave);font-weight:600;margin:6px 0 4px}
@@ -517,6 +517,7 @@
     <button class="btn-barra oculto" id="btn-ventas-turno">Ventas del turno</button>
     <a class="btn-barra" id="btn-preparar-caja" href="instalar.html" target="_blank" rel="noopener" title="Descargar el preparador para que la tiquera imprima directo">🖨 Preparar caja</a>
     <button class="btn-barra oculto" id="btn-salida">Salida de caja</button>
+  <button class="btn-barra oculto" id="btn-hornear" title="Registrar las galletas que se hornearon">🍪 Hornear</button>
     <button class="btn-barra btn-cerrar-caja oculto" id="btn-cerrar-caja">Cerrar caja</button>
     <button class="btn-barra oculto boton-instalar">⬇ Instalar</button>
     <button class="btn-barra" id="btn-admin">⚙ Administrar</button>
@@ -1658,7 +1659,7 @@ function demoResumen(t, contado) {
     const fondo = f.es_efectivo ? (f.moneda === 'USD' ? t.fondo_usd : t.fondo_ves) : 0;
     const entradas = r2(vs.flatMap(v => v.pagos).filter(p => p.forma === f.nombre).reduce((a, p) => a + p.monto, 0));
     const salidas = r2(vs.flatMap(v => v.vueltos || []).filter(p => p.forma === f.nombre).reduce((a, p) => a + p.monto, 0));
-    const gastos = r2(sal.filter(x => x.forma_pago_id === f.id).reduce((a, x) => a + x.monto, 0));
+    const gastos = r2(sal.filter(x => x.forma_pago_id === f.id).reduce((a, x) => a + x.monto - (x.devuelto || 0), 0));
     const esperado = r2(fondo + entradas - salidas - gastos), c = contado ? contado[f.id] : null;
     return { forma_pago_id: f.id, forma: f.nombre, moneda: f.moneda, es_efectivo: f.es_efectivo, fondo, entradas, salidas, gastos, esperado,
              contado: c ?? null, diferencia: c == null ? null : r2(c - esperado) };
@@ -1939,7 +1940,7 @@ function htmlArqueo(res) {
     </table>
     ${res.productos.length ? `<h4 class="sub-arqueo">Lo que se vendió</h4>
       <div class="vendidos">${res.productos.map(p => `<div><span>${esc(p.cantidad)} × ${esc(p.producto)}${p.variante ? ' ' + esc(p.variante) : ''}</span><b class="num">${usd(p.total_usd)}</b></div>`).join('')}</div>` : ''}
-    ${(res.salidas_caja || []).length ? `<h4 class="sub-arqueo">Salidas de caja</h4><div class="vendidos">${res.salidas_caja.map(x => `<div><span>${esc(x.motivo)}${x.detalle ? ' · ' + esc(x.detalle) : ''} · autorizó ${esc(x.autorizo)}</span><b class="num">${fmtMon(x.moneda, x.monto)}</b></div>`).join('')}</div>` : ''}
+    ${(res.salidas_caja || []).length ? `<h4 class="sub-arqueo">Salidas de caja</h4><div class="vendidos">${res.salidas_caja.map(x => `<div><span>${esc(x.motivo)}${x.detalle ? ' · ' + esc(x.detalle) : ''} · autorizó ${esc(x.autorizo)}</span><b class="num">${fmtMon(x.moneda, x.monto - (x.sacado == null ? (x.devuelto || 0) : 0))}</b>${Number(x.devuelto) ? ` <span class="ayuda">(sacaron ${fmtMon(x.moneda, x.sacado ?? x.monto)}, devolvieron ${fmtMon(x.moneda, x.devuelto)})</span>` : ''}</div>`).join('')}</div>` : ''}
     ${res.anuladas ? `<p class="nota-arqueo">${res.anuladas} venta${res.anuladas > 1 ? 's' : ''} anulada${res.anuladas > 1 ? 's' : ''} en este turno (no cuentan en el cuadre).</p>` : ''}
     ${res.turno.notas ? `<p class="nota-arqueo">Nota del cajero: ${esc(res.turno.notas)}</p>` : ''}`;
 }
@@ -4231,6 +4232,7 @@ function pintarBotonesTurno() {
   const ver = MOD && !!S.turno;
   $('btn-ventas-turno').classList.toggle('oculto', !ver);
   $('btn-salida').classList.toggle('oculto', !ver);
+  $('btn-hornear').classList.toggle('oculto', !ver);
 }
 const horaCorta = f => new Date(f).toLocaleTimeString('es-VE', { timeZone: 'America/Caracas', hour: '2-digit', minute: '2-digit' });
 
@@ -4299,12 +4301,87 @@ async function cargarPartidas() {
 }
 // sugerencia de partida según el motivo (la cajera puede cambiarla)
 const PARTIDA_MOTIVO = { 'Compra menor de insumos': /MATERIA PRIMA|^MP/i, 'Compra de hielo': /MATERIA PRIMA|^MP/i, 'Pago a proveedor': /MATERIA PRIMA|^MP/i, 'Delivery': /DELIVERY|TRANSPORT|FLETE/i, 'Adelanto a empleado': /NOMINA|NÓMINA|ADELANTO/i };
+// 25/11/2026 (dueño): la cajera registra las galletas que hornea, sin clave (la Líder tiene días libres)
+async function abrirHornear() {
+  let lista;
+  if (DEMO) lista = DX.insumos.filter(i => i.activo !== false && etapaDe(i) === 'terminado' && ((DX.produccion || {})[i.id] || []).length === 1)
+    .map(i => { const b = DX.insumos.find(x => x.id === DX.produccion[i.id][0].insumo_id); return b && etapaDe(b) === 'en_proceso' ? { id: i.id, nombre: i.nombre, bolita: b.nombre, bolitas: stockDe(b, S.tienda.id), horneadas: stockDe(i, S.tienda.id) } : null; }).filter(Boolean);
+  else { try { lista = await rpc('pos_hornear_lista', { p_tienda: S.tienda.id }); } catch (e) { return toast(e.message, true); } }
+  if (!lista.length) return toast('No hay galletas para hornear en esta tienda', true);
+  const r = abrirModal(`<form id="f-horn"><div class="modal-cab"><h3 class="titulo">🍪 Hornear galletas</h3><p>Anota cuántas sacaste del horno. Se descuentan las bolitas congeladas y suben las galletas horneadas.</p></div>
+    <div class="modal-cuerpo"><div id="hn-error" class="mensaje-error oculto"></div>
+      <table class="tabla-simple num"><thead><tr><th>Galleta</th><th class="der">Bolitas</th><th class="der">Horneadas</th><th class="der">Horneé</th></tr></thead><tbody>
+      ${lista.map((x, k) => `<tr><td>${esc(x.nombre.replace(/^Galleta /, '').replace(/ horneada$/, ''))}</td><td class="der">${fmtCant(Number(x.bolitas))}</td><td class="der">${fmtCant(Number(x.horneadas))}</td>
+        <td class="der"><input class="txt num hn-c" data-k="${k}" inputmode="numeric" style="width:70px" placeholder="0"></td></tr>`).join('')}</tbody></table></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="hn-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 560);
+  r.querySelector('#hn-x').onclick = cerrarModal;
+  r.querySelector('#f-horn').onsubmit = e => { e.preventDefault();
+    const err = m => { r.querySelector('#hn-error').textContent = m; r.querySelector('#hn-error').classList.remove('oculto'); };
+    const sel = [...r.querySelectorAll('.hn-c')].map(x => ({ x: lista[Number(x.dataset.k)], n: leerNum(x.value) })).filter(z => z.n > 0);
+    if (!sel.length) return err('Anota cuántas horneaste de al menos un sabor');
+    if (sel.some(z => z.n !== Math.round(z.n))) return err('Escribe números enteros');
+    const faltan = sel.filter(z => z.n > Number(z.x.bolitas));
+    if (faltan.length && !confirm(`Según el sistema no hay tantas bolitas de: ${faltan.map(z => z.x.nombre.replace(/^Galleta /, '').replace(/ horneada$/, '')).join(', ')}.\n¿Guardar igual? (avisa a la Líder para revisar el inventario)`)) return;
+    guardando(r.querySelector('.btn-primario'), async () => {
+      for (const z of sel) {
+        if (DEMO) { const s = DX.insumos.find(i => i.id === z.x.id), b = DX.insumos.find(i => i.id === DX.produccion[s.id][0].insumo_id), txt = 'Horneado en caja: ' + z.n + ' ' + s.nombre;
+          moverStock(S.tienda.id, b.id, -z.n, 'consumo_produccion', txt); moverStock(S.tienda.id, s.id, z.n, 'produccion', txt); }
+        else await rpc('pos_hornear', { p_tienda: S.tienda.id, p_salida: z.x.id, p_cantidad: z.n });
+      }
+      if (DEMO) guardarDemo();
+      cerrarModal(); toast(`Listo: ${sel.reduce((a, z) => a + z.n, 0)} galletas horneadas`);
+      if (typeof cargarBloqueos === 'function') cargarBloqueos();
+    }, err);
+  };
+}
+async function salidasDelTurno() {
+  if (DEMO) return DX.salidas.filter(x => x.turno_id === S.turno?.id).map(x => ({ ...x, forma: S.d.formas.find(f => f.id === x.forma_pago_id)?.nombre, rendida: !!x.rendida_en }));
+  try { return await rpc('pos_salidas_turno', { p_tienda: S.tienda.id }); } catch (e) { return []; }
+}
+// 25/11/2026 (Sra. Betsy): después de sacar el dinero se rinde con la factura; lo que sobró vuelve a la caja
+function rendirSalida(x) {
+  const r = abrirModal(`<form id="f-rendir"><div class="modal-cab"><h3 class="titulo">🧾 Rendir salida</h3>
+      <p>Salió <b>${fmtMon(x.moneda, x.monto)}</b> (${esc(x.forma || '')}) · ${esc(x.motivo)}${x.detalle ? ' · ' + esc(x.detalle) : ''}</p></div>
+    <div class="modal-cuerpo"><div id="rd-error" class="mensaje-error oculto"></div>
+      <label class="campo"><span>¿Cuánto se gastó de verdad? (lo que dice la factura) *</span><input id="rd-gasto" class="txt num" inputmode="decimal" value="${fmt.format(x.gastado ?? x.monto)}"></label>
+      <p class="num" id="rd-vuelto"></p>
+      <div class="dos-campos"><label class="campo"><span>N° de factura</span><input id="rd-nro" class="txt" value="${esc(x.factura_nro || '')}"></label>
+        <label class="campo"><span>Foto de la factura</span><input id="rd-foto" type="file" accept="image/*" class="txt"><small id="rd-foto-n" class="ayuda"></small></label></div>
+      <p class="ayuda">Lo que sobró vuelve a la caja y se cuenta en el cuadre. Hazlo antes de cerrar la caja.</p></div>
+    <div class="modal-pie"><button type="button" class="btn btn-sec" id="rd-x">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Guardar</button></div></form>`, 520);
+  const g = q => r.querySelector(q); let foto = null;
+  const vuelto = () => { const v = r2(x.monto - (leerNum(g('#rd-gasto').value) || 0)); g('#rd-vuelto').innerHTML = v > 0 ? `Vuelve a la caja: <b>${fmtMon(x.moneda, v)}</b>` : v < 0 ? '<span class="rojo">Se gastó más de lo que salió: registra otra salida por la diferencia.</span>' : 'Se gastó todo, no vuelve nada.'; };
+  g('#rd-gasto').oninput = vuelto; vuelto();
+  g('#rd-foto').onchange = async e => { const f = e.target.files[0]; if (!f) return; g('#rd-foto-n').textContent = 'Preparando…';
+    try { foto = await comprimirFoto(f); g('#rd-foto-n').textContent = '✓ foto lista'; } catch (z) { foto = null; g('#rd-foto-n').textContent = 'No se pudo leer esa foto'; } };
+  g('#rd-x').onclick = () => abrirSalida();
+  g('#f-rendir').onsubmit = e => { e.preventDefault();
+    const err = m => { g('#rd-error').textContent = m; g('#rd-error').classList.remove('oculto'); };
+    const gasto = leerNum(g('#rd-gasto').value);
+    if (!(gasto >= 0)) return err('Escribe cuánto se gastó'); if (gasto > x.monto + 0.001) return err('Se gastó más de lo que salió: registra otra salida por la diferencia');
+    guardando(g('.btn-primario'), async () => {
+      const p = { gastado: r2(gasto), factura_nro: limpiar(g('#rd-nro').value) || null };
+      if (DEMO) { const o = DX.salidas.find(z => z.id === x.id); Object.assign(o, { gastado: p.gastado, devuelto: r2(o.monto - p.gastado), factura_nro: p.factura_nro, rendida_en: new Date().toISOString() }); guardarDemo(); }
+      else {
+        if (foto) { const path = `${S.tienda.id}/pagos/${hoyVE()}-salida-${Math.random().toString(36).slice(2, 9)}.${foto.ext}`;
+          const { error } = await sb.storage.from('pos-facturas').upload(path, foto.blob, { contentType: foto.blob.type }); if (error) throw new Error('No se pudo subir la foto: ' + error.message); p.foto_path = path; }
+        await rpc('pos_salida_rendir', { p_id: x.id, p });
+      }
+      const dev = r2(x.monto - gasto); cerrarModal(); toast(dev > 0 ? `Listo: vuelven ${fmtMon(x.moneda, dev)} a la caja` : 'Listo: salida rendida');
+    }, err);
+  };
+}
 async function abrirSalida() {
   const efect = S.d.formas.filter(f => f.es_efectivo);
   const partidas = await cargarPartidas();
+  const previas = await salidasDelTurno();
   const r = abrirModal(`<form id="f-salida"><div class="modal-cab"><h3 class="titulo">Salida de caja</h3>
       <p>Dinero que sale de la caja durante el turno (delivery, hielo, adelantos). Se descuenta en el cuadre.</p></div>
     <div class="modal-cuerpo"><div id="sa-error" class="mensaje-error oculto"></div>
+      ${previas.length ? `<details class="sal-previas" ${previas.some(x => !x.rendida) ? 'open' : ''}><summary><b>Salidas de esta caja (${previas.length})</b>${previas.some(x => !x.rendida) ? ` · <span class="rojo">${previas.filter(x => !x.rendida).length} sin rendir</span>` : ''}</summary>
+        <table class="tabla-simple num"><tbody>${previas.map((x, k) => `<tr><td>${horaCorta(x.fecha)}</td><td>${esc(x.motivo)}${x.detalle ? ' · ' + esc(x.detalle) : ''}</td><td class="der">${fmtMon(x.moneda, x.monto)}</td>
+          <td>${x.rendida ? `✅ ${Number(x.devuelto) ? 'devolvieron ' + fmtMon(x.moneda, x.devuelto) : 'rendida'}${x.factura_nro ? ' · Fact. ' + esc(x.factura_nro) : ''}` : `<button type="button" class="link" data-rend="${k}">🧾 Rendir con la factura</button>`}</td></tr>`).join('')}</tbody></table></details>` : ''}
+      <h4 style="margin:8px 0 4px">Nueva salida</h4>
       <div class="campo"><span>Sale de *</span><div class="opciones">${efect.map((f, i) => `<label class="op"><input type="radio" name="sa-forma" value="${f.id}" ${i === 0 ? 'checked' : ''}> ${esc(f.nombre)}</label>`).join('')}</div></div>
       <label class="campo"><span>Monto *</span><input id="sa-monto" class="txt num" inputmode="decimal" placeholder="0,00"></label>
       <label class="campo"><span>Motivo *</span><select id="sa-motivo" class="sel"><option value="">Elige el motivo…</option>
@@ -4315,6 +4392,7 @@ async function abrirSalida() {
       <label class="campo"><span>Quién autorizó *</span><input id="sa-autorizo" class="txt" placeholder="Nombre y apellido"></label></div>
     <div class="modal-pie"><button type="button" class="btn btn-sec" id="sa-cancelar">Cancelar</button><span class="espacio"></span><button class="btn btn-primario">Registrar salida</button></div></form>`, 520);
   r.querySelector('#sa-cancelar').onclick = cerrarModal;
+  r.querySelectorAll('[data-rend]').forEach(b => b.onclick = () => rendirSalida(previas[Number(b.dataset.rend)]));
   const selP = r.querySelector('#sa-partida');
   if (selP) r.querySelector('#sa-motivo').onchange = () => { const re = PARTIDA_MOTIVO[r.querySelector('#sa-motivo').value]; if (!re || selP.value) return;
     const t = partidas.find(x => re.test(x.nombre)) || partidas.find(x => re.test(x.linea || '')); if (t) selP.value = t.id; };
@@ -6874,6 +6952,7 @@ async function copiarPreciosDesde(origenId) {
 
 $('btn-ventas-turno').onclick = abrirVentasTurno;
 $('btn-salida').onclick = abrirSalida;
+$('btn-hornear').onclick = abrirHornear;
 
 /* =====================================================================
    ARRANQUE
