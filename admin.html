@@ -1762,7 +1762,10 @@ function cajaVieja(t = S.turno) {
 function pintarNombreBarra() {
   const el = $('nombre-usuario'); if (!el || !S.perfil) return;
   const enVenta = S.turno && !MODO_ADMIN && !document.body.classList.contains('sin-caja');
-  el.textContent = enVenta ? (S.turno.cajero || '') : S.perfil.nombre;
+  // 25/11/2026 (dueño, Express): cuando cambian de cajera sin cerrar la caja, la barra dice QUIÉN está vendiendo
+  // (el usuario que entró); la cajera que abrió la caja sigue en el chip "Caja #N · …".
+  el.textContent = enVenta ? 'Vende: ' + S.perfil.nombre : S.perfil.nombre;
+  el.title = enVenta && S.turno.cajero ? 'Caja abierta por ' + S.turno.cajero : '';
 }
 function pintarCaja() {
   const abierta = !!S.turno, vieja = cajaVieja();
