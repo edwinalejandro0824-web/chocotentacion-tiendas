@@ -2008,7 +2008,7 @@ const apiAdmin = {
       q('pos_categorias', 'id,nombre,color,orden,pide_clave').order('orden'),
       q('pos_productos', 'id,categoria_id,nombre,foto_url,orden,activo').order('orden'),
       q('pos_variantes', 'id,producto_id,nombre,orden').order('orden'),
-      q('pos_precios', 'variante_id,tienda_id,precio_usd').eq('tienda_id', tiendaId),
+      q('pos_precios', 'variante_id,tienda_id,precio_usd,disponible').eq('tienda_id', tiendaId),
       q('pos_grupos_opciones', 'id,nombre').order('id'),
       q('pos_opciones', 'id,grupo_id,nombre,orden,activa').order('orden'),
       q('pos_precios_opciones', 'opcion_id,tienda_id,precio_usd,disponible').eq('tienda_id', tiendaId),
@@ -4992,11 +4992,17 @@ function pintarAdmInventario() {
       r.querySelector('#ct-ok').onclick = () => { cerrarModal(); INV.sub = 'existencias'; pintarAdmInventario(); };
     };
   } else if (INV.sub === 'recetas') {
-    const prods = S.d.productos;
+    // 25/11/2026 (Sara): solo lo que vende esta tienda (lo apagado en "Qué vende cada tienda" no sale), salvo que marquen "ver todos"
+    const vendeAqui = p => (S.d.raw.variantes || []).some(v => v.producto_id === p.id && (S.d.raw.precios || []).some(x => x.variante_id === v.id && x.disponible !== false && (x.tienda_id == null || x.tienda_id === t)));
+    const prods = INV.todosProd ? S.d.productos : S.d.productos.filter(vendeAqui);
+    if (typeof INV.prod === 'number' && !prods.some(p => p.id === INV.prod)) INV.prod = null;
     INV.prod = INV.prod || prods.at(0)?.id;
     const grupos = S.d.raw.grupos || DEMO_DATA.grupos;
     ic.innerHTML = `<div class="dos-campos" style="max-width:640px"><label class="campo"><span>Producto</span><select id="rc-prod" class="sel"><option value="todo" ${INV.prod === 'todo' ? 'selected' : ''}>📋 Lista completa (todos los productos y opciones)</option>${prods.map(p => `<option value="${p.id}" ${p.id === INV.prod ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}
-        ${grupos.map(g => `<option value="g${g.id}" ${INV.prod === 'g' + g.id ? 'selected' : ''}>Opciones: ${esc(g.nombre)}</option>`).join('')}</select></label></div><div id="rc-lista"></div>`;
+        ${grupos.map(g => `<option value="g${g.id}" ${INV.prod === 'g' + g.id ? 'selected' : ''}>Opciones: ${esc(g.nombre)}</option>`).join('')}</select></label>
+        <label class="op" style="align-self:end"><input type="checkbox" id="rc-todos" ${INV.todosProd ? 'checked' : ''}> Ver también lo que ${esc(S.tienda.nombre)} no vende</label></div>
+      <p class="ayuda">🍪 La receta de la <b>galleta horneada</b> y de las <b>bolitas</b> está en Inventario → <b>Producción</b> (abajo, "Recetas de producción").</p><div id="rc-lista"></div>`;
+    $('rc-todos').onchange = e => { INV.todosProd = e.target.checked; pintarAdmInventario(); };
     $('rc-prod').onchange = e => { INV.prod = /^(g|todo)/.test(e.target.value) ? e.target.value : Number(e.target.value); pintarAdmInventario(); };
     const lista = $('rc-lista');
     if (INV.prod === 'todo') listaCompuestos(lista);
