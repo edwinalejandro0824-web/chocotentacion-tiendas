@@ -5468,6 +5468,7 @@ const enPres = (id, cant) => { const x = presIns(id); return x.f > 1 ? `${fmtCan
 const precioPres = id => { const x = presIns(id); return r2(Number(costoInsumo(id) || 0) * x.f); };
 function pintarHacerPedido(c, t, ic, optsIns) {
   const hoy = hoyVE();
+  if (PDV.tipo === 'suministro' && !DX.insumos.some(i => i.activo !== false && esSuministro(i))) PDV.tipo = 'mp';
   const esSum = PDV.tipo === 'suministro';
   const ins = DX.insumos.filter(i => i.activo !== false && insEnTienda(i, t) && etapaDe(i) === (esSum ? 'suministro' : 'materia_prima')).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const idsTipo = new Set(ins.map(i => String(i.id)));
@@ -5493,7 +5494,8 @@ function pintarHacerPedido(c, t, ic, optsIns) {
   const pctR = PDV.pct || 100;
   const proy = i => { const g = gasto[i.id]; if (!(g > 0)) return 0; const f = presIns(i.id).f, falta = Math.max(0, g * pctR / 100 - Math.max(stockDe(i, t), 0));
     return falta > 0.0001 ? (f > 1 ? Math.ceil(falta / f - 0.0001) : Math.round(falta * 100) / 100) : 0; };
-  c.innerHTML = `<nav class="sub-tabs prov-vistas"><button type="button" class="sub-tab ${esSum ? '' : 'activa'}" data-ptipo="mp">🥫 Materia prima</button><button type="button" class="sub-tab ${esSum ? 'activa' : ''}" data-ptipo="suministro">🧽 Limpieza, oficina y otros</button></nav>
+  const haySum = DX.insumos.some(i => i.activo !== false && esSuministro(i));
+  c.innerHTML = `${!haySum ? '<p class="ayuda">🧽 Limpieza, oficina y otros no se piden aquí: van como <b>Solicitud de pago</b> (Compras → 📝 Solicitudes de pago), que es "otros gastos".</p>' : ''}<nav class="sub-tabs prov-vistas ${haySum ? '' : 'oculto'}"><button type="button" class="sub-tab ${esSum ? '' : 'activa'}" data-ptipo="mp">🥫 Materia prima</button><button type="button" class="sub-tab ${esSum ? 'activa' : ''}" data-ptipo="suministro">🧽 Limpieza, oficina y otros</button></nav>
     ${esSum ? '<p class="ayuda">Esto <b>no es materia prima</b>: va en un pedido aparte, no cuenta en el presupuesto de compras de materia prima y en el balance va a su partida (limpieza, papelería…).</p>' : ''}
     <section class="graf presu-compras" id="pd-presu"></section>
     <div class="adm-barra"><p>${cubre ? `<b>Proyección</b> (solo para guiarte): reponer lo que se gastó${cons.dias < 7 ? ` (esta tienda lleva ${fmtCant(cons.dias)} día(s) vendiendo, así que se proyectó a 7 días)` : ' en los últimos 7 días'} × el porcentaje de abajo, menos lo que <b>hay</b>, en presentaciones de compra. Tú decides: escribe en <b>Pedir</b> lo que vas a pedir (puedes tocar el número de la proyección para copiarlo). Lo que quede en blanco no se pide.` : `Todavía no hay ventas para calcular lo que se gasta: escribe en <b>Pedir</b> lo que vas a pedir. Lo que quede en blanco no se pide.`} El dueño junta los pedidos de todas las tiendas y compra por proveedor.</p></div>
@@ -5643,7 +5645,7 @@ function pintarConsolidado(c, ic, t, optsIns) {
   const textoMoto = () => `*Compra de contado · ${NEGOCIO_NOMBRE}* (${fechaLarga(hoyVE())})\n` + contado.map(id => { const p = provDe(id), g = grupos.get(id);
     return `\n══════════════\n🛒 *${p.nombre}*${p.telefono ? ' · ' + p.telefono : ''}\n` + porTiendaTxt(g, true) + totalTxt(g); }).join('\n')
     + `\n\nAl llegar, separar por tienda como dice cada bloque.`;
-  c.innerHTML = `<nav class="sub-tabs prov-vistas"><button type="button" class="sub-tab ${cTipo === 'mp' ? 'activa' : ''}" data-ctipo="mp">🥫 Materia prima</button><button type="button" class="sub-tab ${cTipo === 'suministro' ? 'activa' : ''}" data-ctipo="suministro">🧽 Limpieza, oficina y otros${nSum ? ` (${nSum})` : ''}</button></nav>
+  c.innerHTML = `<nav class="sub-tabs prov-vistas ${nSum || cTipo === 'suministro' ? '' : 'oculto'}"><button type="button" class="sub-tab ${cTipo === 'mp' ? 'activa' : ''}" data-ctipo="mp">🥫 Materia prima</button><button type="button" class="sub-tab ${cTipo === 'suministro' ? 'activa' : ''}" data-ctipo="suministro">🧽 Limpieza, oficina y otros${nSum ? ` (${nSum})` : ''}</button></nav>
     <div class="adm-barra"><p>Todo lo que piden las tiendas, junto y separado por proveedor. <b>Crédito:</b> se le escribe al proveedor. <b>Contado:</b> la lista va al autorizado que compra y paga en el momento; luego se separa por tienda.</p>
       <span class="espacio"></span><label class="interruptor" style="margin:0"><input type="checkbox" id="cs-camino" ${PDV.conCamino ? 'checked' : ''}><span>Incluir los que ya van en camino</span></label>${peds.length ? '<button class="btn btn-primario" id="cs-xlsx">⬇️ Descargar Excel</button>' : ''}</div>
     <p class="ayuda">${peds.length} pedidos de ${tiendas.length} tiendas: ${tiendas.map(([id, n]) => `${esc(n)} (${peds.filter(p => p.tienda_id === id).map(p => puede('compras_aprobar') ? `<button class="link" data-csed="${p.id}" title="Corregir este pedido">N° ${p.id} ✏️</button>` : 'N° ' + p.id).join(', ')})`).join(' · ') || '—'}</p>
