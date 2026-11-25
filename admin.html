@@ -1595,7 +1595,7 @@ function ventaDemo(items, pagos, cliente, vueltos) {
     return { forma: f.nombre, moneda: f.moneda, monto: p.monto, monto_usd: f.moneda === 'USD' ? p.monto : r2(p.monto / tasa), referencia: p.referencia || null };
   });
   const venta = {
-    id: nid(), tienda_id: S.tienda.id, estado: 'pagada', usuario: S.turno.cajero,
+    id: nid(), tienda_id: S.tienda.id, estado: 'pagada', usuario: S.turno.cajero, usuario_nombre: (S.perfil && S.perfil.nombre) || S.turno.cajero,
     turno_id: S.turno.id, numero: ++demoNumero, fecha: new Date().toISOString(), tienda: S.tienda.nombre,
     cliente_cedula: cliente.cedula, cliente_nombre: cliente.nombre, cliente_telefono: cliente.telefono, cliente_zona: cliente.zona, tasa,
     total_usd: t.total, base_usd: t.base, iva_usd: t.iva, descuento_usd: t.desc, total_ves: t.ves,
@@ -1678,6 +1678,13 @@ function demoResumen(t, contado) {
     iva_usd: r2(vs.reduce((a, v) => a + v.iva_usd, 0)), clientes: new Set(vs.map(v => v.cliente_cedula)).size,
     metodos, productos: [...prod.values()].sort((a, b) => b.cantidad - a.cantidad),
     salidas_caja: sal, anuladas: DEMO_VENTAS.filter(v => v.turno_id === t.id && v.estado === 'anulada').length,
+    por_usuario: [...vs.reduce((m, v) => { const k = v.usuario_nombre || v.usuario || 'Sin usuario';
+      const x = m.get(k) || { nombre: k, ventas: 0, total_usd: 0, total_ves: 0, desde: v.fecha, hasta: v.fecha, f: new Map() };
+      x.ventas++; x.total_usd = r2(x.total_usd + v.total_usd); x.total_ves = r2(x.total_ves + v.total_ves);
+      if (v.fecha < x.desde) x.desde = v.fecha; if (v.fecha > x.hasta) x.hasta = v.fecha;
+      for (const pg of v.pagos) x.f.set(pg.forma, { forma: pg.forma, moneda: pg.moneda, neto: r2((x.f.get(pg.forma)?.neto || 0) + pg.monto) });
+      for (const q of v.vueltos || []) x.f.set(q.forma, { forma: q.forma, moneda: q.moneda, neto: r2((x.f.get(q.forma)?.neto || 0) - q.monto) });
+      m.set(k, x); return m; }, new Map()).values()].map(x => ({ ...x, formas: [...x.f.values()].filter(f => Math.abs(f.neto) >= 0.005) })),
   };
 }
 function demoCerrarTurno(tiendaId, billetes, otros, notas) {
@@ -1922,6 +1929,15 @@ function textoDif(m, d) {
   if (Math.abs(d) < 0.01) return '✓ Cuadra';
   return (d < 0 ? 'Falta ' : 'Sobra ') + fmtMon(m, Math.abs(d));
 }
+// 25/11/2026 (dueño, pregunta de las cajeras): una sola caja al día; cada cajera entra con su usuario y aquí sale cuánto vendió cada una
+function htmlPorUsuario(res) {
+  const us = res.por_usuario || [];
+  if (!us.length) return '';
+  return `<h4 class="sub-arqueo">Vendido por cada usuario</h4>
+    <table class="tabla-simple num"><thead><tr><th>Usuario</th><th>Horario</th><th class="der">Ventas</th><th class="der">Total $</th><th>Cobró (menos vueltos)</th></tr></thead><tbody>
+    ${us.map(u => `<tr><td><b>${esc(u.nombre)}</b></td><td>${esc(horaCorta(u.desde))} a ${esc(horaCorta(u.hasta))}</td><td class="der">${esc(u.ventas)}</td><td class="der"><b>${usd(u.total_usd)}</b></td>
+      <td>${(u.formas || []).map(f => `${esc(f.forma)}: ${fmtMon(f.moneda, f.neto)}`).join(' · ') || '—'}</td></tr>`).join('')}</tbody></table>`;
+}
 function htmlArqueo(res) {
   const cerrado = res.turno.estado === 'cerrado';
   const malos = res.metodos.filter(m => m.diferencia != null && Math.abs(m.diferencia) >= 0.01);
@@ -1940,6 +1956,7 @@ function htmlArqueo(res) {
         <td><b>${fmtMon(m.moneda, m.esperado)}</b></td>
         ${cerrado ? `<td>${m.contado == null ? '—' : fmtMon(m.moneda, m.contado)}</td><td class="dif ${claseDif(m.diferencia)}">${textoDif(m.moneda, m.diferencia)}</td>` : ''}</tr>`).join('')}</tbody>
     </table>
+    ${htmlPorUsuario(res)}
     ${res.productos.length ? `<h4 class="sub-arqueo">Lo que se vendió</h4>
       <div class="vendidos">${res.productos.map(p => `<div><span>${esc(p.cantidad)} × ${esc(p.producto)}${p.variante ? ' ' + esc(p.variante) : ''}</span><b class="num">${usd(p.total_usd)}</b></div>`).join('')}</div>` : ''}
     ${(res.salidas_caja || []).length ? `<h4 class="sub-arqueo">Salidas de caja</h4><div class="vendidos">${res.salidas_caja.map(x => `<div><span>${esc(x.motivo)}${x.detalle ? ' · ' + esc(x.detalle) : ''} · autorizó ${esc(x.autorizo)}</span><b class="num">${fmtMon(x.moneda, x.monto - (x.sacado == null ? (x.devuelto || 0) : 0))}</b>${Number(x.devuelto) ? ` <span class="ayuda">(sacaron ${fmtMon(x.moneda, x.sacado ?? x.monto)}, devolvieron ${fmtMon(x.moneda, x.devuelto)})</span>` : ''}</div>`).join('')}</div>` : ''}
@@ -1971,6 +1988,8 @@ function prepararImpresionArqueo(res) {
       ${m.contado != null ? `<div class="r sub"><span>Declaró</span><span>${fmtMon(m.moneda, m.contado)}</span></div>
       <div class="r sub"><span>Diferencia</span><span>${Math.abs(m.diferencia) < 0.01 ? 'OK' : (m.diferencia < 0 ? '-' : '+') + fmtMon(m.moneda, Math.abs(m.diferencia))}</span></div>` : ''}`).join('')}
     <div class="sep"></div>
+    ${(res.por_usuario || []).length > 0 ? `<div><b>POR USUARIO</b></div>${res.por_usuario.map(u => `<div class="r"><span>${esc(u.nombre)} (${esc(horaCorta(u.desde))}-${esc(horaCorta(u.hasta))}, ${esc(u.ventas)} vtas)</span><span>${fmt.format(u.total_usd)}</span></div>
+      ${(u.formas || []).map(f => `<div class="r sub"><span>${esc(f.forma)}</span><span>${fmtMon(f.moneda, f.neto)}</span></div>`).join('')}`).join('')}<div class="sep"></div>` : ''}
     ${res.productos.map(p => `<div class="r"><span>${esc(p.cantidad)} x ${esc(p.producto)}${p.variante ? ' ' + esc(p.variante) : ''}</span><span>${fmt.format(p.total_usd)}</span></div>`).join('') || '<div>Sin ventas</div>'}`;
 }
 
