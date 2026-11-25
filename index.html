@@ -4370,9 +4370,20 @@ function difCajaUsd(t) {
 
 /* ---------- PANEL ---------- */
 const PANEL = { periodo: '7', tienda: 0 };
+function rangoPanel() {
+  const hoy = hoyVE(), dow = (new Date(hoy + 'T12:00:00Z').getUTCDay() + 6) % 7;
+  if (PANEL.periodo === 'ayer') { const a = sumarDias(hoy, -1); return [a, a]; }
+  if (PANEL.periodo === 'semana') return [sumarDias(hoy, -dow), hoy];
+  if (PANEL.periodo === 'mesant') { const ini = sumarDias(hoy.slice(0, 8) + '01', -1).slice(0, 8) + '01'; return [ini, sumarDias(hoy.slice(0, 8) + '01', -1)]; }
+  if (PANEL.periodo === 'otro') { const d = PANEL.desde || sumarDias(hoy, -6), h = PANEL.hasta || hoy; return d <= h ? [d, h] : [h, d]; }
+  return rangoPeriodo(PANEL.periodo);
+}
 function pintarAdmPanel() {
   const cont = $('adm-contenido');
-  const [desde, hasta] = rangoPeriodo(PANEL.periodo), tid = PANEL.tienda || null;
+  const [desde, hasta] = rangoPanel(), tid = PANEL.tienda || null;
+  if (!DEMO) { const [ld, lh] = (REAL.ventasRango || '|').split('|');   // si piden fechas que no están cargadas, se traen
+    if (!ld || desde < ld || hasta > lh) { cont.innerHTML = '<p class="vacio">Cargando las ventas de esas fechas…</p>';
+      cargarVentasReal(desde < ld || !ld ? desde : ld, hasta > lh || !lh ? hasta : lh).then(() => { if (A.tab === 'panel') pintarAdmPanel(); }).catch(e => toast(e.message, true)); return; } }
   const vs = ventasEn(desde, hasta, tid);
   const total = r2(vs.reduce((a, v) => a + v.total_usd, 0)), base = r2(vs.reduce((a, v) => a + v.base_usd, 0));
   const costo = r2(vs.reduce((a, v) => a + costoVenta(v), 0)), gastos = gastosProrrateados(desde, hasta, tid);
@@ -4414,8 +4425,10 @@ function pintarAdmPanel() {
   const pctMP = base > 0 ? costo * 100 / base : null, colMP = p => p == null ? '' : p <= 35 ? 'ok' : p <= 45 ? 'abierta' : 'mal';
   cont.innerHTML = `
     <div class="adm-barra"><p>${DEMO ? 'Datos de ejemplo del demo: 3 semanas de ventas del Sambil, más lo que vendas tú.' : 'Resumen de ventas, costos y caja. Elige el período y la tienda.'}</p><span class="espacio"></span>
-      <select id="pn-periodo" class="sel corto">${[['hoy', 'Hoy'], ['7', 'Últimos 7 días'], ['mes', 'Este mes'], ['30', 'Últimos 30 días']].map(([k, n]) => `<option value="${k}" ${PANEL.periodo === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      <select id="pn-periodo" class="sel corto">${[['hoy', 'Hoy'], ['ayer', 'Ayer'], ['semana', 'Esta semana (lunes a hoy)'], ['7', 'Últimos 7 días'], ['mes', 'Este mes'], ['mesant', 'Mes pasado'], ['30', 'Últimos 30 días'], ['otro', '📅 Escoger fechas…']].map(([k, n]) => `<option value="${k}" ${PANEL.periodo === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      ${PANEL.periodo === 'otro' ? `<label class="campo" style="margin:0"><span>Desde</span><input type="date" id="pn-desde" class="txt" value="${desde}" max="${hoyVE()}"></label><label class="campo" style="margin:0"><span>Hasta</span><input type="date" id="pn-hasta" class="txt" value="${hasta}" max="${hoyVE()}"></label>` : ''}
       <select id="pn-tienda" class="sel corto"><option value="0" ${PANEL.tienda ? '' : 'selected'}>Todas las tiendas (sumadas)</option>${(DEMO ? DEMO_DATA.tiendas : S.tiendas).map(t => `<option value="${t.id}" ${PANEL.tienda === t.id ? 'selected' : ''}>${esc(t.nombre)}</option>`).join('')}</select></div>
+    <h3 class="pn-fechas" style="margin:4px 0 10px">📅 ${desde === hasta ? fechaLarga(desde) : `Del ${fechaLarga(desde)} al ${fechaLarga(hasta)}`}${tid ? ' · ' + esc(tiendaNombre(tid) || '') : ' · Todas las tiendas'}</h3>
     <div class="kpis">
       <div class="kpi"><span>Ventas</span><b class="num">${usd(total)}</b><i>${vs.length} ventas · ${fechaCorta(desde)} al ${fechaCorta(hasta)}</i></div>
       <div class="kpi"><span>Ticket promedio</span><b class="num">${usd(ticket)}</b><i>por venta</i></div>
@@ -4446,7 +4459,9 @@ function pintarAdmPanel() {
         <td class="der">${y.pct == null ? '—' : `<span class="badge ${colMP(y.pct)}">${fmt.format(r2(y.pct))} %</span>`}</td></tr>`).join('') || '<tr><td colspan="6" class="vacio">No hay ventas en el período.</td></tr>'}
       ${cprod.length ? (() => { const b = cprod.reduce((a, y) => a + y.base, 0), c = cprod.reduce((a, y) => a + y.costo, 0); return `<tr class="total"><td><b>Total</b></td><td></td><td class="der"><b>${usd(b)}</b></td><td class="der"><b>${usd(c)}</b></td><td></td><td class="der"><b>${b > 0 ? fmt.format(r2(c * 100 / b)) + ' %' : '—'}</b></td></tr>`; })() : ''}
       </tbody></table><p class="ayuda">El costo es lo que de verdad descontó el inventario en cada venta, repartido entre los productos según su receta. Si un producto sale muy alto o muy bajo, revisa su receta o el costo de sus insumos.</p>`}</section>`;
-  $('pn-periodo').onchange = e => { PANEL.periodo = e.target.value; pintarAdmPanel(); };
+  $('pn-periodo').onchange = e => { PANEL.periodo = e.target.value; if (PANEL.periodo === 'otro' && !PANEL.desde) { PANEL.desde = desde; PANEL.hasta = hasta; } pintarAdmPanel(); };
+  if ($('pn-desde')) { $('pn-desde').onchange = e => { if (e.target.value) { PANEL.desde = e.target.value; pintarAdmPanel(); } };
+    $('pn-hasta').onchange = e => { if (e.target.value) { PANEL.hasta = e.target.value; pintarAdmPanel(); } }; }
   if ($('pn-cmp-copiar')) $('pn-cmp-copiar').onclick = () => copiarTexto(tsv(['Producto', 'Unidades', 'Venta sin IVA $', 'Costo materia prima $', 'Costo por unidad $', '% costo MP'],
     cprod.map(y => [y.producto, y.cant, numXls(y.base), numXls(y.costo), numXls(y.cant ? y.costo / y.cant : 0), y.pct == null ? '' : numXls(y.pct)])));
   $('pn-tienda').onchange = e => { PANEL.tienda = Number(e.target.value); pintarAdmPanel(); };
@@ -5447,12 +5462,17 @@ function pintarConsolidado(c, ic, t, optsIns) {
     ${[...g.values()].sort((a, b) => a.nombre.localeCompare(b.nombre)).map(x => `<tr><td>${esc(x.nombre)}</td><td class="der"><b>${esc(enPres(x.id, x.total))}</b></td>
       ${tiendas.map(([id]) => `<td class="der">${x.por[id] ? pk(x, x.por[id]) : '—'}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
   const ids = [...grupos.keys()], credito = ids.filter(id => id && provDe(id)?.condicion !== 'contado'), contado = ids.filter(id => id && provDe(id)?.condicion === 'contado');
+  // Mensajes POR TIENDA (24/11/2026, pedido del dueño): un bloque por tienda con lo suyo, y al final el total
+  const porTiendaTxt = g => tiendas.map(([tid, n]) => { const xs = [...g.values()].filter(x => x.por[tid]).sort((a, b) => a.nombre.localeCompare(b.nombre));
+    return xs.length ? `\n🏪 *${n}*\n` + xs.map(x => `• ${x.nombre}: ${enPres(x.id, x.por[tid])}`).join('\n') : ''; }).filter(Boolean).join('\n');
+  const totalTxt = g => { const xs = [...g.values()]; return tiendas.filter(([tid]) => xs.some(x => x.por[tid])).length > 1
+    ? `\n\n*Total de todo:*\n` + xs.sort((a, b) => a.nombre.localeCompare(b.nombre)).map(x => `• ${x.nombre}: ${enPres(x.id, x.total)}`).join('\n') : ''; };
   const msgProv = id => { const p = provDe(id), g = grupos.get(id);
-    return `Buenos días${p?.nombre ? ', ' + p.nombre : ''}. Le escribimos de ${NEGOCIO_NOMBRE} para hacerle un pedido:\n` +
-      [...g.values()].map(x => `• ${x.nombre}: ${enPres(x.id, x.total)}`).join('\n') + `\n\nPor favor confírmenos disponibilidad, precio y cuándo lo pueden entregar. ¡Gracias!`; };
-  const textoMoto = () => `*Compra de contado · ${NEGOCIO_NOMBRE}* (${fechaLarga(hoyVE())})\n` + contado.map(id => { const p = provDe(id);
-    return `\n*${p.nombre}*${p.telefono ? ' · ' + p.telefono : ''}\n` + [...grupos.get(id).values()].map(x => `• ${x.nombre}: ${enPres(x.id, x.total)}  →  ${sep(x)}`).join('\n'); }).join('\n')
-    + `\n\nAl llegar, separar por tienda como dice cada renglón.`;
+    return `Buenos días${p?.nombre ? ', ' + p.nombre : ''}. Le escribimos de ${NEGOCIO_NOMBRE} para hacerle un pedido, separado por tienda:\n` +
+      porTiendaTxt(g) + totalTxt(g) + `\n\nPor favor confírmenos disponibilidad, precio y cuándo lo pueden entregar. ¡Gracias!`; };
+  const textoMoto = () => `*Compra de contado · ${NEGOCIO_NOMBRE}* (${fechaLarga(hoyVE())})\n` + contado.map(id => { const p = provDe(id), g = grupos.get(id);
+    return `\n━━━━━━━━━━\n*${p.nombre}*${p.telefono ? ' · ' + p.telefono : ''}\n` + porTiendaTxt(g) + totalTxt(g); }).join('\n')
+    + `\n\nAl llegar, separar por tienda como dice cada bloque.`;
   c.innerHTML = `<div class="adm-barra"><p>Todo lo que piden las tiendas, junto y separado por proveedor. <b>Crédito:</b> se le escribe al proveedor. <b>Contado:</b> la lista va al autorizado que compra y paga en el momento; luego se separa por tienda.</p>
       <span class="espacio"></span><label class="interruptor" style="margin:0"><input type="checkbox" id="cs-camino" ${PDV.conCamino ? 'checked' : ''}><span>Incluir los que ya van en camino</span></label>${peds.length ? '<button class="btn btn-primario" id="cs-xlsx">⬇️ Descargar Excel</button>' : ''}</div>
     <p class="ayuda">${peds.length} pedidos de ${tiendas.length} tiendas: ${tiendas.map(([id, n]) => `${esc(n)} (${peds.filter(p => p.tienda_id === id).map(p => 'N° ' + p.id).join(', ')})`).join(' · ') || '—'}</p>
