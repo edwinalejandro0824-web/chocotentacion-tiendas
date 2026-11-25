@@ -4488,6 +4488,8 @@ function barrasH(datos, { fmtV = usd, ancho = anchoGraf(true), etiqueta = 190 } 
    ===================================================================== */
 const tiendaNombre = id => (S.tiendas || []).find(t => t.id === id)?.nombre || DEMO_DATA?.tiendas?.find(t => t.id === id)?.nombre || (S.tiendasSinCaja || []).find(t => t.id === id)?.nombre || '';
 // sedes sin caja (La Fábrica): no venden, pero se le pueden dar a un usuario (compras, solicitudes de pago, gastos)
+// 25/11/2026 (dueño): en todo lo de gastos y pagos también va La Fábrica (y cualquier sede sin caja del usuario)
+const conFabrica = lista => [...lista, ...(S.tiendasSinCaja || []).filter(x => !lista.some(t => t.id === x.id))];
 async function cargarTiendasSinCaja() {
   if (S.tiendasSinCaja) return S.tiendasSinCaja;
   if (DEMO) return (S.tiendasSinCaja = [{ id: 5, nombre: 'La Fábrica' }]);
@@ -5283,8 +5285,9 @@ function estadoFactura(f, hoy = hoyVE()) {
 }
 // ---- El dueño corrige facturas él mismo (21/11/2026): tienda, proveedor, número, fechas, nota; o la anula ----
 async function tiendasEmpresa() {
-  if (DEMO) return DEMO_DATA.tiendas.map(x => ({ id: x.id, nombre: x.nombre }));
-  return S.tiendas?.length ? S.tiendas : (await sb.from('pos_tiendas').select('id,nombre').order('id')).data || [];
+  await cargarTiendasSinCaja();
+  if (DEMO) return conFabrica(DEMO_DATA.tiendas.map(x => ({ id: x.id, nombre: x.nombre })));
+  return conFabrica(S.tiendas?.length ? S.tiendas : (await sb.from('pos_tiendas').select('id,nombre').order('id')).data || []);
 }
 async function corregirFactura(f) {
   const tiendas = await tiendasEmpresa();
@@ -6258,7 +6261,7 @@ function pintarPlanPagos(cont) {
   const tot = arr => r2(arr.reduce((a, x) => a + x.saldo, 0));
   const venc = d.filas.filter(x => x.vence < d.hoy), alta = d.filas.filter(x => prioridadPago(x, d.hoy)[2] === 1);
   const porDia = [...new Set(d.filas.map(x => x.vence < d.hoy ? 'vencido' : x.vence))];
-  const tiendasLista = dueno ? DEMO ? DEMO_DATA.tiendas : (S.tiendas || []) : [];
+  const tiendasLista = dueno ? conFabrica(DEMO ? DEMO_DATA.tiendas : (S.tiendas || [])) : [];
   cont.innerHTML = `<div class="adm-barra"><label class="campo" style="margin:0"><span>Período</span><select id="pl-rango" class="sel corto">
       ${[['semana', 'Esta semana (hasta el domingo)'], ['semana_prox', 'La semana que viene'], ['7', 'Próximos 7 días'], ['15', 'Próximos 15 días'], ['mes', 'Lo que queda del mes'], ['otro', 'Hasta una fecha']]
         .map(([k, n]) => `<option value="${k}" ${PROV.rango === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
