@@ -2192,6 +2192,8 @@ function pintarSelectorTiendaAdmin() {
     S.tienda = t; guardar('pos_tienda', String(t.id));
     PANEL.tienda = t.id; A.d = null; REAL.ventasRango = null;
     $('nombre-tienda').textContent = t.nombre; $('selector-tienda').value = t.id;
+    // 25/11/2026: el menú de la tienda nueva (Recetas, Lista completa, etc. usan S.d; antes se quedaba el de la tienda anterior)
+    try { S.d = prepararCatalogo(await api.catalogo(t.id)); } catch (x) { }
     await recargarAdmin();   // se queda en la misma pestaña, ahora con los datos de la otra tienda
   };
 }
