@@ -1531,6 +1531,7 @@ function ventaLista(v) {
 
 /* ---------- Ticket impreso (tiquera 80 mm) ---------- */
 function prepararImpresion(v) {
+  aplicarPapel();
   const f = new Date(v.fecha);
   const fecha = f.toLocaleDateString('es-VE', { timeZone: 'America/Caracas' }) + ' ' +
                 f.toLocaleTimeString('es-VE', { timeZone: 'America/Caracas', hour: '2-digit', minute: '2-digit' });
@@ -1906,6 +1907,7 @@ function lineasBilletes(c, m) {
 
 // Ticket del cajero: solo lo declarado (sin lo esperado ni diferencias)
 function prepararImpresionDeclaracion(res) {
+  aplicarPapel();
   const t = res.turno;
   $('impresion').innerHTML = `
     <div class="c g">CHOCOTENTACIÓN</div>
@@ -1968,6 +1970,7 @@ function htmlArqueo(res) {
 }
 
 function prepararImpresionArqueo(res) {
+  aplicarPapel();
   const t = res.turno;
   $('impresion').innerHTML = `
     <div class="c g">CHOCOTENTACIÓN</div>
@@ -7057,12 +7060,18 @@ async function revisarCambioDeDia() {
 setInterval(() => { if (!document.hidden) { actualizarTasa(); revisarCambioDeDia(); } }, 5 * 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) actualizarTasa(); });
 
-async function entrarTienda(t) {
-  PANEL.tienda = t.id;   // el panel arranca mostrando SOLO la tienda en la que se está
+// 27/11/2026 (Américas: salió un ticket ancho y cortado): el tamaño de papel se vuelve a poner ANTES de cada impresión,
+// según la tienda de la CAJA abierta (no la que se esté mirando en Administrar)
+function aplicarPapel(t) {
+  t = t || (S.turno && (S.tiendas || []).find(x => x.id === S.turno.tienda_id)) || S.tienda || {};
   const mm58 = Number(t.ancho_papel_mm) === 58;
   $('impresion').className = mm58 ? 'p58' : '';
   // La hoja de impresión debe medir lo mismo que el papel; si no, el ticket se corta.
-  $('estilo-papel').textContent = mm58 ? '@media print{@page{size:58mm auto;margin:0}}' : '';
+  $('estilo-papel').textContent = mm58 ? '@media print{@page{size:58mm auto;margin:0}}' : '@media print{@page{size:80mm auto;margin:0}}';
+}
+async function entrarTienda(t) {
+  PANEL.tienda = t.id;   // el panel arranca mostrando SOLO la tienda en la que se está
+  aplicarPapel(t);
   S.tienda = t; guardar('pos_tienda', String(t.id));
   mostrar('vista-app');
   $('nombre-tienda').textContent = t.nombre;
